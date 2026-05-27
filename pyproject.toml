@@ -1,6 +1,6 @@
 [project]
 name = "slm-forge"
-version = "0.1.0"
+version = "0.2.0"
 description = "Local-first SLM fine-tuning lab driven by Hermes Agent and Karpathy-style autoresearch"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -16,6 +16,7 @@ dependencies = [
     "python-multipart>=0.0.12",
     "httpx>=0.27",
     "sse-starlette>=2.1",
+    "pyyaml>=6.0",
 ]
 
 [dependency-groups]
@@ -24,15 +25,15 @@ dev = [
     "mypy>=1.13",
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
+    "types-pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
 trainer = [
     "mlx>=0.20",
-    "mlx-lm>=0.20",
+    "mlx-lm>=0.30",
     "transformers>=4.46",
     "datasets>=3.1",
-    "peft>=0.13",
     "huggingface-hub>=0.26",
     "safetensors>=0.4",
 ]

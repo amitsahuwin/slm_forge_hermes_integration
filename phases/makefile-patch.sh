@@ -1,3 +1,14 @@
+#!/usr/bin/env bash
+# Adds a `make rebuild` target that handles the "I just changed deps" case.
+# Run this from inside the project root: ./patch_makefile.sh
+set -euo pipefail
+
+if [ ! -f "Makefile" ]; then
+    echo "✗ Run this from inside slm_forge_hermes_integration/"
+    exit 1
+fi
+
+cat > Makefile <<'EOF'
 .PHONY: help setup install-hermes hermes-install-skills dev down build rebuild logs trainer \
         seed-data download-base-model train-sample clean ensure-lock
 
@@ -71,3 +82,10 @@ clean: ## Remove venv, node_modules, caches
 	find . -type d -name .ruff_cache -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name .mypy_cache -exec rm -rf {} + 2>/dev/null || true
 	@echo "✓ Cleaned"
+EOF
+
+echo "✓ Makefile updated. New target: 'make rebuild'"
+echo ""
+echo "To fix your current issue:"
+echo "  make rebuild"
+echo "  make dev"

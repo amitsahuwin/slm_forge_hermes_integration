@@ -1,4 +1,4 @@
-# Setup
+# Setup — Phase 1
 
 ## Prerequisites
 
@@ -13,45 +13,60 @@
 ## First run (one-time)
 
 ```bash
-# 1. Clone (after init-repo.sh has pushed)
 git clone git@github.com:amitsahuwin/slm_forge_hermes_integration.git
 cd slm_forge_hermes_integration
 
-# 2. Install deps (Python + Node) — creates uv.lock + package-lock.json
-make setup
-
-# 3. Install Ollama + Hermes Agent + qwen2.5-coder:14b
-make install-hermes
+make setup                # creates uv.lock + package-lock.json, installs all deps
+make install-hermes       # Ollama + qwen2.5-coder:14b (used in Phase 2)
+make seed-data            # creates dataset files in data/datasets/
+make download-base-model  # ~1.5 GB Gemma 3n E2B → ~/.cache/huggingface
 ```
 
-> `make dev` auto-runs `make setup` if your lock files don't exist yet.
-
-## Daily dev loop
+## Daily loop — two terminals required
 
 ```bash
-make dev       # starts API on :8000 and UI on :5173 with live reload
-make logs      # tail logs
-make down      # stop
+# Terminal 1: UI + API (Docker, with live reload)
+make dev
+
+# Terminal 2: host trainer worker (needs Metal/MPS access)
+make trainer
 ```
+
+Open http://localhost:5173.
+
+## Running your first training
+
+1. UI → click "+ New Run" (top-right) or visit `/runs/new`
+2. Pick `stock-analyst` dataset
+3. Defaults are fine for a smoke test (200 iters, LoRA, Gemma 3n E2B)
+4. Click "Start training"
+5. You're redirected to `/runs/<id>` with live loss curve
+
+The trainer terminal shows live `mlx_lm.lora` output. The first run takes a few minutes to load the model into memory; subsequent runs are fast.
+
+## Switching base model
+
+The model dropdown shows the catalogue defined in `apps/api/routers/models.py`. To add a new model, edit `CATALOG` in that file (no UI rebuild needed — just refresh).
 
 ## Hermes provider switch
 
-Default is local Ollama (no API key, no rate limits). To switch to Groq's free tier:
+Default is local Ollama. To switch to Groq's free tier:
 
 ```bash
-export GROQ_API_KEY=gsk_...                # from https://console.groq.com
+export GROQ_API_KEY=gsk_...
 hermes config set provider groq
 hermes config set model qwen-2.5-coder-32b
 hermes config set api_key $GROQ_API_KEY
-hermes config show
 ```
 
 ## Troubleshooting
 
-- **`uv: command not found`** → `brew install uv`
+- **`make trainer` says "mlx_lm.lora not found"** → `uv sync --extra trainer`
+- **Trainer fails with "model not found"** → `make download-base-model` first
+- **Training is very slow** → make sure you're NOT running the trainer in Docker; it must be on host. Check `ps aux | grep mlx_lm` and confirm it's running on your Mac, not inside a container.
+- **First training step takes 60+ seconds** → normal, that's model load. Subsequent steps are fast.
 - **Port 8000 already in use** → `lsof -ti:8000 | xargs kill`
-- **Docker says "Cannot connect"** → start Docker Desktop
-- **Ollama "connection refused"** → `brew services restart ollama`
-- **`hermes: command not found` after install** → open new terminal or `export PATH="$HOME/.local/bin:$PATH"`
-- **SSH push fails** → see `init-repo.sh`'s on-screen instructions
-- **`make dev` says lock file missing** → it auto-runs setup; if it still fails, run `make setup` manually
+- **Port 5173 already in use** → `lsof -ti:5173 | xargs kill`
+- **Docker "Cannot connect"** → start Docker Desktop
+- **SSE stream stops mid-training** → browsers throttle background tabs; keep the page focused, or refresh to resume
+- **`make seed-data` says missing files** → the patch should have populated `data/datasets/stock-analyst/`. Verify with `ls data/datasets/stock-analyst/`

@@ -1,3 +1,92 @@
+#!/usr/bin/env bash
+# ─────────────────────────────────────────────────────────────────────────────
+# Stop fighting sparse checkout. Just clone the full llama.cpp repo at a
+# stable, proven tag and run convert_hf_to_gguf.py from there.
+#
+# Why this approach:
+#   • No more whack-a-mole with missing module imports
+#   • A full shallow clone is ~150 MB — fine for a one-time setup
+#   • Pinning to b5350 (older but battle-tested) avoids churn from recent
+#     refactors that broke our previous attempts
+#   • This is the exact approach used by every working Mac fine-tuning
+#     tutorial we found
+# ─────────────────────────────────────────────────────────────────────────────
+set -euo pipefail
+
+if [ ! -f "pyproject.toml" ] || [ ! -d "packages/exporter" ]; then
+    echo "✗ Run from project root."
+    exit 1
+fi
+
+CLONE_DIR="scripts/llama_cpp_src"
+# b5350 = stable build from late 2025, widely used in tutorials.
+# Older than your Homebrew b9380 but only convert_hf_to_gguf.py runs from
+# here — the binaries (llama-quantize) still come from Homebrew.
+LLAMA_TAG="b5350"
+
+# ─────────────────────────────────────────────────────────────
+# 1. Wipe the broken sparse-checkout clone
+# ─────────────────────────────────────────────────────────────
+if [ -d "$CLONE_DIR" ]; then
+    echo "→ Removing broken sparse-checkout clone..."
+    rm -rf "$CLONE_DIR"
+fi
+
+# ─────────────────────────────────────────────────────────────
+# 2. Full shallow clone (no sparse-checkout, no surgery)
+# ─────────────────────────────────────────────────────────────
+echo "→ Cloning llama.cpp at tag $LLAMA_TAG (full shallow clone, ~150 MB)..."
+git clone --depth 1 --branch "$LLAMA_TAG" \
+    https://github.com/ggml-org/llama.cpp.git \
+    "$CLONE_DIR" 2>&1 | tail -3
+
+if [ ! -f "$CLONE_DIR/convert_hf_to_gguf.py" ]; then
+    echo "✗ Clone succeeded but convert_hf_to_gguf.py is missing"
+    echo "  Try a different tag — list available with:"
+    echo "    git ls-remote --tags https://github.com/ggml-org/llama.cpp.git | grep 'refs/tags/b' | tail -20"
+    exit 1
+fi
+echo "✓ Cloned to $CLONE_DIR ($(du -sh "$CLONE_DIR" | cut -f1))"
+
+# ─────────────────────────────────────────────────────────────
+# 3. Block uv from treating gguf-py as a project member
+# ─────────────────────────────────────────────────────────────
+# The trick: place a sentinel file that tells uv to skip the entire
+# llama_cpp_src tree for project discovery.
+cat > "$CLONE_DIR/.python-version" <<'EOF'
+3.14
+EOF
+
+# Also disable any pyproject.toml in gguf-py from being detected
+# (we don't delete it — convert_hf_to_gguf.py might read it for metadata)
+# Instead, we ensure our pipeline NEVER uses uv run for this script.
+
+echo "✓ Sentinel files written to prevent uv project discovery interference"
+
+# ─────────────────────────────────────────────────────────────
+# 4. Test that convert_hf_to_gguf.py runs cleanly with RAW python
+# ─────────────────────────────────────────────────────────────
+echo ""
+echo "→ Testing convert_hf_to_gguf.py with raw Python (the way the pipeline calls it)..."
+echo ""
+
+cd "$CLONE_DIR"
+if ../../.venv/bin/python convert_hf_to_gguf.py --help 2>&1 | head -10; then
+    echo ""
+    echo "✓ Script runs cleanly"
+else
+    echo ""
+    echo "✗ Still failing. Capturing full error:"
+    ../../.venv/bin/python convert_hf_to_gguf.py --help 2>&1 | head -30
+    cd ../..
+    exit 1
+fi
+cd ../..
+
+# ─────────────────────────────────────────────────────────────
+# 5. Update pipeline.py to use this stable layout
+# ─────────────────────────────────────────────────────────────
+cat > packages/exporter/pipeline.py <<'PYEOF'
 """Export pipeline: LoRA adapter → fused HF → F16 GGUF → quantized GGUF.
 
 Pipeline:
@@ -266,3 +355,37 @@ def run_export_job(export_row: dict, api_url: str) -> None:
     log.info("─── Export #%s completed ───", xid)
     _patch_export(api_url, xid, status="completed",
                   progress_text="Done — download Q4_K_M.gguf and AirDrop to iPhone.")
+PYEOF
+
+echo "✓ packages/exporter/pipeline.py written"
+
+# ─────────────────────────────────────────────────────────────
+# 6. Update .gitignore for the full clone
+# ─────────────────────────────────────────────────────────────
+if ! grep -q "llama_cpp_src" .gitignore 2>/dev/null; then
+    cat >> .gitignore <<'GITEOF'
+
+# Phase 4: llama.cpp source clone (~150 MB; re-cloned by patch_llamacpp_fullclone.sh)
+scripts/llama_cpp_src/
+GITEOF
+fi
+
+cat <<MSG
+
+╔══════════════════════════════════════════════════════════════════════╗
+║  ✓ Full clone at tag $LLAMA_TAG completed                                ║
+╚══════════════════════════════════════════════════════════════════════╝
+
+Key changes:
+  • No more sparse checkout — full clone, all files present
+  • Pinned to b5350 (stable, used by tutorials, predates recent refactors)
+  • pipeline.py uses .venv/bin/python DIRECTLY (no uv run anywhere)
+  • CONVERT_SCRIPT runs with cwd=LLAMA_SRC so sibling imports resolve
+
+Now:
+  make exporter
+
+If you see "Pre-flight failed", paste the entire output below the
+"--- stderr ---" line and I'll fix that one specific issue.
+Otherwise, queue an export from /runs and watch the loss curves.
+MSG

@@ -48,3 +48,6 @@ exports/*/
 # Phase 3 ingest staging (temp files between preview and finalize)
 data/.ingest_staging/*
 !data/.ingest_staging/.gitkeep
+
+# Phase 4: llama.cpp source clone (~150 MB; re-cloned by patch_llamacpp_fullclone.sh)
+scripts/llama_cpp_src/

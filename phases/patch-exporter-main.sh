@@ -1,4 +1,21 @@
-"""Export worker — polls /api/v1/exports for queued jobs and processes them."""
+#!/usr/bin/env bash
+# Fix: __main__.py still unpacks (q, c) from _check_tools() but pipeline.py
+# now returns only (q,) after removing the convert_script dependency.
+set -euo pipefail
+
+if [ ! -f "packages/exporter/__main__.py" ]; then
+    echo "✗ Run from project root."
+    exit 1
+fi
+
+cat > packages/exporter/__main__.py <<'EOF'
+"""Export worker — polls /api/v1/exports for queued jobs and processes them.
+
+Run via:
+    uv run python -m packages.exporter
+
+Must run on host (not Docker) because mlx_lm.fuse needs Apple Metal access.
+"""
 from __future__ import annotations
 
 import logging
@@ -8,6 +25,7 @@ import time
 
 import httpx
 
+# Auto-load .env from project root
 try:
     from dotenv import load_dotenv
     from pathlib import Path
@@ -43,6 +61,7 @@ def fetch_next_queued() -> dict | None:
 def main() -> int:
     log.info("Exporter worker starting (API=%s, poll=%.1fs)", API_URL, POLL_INTERVAL)
 
+    # Wait for API
     for attempt in range(30):
         try:
             httpx.get(f"{API_URL}/api/v1/health", timeout=2).raise_for_status()
@@ -50,17 +69,17 @@ def main() -> int:
             break
         except Exception:  # noqa: BLE001
             if attempt == 0:
-                log.info("Waiting for API...")
+                log.info("Waiting for API at %s...", API_URL)
             time.sleep(2)
     else:
-        log.error("API never came up.")
+        log.error("API never came up. Is 'make dev' running?")
         return 1
 
+    # Pre-flight: verify mlx_lm.convert + llama-quantize are available
     try:
-        quantize_bin, convert_script = _check_tools()
+        quantize_bin = _check_tools()
         log.info("llama-quantize: %s", quantize_bin)
-        log.info("convert script: %s", convert_script)
-        log.info("torch: verified importable")
+        log.info("converter: mlx_lm.convert (MLX-native, no PyTorch needed)")
     except RuntimeError as e:
         log.error("Pre-flight failed: %s", e)
         return 1
@@ -73,13 +92,16 @@ def main() -> int:
             if export is None:
                 time.sleep(POLL_INTERVAL)
                 continue
-            log.info("Picked up export #%s (run=%s)", export["id"], export["run_id"])
+            log.info(
+                "Picked up export #%s (run_id=%s, quants=%s)",
+                export["id"], export["run_id"], export["quant_levels"],
+            )
             run_export_job(export, api_url=API_URL)
         except KeyboardInterrupt:
-            log.info("Stopping.")
+            log.info("Stopping (KeyboardInterrupt).")
             return 0
         except Exception as e:  # noqa: BLE001
-            log.exception("Error: %s", e)
+            log.exception("Unexpected error: %s", e)
             if export:
                 try:
                     httpx.patch(
@@ -94,3 +116,8 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+EOF
+
+echo "✓ packages/exporter/__main__.py — fixed _check_tools() unpacking"
+echo ""
+echo "Now run: make exporter"

@@ -38,6 +38,11 @@ trainer = [
     "huggingface-hub>=0.26",
     "safetensors>=0.4",
 ]
+exporter = [
+    "torch>=2.0",
+    "gguf>=0.6",
+    "sentencepiece>=0.2",
+]
 ingest = [
     "playwright>=1.48",
     "beautifulsoup4>=4.12",

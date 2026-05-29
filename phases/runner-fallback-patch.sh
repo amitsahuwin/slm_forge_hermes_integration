@@ -1,4 +1,22 @@
-"""Runs one mlx_lm.lora training job and streams metrics back to the API."""
+#!/usr/bin/env bash
+# Updates packages/trainer/runner.py to invoke mlx-lm as a Python module
+# (`python -m mlx_lm lora`) instead of the CLI script. This bypasses the
+# script's shebang line entirely, so a stale interpreter path can't break us.
+set -euo pipefail
+
+if [ ! -f "packages/trainer/runner.py" ]; then
+    echo "✗ Run from project root."
+    exit 1
+fi
+
+cat > packages/trainer/runner.py <<'EOF'
+"""Runs one mlx_lm.lora training job and streams metrics back to the API.
+
+We invoke mlx-lm as `python -m mlx_lm lora ...` rather than the `mlx_lm.lora`
+CLI script. This bypasses the script's shebang line, which on macOS frequently
+ends up pointing to an interpreter that no longer exists after Homebrew
+or pyenv updates.
+"""
 from __future__ import annotations
 
 import json
@@ -30,54 +48,61 @@ _ITER_TRAIN = re.compile(
 _ITER_VAL = re.compile(r"Iter\s+(\d+):\s+Val loss\s+([\d.]+)")
 
 
-def _count_jsonl(path: Path) -> int:
-    """Count non-empty lines in a JSONL file."""
-    if not path.exists():
-        return 0
-    with path.open("r", encoding="utf-8") as f:
-        return sum(1 for line in f if line.strip())
-
-
-def _safe_val_batches(dataset_dir: Path, batch_size: int) -> int:
-    """Return a val_batches value that can never trigger the 'not enough examples' error.
-
-    mlx-lm requires: valid examples >= val_batches * batch_size
-    So: val_batches <= floor(valid_examples / batch_size)
-    We also cap at 25 (the default) so large datasets don't eval forever.
-    """
-    n_valid = _count_jsonl(dataset_dir / "valid.jsonl")
-    if n_valid == 0:
-        return 0
-    safe = max(1, n_valid // batch_size)
-    return min(safe, 25)
-
-
 def _build_mlx_lora_cmd(config_path: Path) -> list[str] | None:
-    """Find a working invocation of mlx-lm's LoRA trainer."""
+    """Decide how to invoke mlx-lm's LoRA trainer.
+
+    Strategy:
+      1. Try `python -m mlx_lm lora --config <path>` (modern; bypasses shebang)
+      2. Fall back to `python -m mlx_lm.lora --config <path>` (older layout)
+      3. Last resort: try the `mlx_lm.lora` CLI script via sysconfig scripts dir.
+    """
     py = sys.executable
 
-    # Try modern subcommand form: python -m mlx_lm lora
-    r1 = subprocess.run(
-        [py, "-m", "mlx_lm", "lora", "--help"],
-        capture_output=True, text=True, timeout=15,
-    )
-    if r1.returncode == 0:
-        return [py, "-m", "mlx_lm", "lora", "--config", str(config_path)]
+    # Detect which module form is available
+    try:
+        out = subprocess.run(
+            [py, "-c", "import mlx_lm; import importlib.util as u; "
+                       "print('subcmd' if u.find_spec('mlx_lm.tuner') else 'no')"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if out.returncode == 0:
+            # Modern mlx-lm uses `python -m mlx_lm lora ...` (subcommand style).
+            # Fallback for old versions is `python -m mlx_lm.lora ...`.
+            # Test which form works:
+            r1 = subprocess.run(
+                [py, "-m", "mlx_lm", "lora", "--help"],
+                capture_output=True, text=True, timeout=15,
+            )
+            if r1.returncode == 0:
+                return [py, "-m", "mlx_lm", "lora", "--config", str(config_path)]
+            r2 = subprocess.run(
+                [py, "-m", "mlx_lm.lora", "--help"],
+                capture_output=True, text=True, timeout=15,
+            )
+            if r2.returncode == 0:
+                return [py, "-m", "mlx_lm.lora", "--config", str(config_path)]
+    except Exception as e:  # noqa: BLE001
+        log.warning("Could not probe mlx_lm invocation form: %s", e)
 
-    # Try older direct-module form: python -m mlx_lm.lora
-    r2 = subprocess.run(
-        [py, "-m", "mlx_lm.lora", "--help"],
-        capture_output=True, text=True, timeout=15,
-    )
-    if r2.returncode == 0:
-        return [py, "-m", "mlx_lm.lora", "--config", str(config_path)]
-
-    # Last resort: CLI script via sysconfig
+    # Last resort: CLI script
     scripts = sysconfig.get_path("scripts")
     if scripts:
         candidate = Path(scripts) / "mlx_lm.lora"
         if candidate.exists() and os.access(candidate, os.X_OK):
-            return [str(candidate), "--config", str(config_path)]
+            # Sanity-check the shebang isn't dangling
+            try:
+                first = candidate.read_text(encoding="utf-8", errors="replace").splitlines()[0]
+                if first.startswith("#!"):
+                    interp = first[2:].strip().split()[0]
+                    if Path(interp).exists():
+                        return [str(candidate), "--config", str(config_path)]
+                    log.warning(
+                        "mlx_lm.lora script has dangling shebang → %s (file not found)", interp
+                    )
+            except Exception:  # noqa: BLE001
+                pass
 
     found = shutil.which("mlx_lm.lora")
     if found:
@@ -105,24 +130,16 @@ def _post_metric(api_url: str, run_id: int, step: int, name: str, value: float) 
 
 
 def _write_yaml_config(run: dict, dataset_dir: Path, adapter_dir: Path) -> Path:
-    batch_size = run["batch_size"]
-    val_batches = _safe_val_batches(dataset_dir, batch_size)
-
-    log.info(
-        "Run #%s: valid=%d rows, batch_size=%d → val_batches=%d",
-        run["id"], _count_jsonl(dataset_dir / "valid.jsonl"), batch_size, val_batches,
-    )
-
     cfg: dict[str, Any] = {
         "model": run["base_model"],
         "train": True,
         "data": str(dataset_dir),
         "fine_tune_type": run["method"],
         "num_layers": run["num_layers"],
-        "batch_size": batch_size,
+        "batch_size": run["batch_size"],
         "iters": run["iters"],
         "learning_rate": run["learning_rate"],
-        "val_batches": val_batches,
+        "val_batches": 25,
         "steps_per_report": 10,
         "steps_per_eval": max(20, run["iters"] // 10),
         "save_every": max(50, run["iters"] // 4),
@@ -161,15 +178,15 @@ def run_training_job(run: dict, api_url: str) -> None:
     if cmd is None:
         msg = (
             f"Could not find a working way to invoke mlx_lm.lora.\n"
-            f"Python: {sys.executable}\n"
-            f"Verify: uv run python -m mlx_lm lora --help"
+            f"  Python: {sys.executable}\n"
+            f"  Verify with: uv run python -m mlx_lm lora --help"
         )
         log.error(msg)
         _patch_run(api_url, run_id, status="failed", error_message=msg[:500])
         return
 
-    log.info("Run #%s: config → %s", run_id, config_path)
-    log.info("Run #%s: cmd → %s", run_id, " ".join(cmd))
+    log.info("Run #%s: config written to %s", run_id, config_path)
+    log.info("Run #%s: invocation: %s", run_id, " ".join(cmd))
 
     _patch_run(api_url, run_id, status="running")
 
@@ -226,9 +243,10 @@ def run_training_job(run: dict, api_url: str) -> None:
         proc.wait()
 
     if proc.returncode == 0:
-        log.info("Run #%s: completed.", run_id)
+        log.info("Run #%s: completed successfully.", run_id)
         _patch_run(
-            api_url, run_id,
+            api_url,
+            run_id,
             status="completed",
             adapter_path=str(adapter_dir),
             final_train_loss=final_train_loss,
@@ -238,3 +256,66 @@ def run_training_job(run: dict, api_url: str) -> None:
         msg = f"mlx_lm exited with code {proc.returncode}. See {log_path}"
         log.error("Run #%s: %s", run_id, msg)
         _patch_run(api_url, run_id, status="failed", error_message=msg)
+EOF
+
+# Also update the Makefile guard to use the module form for its sanity check
+python3 - <<'PYEOF'
+from pathlib import Path
+mk = Path("Makefile")
+text = mk.read_text()
+# Replace the ensure-trainer-installed body
+import re
+new = re.sub(
+    r'ensure-trainer-installed:.*?(?=^[a-zA-Z_-]+:|\Z)',
+    """ensure-trainer-installed: ## Internal: verify mlx-lm is callable before running trainer
+\t@if ! uv run python -c "import mlx_lm" 2>/dev/null; then \\
+\t\techo ""; \\
+\t\techo "✗ mlx-lm Python package is not installed in this project's venv."; \\
+\t\techo "  Fix: rm -rf .venv && uv sync --all-extras"; \\
+\t\texit 1; \\
+\tfi
+\t@if ! uv run python -m mlx_lm lora --help >/dev/null 2>&1; then \\
+\t\tif ! uv run python -m mlx_lm.lora --help >/dev/null 2>&1; then \\
+\t\t\techo ""; \\
+\t\t\techo "✗ mlx-lm is installed but 'python -m mlx_lm lora' and 'python -m mlx_lm.lora' both fail."; \\
+\t\t\techo "  This usually means an mlx-lm version mismatch."; \\
+\t\t\techo "  Fix: rm -rf .venv && uv sync --all-extras --refresh"; \\
+\t\t\texit 1; \\
+\t\tfi; \\
+\tfi
+\t@echo "✓ mlx-lm callable."
+
+""",
+    text,
+    count=1,
+    flags=re.DOTALL | re.MULTILINE,
+)
+mk.write_text(new)
+print("✓ Makefile guard updated to use python -m form")
+PYEOF
+
+cat <<MSG
+
+╔══════════════════════════════════════════════════════════════════════╗
+║  ✓ Runner patched                                                    ║
+╚══════════════════════════════════════════════════════════════════════╝
+
+What changed:
+  • packages/trainer/runner.py
+    - Now invokes mlx-lm as 'python -m mlx_lm lora ...' (bypasses shebang)
+    - Falls back to 'python -m mlx_lm.lora ...' (older mlx-lm layout)
+    - Last resort: direct CLI script (with shebang validity check)
+  • Makefile
+    - 'make trainer' guard now uses python -m form for the sanity check
+
+Next:
+
+  # Diagnose first so we know what happened (paste output):
+  head -1 .venv/bin/mlx_lm.lora
+  ls -la \$(head -1 .venv/bin/mlx_lm.lora | sed 's|^#!||') 2>&1 || echo "(broken shebang confirmed)"
+  uv run python -m mlx_lm lora --help | head -3
+
+  # Then re-run the trainer:
+  make trainer
+
+MSG

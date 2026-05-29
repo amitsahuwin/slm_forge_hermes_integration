@@ -1,3 +1,27 @@
+#!/usr/bin/env bash
+# Two-part fix:
+#   1. Add a 4th example to stock-analyst/valid.jsonl (was only 3)
+#   2. Make val_batches dynamic in runner.py so it never exceeds
+#      floor(valid_examples / batch_size) — prevents this error on any dataset
+set -euo pipefail
+
+if [ ! -f "pyproject.toml" ]; then
+    echo "✗ Run from project root."
+    exit 1
+fi
+
+# ─────────────────────────────────────────────────────────────
+# 1. Add a 4th valid example to stock-analyst
+# ─────────────────────────────────────────────────────────────
+cat >> data/datasets/stock-analyst/valid.jsonl <<'EOF'
+{"text": "<|im_start|>user\nTicker: INTC. News: Intel announces 15% workforce reduction and exits foundry business.\n\nAs a stock analyst, give a one-paragraph take.<|im_end|>\n<|im_start|>assistant\nThe foundry exit is the more consequential signal — it admits the fab strategy that consumed $50B+ in capex isn't going to produce a competitive moat against TSMC. The workforce reduction is table stakes. What matters now is whether Intel can refocus on design, lean on TSMC for leading-edge, and stop trying to win a manufacturing race they've fallen a decade behind on. The stock has been pricing in terminal decline; a credible strategic pivot could re-rate it, but execution risk is extreme given the cultural inertia. Show-me for at least two quarters.<|im_end|>"}
+EOF
+echo "✓ Added 4th example to data/datasets/stock-analyst/valid.jsonl"
+
+# ─────────────────────────────────────────────────────────────
+# 2. Update runner.py — compute val_batches dynamically
+# ─────────────────────────────────────────────────────────────
+cat > packages/trainer/runner.py <<'EOF'
 """Runs one mlx_lm.lora training job and streams metrics back to the API."""
 from __future__ import annotations
 
@@ -238,3 +262,29 @@ def run_training_job(run: dict, api_url: str) -> None:
         msg = f"mlx_lm exited with code {proc.returncode}. See {log_path}"
         log.error("Run #%s: %s", run_id, msg)
         _patch_run(api_url, run_id, status="failed", error_message=msg)
+EOF
+
+echo "✓ packages/trainer/runner.py — val_batches now computed dynamically"
+
+cat <<MSG
+
+╔══════════════════════════════════════════════════════════════════════╗
+║  ✓ Dataset fix applied                                               ║
+╚══════════════════════════════════════════════════════════════════════╝
+
+What changed:
+  • data/datasets/stock-analyst/valid.jsonl  → now 4 examples (was 3)
+  • packages/trainer/runner.py               → val_batches computed as
+                                               min(25, floor(valid_rows / batch_size))
+                                               so this can never happen again
+
+No Docker rebuild needed — runner.py runs on host, not in a container.
+
+Now:
+  # Ctrl-C the trainer if it's still running, then:
+  make trainer
+
+  Then start a new run in the UI (the old run #1 is marked failed — ignore it).
+  Create a new run: http://localhost:5173/runs/new
+  → Qwen 2.5 3B, stock-analyst, LoRA, 200 iters → Start
+MSG

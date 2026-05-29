@@ -7,7 +7,7 @@ const activeLink = 'bg-zinc-800 text-zinc-100';
 export default function Nav() {
   return (
     <header className="border-b border-zinc-800">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-8 py-4">
+      <div className="mx-auto flex max-w-7xl items-center justify-between px-8 py-4">
         <div className="flex items-center gap-8">
           <NavLink to="/" className="text-lg font-semibold tracking-tight">
             SLM-Forge
@@ -15,6 +15,9 @@ export default function Nav() {
           <nav className="flex items-center gap-1">
             <NavLink to="/" end className={({ isActive }) => `${link} ${isActive ? activeLink : ''}`}>
               Dashboard
+            </NavLink>
+            <NavLink to="/sessions" className={({ isActive }) => `${link} ${isActive ? activeLink : ''}`}>
+              Sessions
             </NavLink>
             <NavLink to="/runs" className={({ isActive }) => `${link} ${isActive ? activeLink : ''}`}>
               Runs
@@ -24,12 +27,14 @@ export default function Nav() {
             </NavLink>
           </nav>
         </div>
-        <NavLink
-          to="/runs/new"
-          className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-emerald-500"
-        >
-          + New Run
-        </NavLink>
+        <div className="flex items-center gap-2">
+          <NavLink
+            to="/sessions/new"
+            className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500"
+          >
+            + New Session
+          </NavLink>
+        </div>
       </div>
     </header>
   );

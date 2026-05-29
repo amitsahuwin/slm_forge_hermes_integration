@@ -38,6 +38,13 @@ class RunPatch(BaseModel):
     adapter_path: str | None = None
     final_train_loss: float | None = None
     final_val_loss: float | None = None
+    # Phase 2 ratchet fields:
+    session_id: int | None = None
+    parent_run_id: int | None = None
+    iteration_number: int | None = None
+    was_accepted: bool | None = None
+    mutation_reasoning: str | None = None
+    canary_loss: float | None = None
 
 
 class MetricCreate(BaseModel):
@@ -66,7 +73,12 @@ def list_runs(
 ) -> list[Run]:
     stmt = select(Run).order_by(desc(Run.created_at)).limit(limit)
     if status is not None:
-        stmt = select(Run).where(Run.status == status).order_by(desc(Run.created_at)).limit(limit)
+        stmt = (
+            select(Run)
+            .where(Run.status == status)
+            .order_by(desc(Run.created_at))
+            .limit(limit)
+        )
     return list(session.exec(stmt).all())
 
 
@@ -74,27 +86,22 @@ def list_runs(
 def get_run(run_id: int, session: SessionDep) -> Run:
     run = session.get(Run, run_id)
     if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
+        raise HTTPException(404, "Run not found")
     return run
 
 
 @router.patch("/{run_id}", response_model=Run)
 def patch_run(run_id: int, payload: RunPatch, session: SessionDep) -> Run:
-    """Used by the host trainer worker to update status/results."""
     run = session.get(Run, run_id)
     if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
-
+        raise HTTPException(404, "Run not found")
     data = payload.model_dump(exclude_unset=True)
-    for key, value in data.items():
-        setattr(run, key, value)
-
-    # Auto-set timestamps on status transitions
+    for k, v in data.items():
+        setattr(run, k, v)
     if payload.status == RunStatus.RUNNING and run.started_at is None:
         run.started_at = datetime.now(UTC)
     if payload.status in {RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED}:
         run.completed_at = datetime.now(UTC)
-
     session.add(run)
     session.commit()
     session.refresh(run)
@@ -104,33 +111,28 @@ def patch_run(run_id: int, payload: RunPatch, session: SessionDep) -> Run:
 @router.get("/{run_id}/metrics", response_model=list[Metric])
 def list_metrics(run_id: int, session: SessionDep) -> list[Metric]:
     if not session.get(Run, run_id):
-        raise HTTPException(status_code=404, detail="Run not found")
+        raise HTTPException(404, "Run not found")
     stmt = select(Metric).where(Metric.run_id == run_id).order_by(Metric.step, Metric.id)
     return list(session.exec(stmt).all())
 
 
 @router.post("/{run_id}/metrics", response_model=Metric)
 def post_metric(run_id: int, payload: MetricCreate, session: SessionDep) -> Metric:
-    """Trainer worker posts metrics here as training progresses."""
     if not session.get(Run, run_id):
-        raise HTTPException(status_code=404, detail="Run not found")
-    metric = Metric(run_id=run_id, **payload.model_dump())
-    session.add(metric)
+        raise HTTPException(404, "Run not found")
+    m = Metric(run_id=run_id, **payload.model_dump())
+    session.add(m)
     session.commit()
-    session.refresh(metric)
-    return metric
+    session.refresh(m)
+    return m
 
 
 @router.get("/{run_id}/stream")
 async def stream_run(run_id: int) -> EventSourceResponse:
-    """Server-Sent Events stream: live metrics + status changes for a run."""
-
     async def event_gen() -> AsyncGenerator[dict[str, str], None]:
         last_metric_id = 0
         last_status: str | None = None
         terminal = {RunStatus.COMPLETED.value, RunStatus.FAILED.value, RunStatus.CANCELLED.value}
-
-        # Open a fresh session per generator so we always see committed rows
         from apps.api.services.db import engine
         from sqlmodel import Session as _Session
 
@@ -143,10 +145,7 @@ async def stream_run(run_id: int) -> EventSourceResponse:
 
                 if run.status.value != last_status:
                     last_status = run.status.value
-                    yield {
-                        "event": "status",
-                        "data": json.dumps({"status": run.status.value, "run_id": run.id}),
-                    }
+                    yield {"event": "status", "data": json.dumps({"status": run.status.value, "run_id": run.id})}
 
                 new_metrics = s.exec(
                     select(Metric)
@@ -158,18 +157,13 @@ async def stream_run(run_id: int) -> EventSourceResponse:
                     last_metric_id = m.id or last_metric_id
                     yield {
                         "event": "metric",
-                        "data": json.dumps(
-                            {
-                                "step": m.step,
-                                "name": m.name,
-                                "value": m.value,
-                                "recorded_at": m.recorded_at.isoformat(),
-                            }
-                        ),
+                        "data": json.dumps({
+                            "step": m.step, "name": m.name, "value": m.value,
+                            "recorded_at": m.recorded_at.isoformat(),
+                        }),
                     }
 
                 if run.status.value in terminal:
-                    # send one last sweep then close
                     yield {"event": "done", "data": json.dumps({"status": run.status.value})}
                     return
 

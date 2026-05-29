@@ -1,4 +1,4 @@
-"""Run model — represents a single fine-tuning job."""
+"""Run model — one fine-tuning job (standalone or one iteration of a session)."""
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -45,6 +45,14 @@ class Run(SQLModel, table=True):
     adapter_path: str | None = None
     final_train_loss: float | None = None
     final_val_loss: float | None = None
+
+    # Phase 2 — autoresearch fields
+    session_id: int | None = Field(default=None, foreign_key="sessions.id", index=True)
+    parent_run_id: int | None = None
+    iteration_number: int | None = None
+    was_accepted: bool | None = None
+    mutation_reasoning: str | None = None
+    canary_loss: float | None = None
 
     created_at: datetime = Field(default_factory=_now)
     started_at: datetime | None = None

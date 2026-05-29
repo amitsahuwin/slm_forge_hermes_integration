@@ -1,4 +1,4 @@
-"""Base model catalogue (curated list — Hermes will expand this in Phase 2)."""
+"""Base model catalogue."""
 from __future__ import annotations
 
 from fastapi import APIRouter
@@ -18,28 +18,12 @@ class BaseModelInfo(BaseModel):
 
 CATALOG: list[BaseModelInfo] = [
     BaseModelInfo(
-        hf_id="mlx-community/gemma-3n-E2B-it-bf16",
-        label="Gemma 3n E2B (instruct, bf16)",
-        family="gemma",
-        size_params="~2.3B effective",
-        recommended_method="lora",
-        notes="Default for Phase 1. Fast on M3 Max. Gemma 4 E2B path will replace this when MLX-LM adds support.",
-    ),
-    BaseModelInfo(
-        hf_id="mlx-community/gemma-3n-E4B-it-bf16",
-        label="Gemma 3n E4B (instruct, bf16)",
-        family="gemma",
-        size_params="~4.5B effective",
-        recommended_method="lora",
-        notes="Better quality; ~2× memory of E2B. Comfortable on 36GB M3 Max.",
-    ),
-    BaseModelInfo(
         hf_id="mlx-community/Qwen2.5-3B-Instruct-4bit",
         label="Qwen 2.5 3B Instruct (4-bit)",
         family="qwen",
         size_params="3B",
         recommended_method="lora",
-        notes="Pre-quantized → QLoRA automatically. Rock-solid on MLX. Fastest iteration.",
+        notes="Default. Pre-quantized → QLoRA. Works cleanly on mlx-lm 0.31+.",
     ),
     BaseModelInfo(
         hf_id="mlx-community/Llama-3.2-3B-Instruct-4bit",
@@ -48,6 +32,22 @@ CATALOG: list[BaseModelInfo] = [
         size_params="3B",
         recommended_method="lora",
         notes="Strong general-purpose baseline.",
+    ),
+    BaseModelInfo(
+        hf_id="mlx-community/Qwen2.5-7B-Instruct-4bit",
+        label="Qwen 2.5 7B Instruct (4-bit)",
+        family="qwen",
+        size_params="7B",
+        recommended_method="lora",
+        notes="Larger, slower. Comfortable on 36GB M3 Max.",
+    ),
+    BaseModelInfo(
+        hf_id="mlx-community/gemma-3n-E2B-it-bf16",
+        label="Gemma 3n E2B (BROKEN on mlx-lm 0.31.3)",
+        family="gemma",
+        size_params="~2.3B effective",
+        recommended_method="lora",
+        notes="⚠ KeyError in sanitize() — wait for mlx-lm fix or use a different model.",
     ),
 ]
 

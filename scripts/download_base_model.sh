@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Download the default Phase 1 base model from Hugging Face (~1.5 GB, one-time).
+# Download the default Phase 1 base model from Hugging Face.
+# Qwen2.5-3B-Instruct-4bit is ~1.9 GB.
 set -euo pipefail
 
-MODEL="${1:-mlx-community/gemma-3n-E2B-it-bf16}"
+MODEL="${1:-mlx-community/Qwen2.5-3B-Instruct-4bit}"
 
-echo "→ Downloading $MODEL to your local HF cache (~/.cache/huggingface)..."
+echo "→ Downloading $MODEL to ~/.cache/huggingface ..."
 
 if ! command -v uv &>/dev/null; then
     echo "✗ uv not found. Install: brew install uv"
@@ -18,4 +19,4 @@ print(f"✓ Cached at: {path}")
 PYEOF
 
 echo ""
-echo "Done. mlx_lm.lora will resolve '$MODEL' from this cache from now on."
+echo "Done. mlx-lm will resolve '$MODEL' from this cache."

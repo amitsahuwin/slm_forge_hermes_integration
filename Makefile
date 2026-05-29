@@ -1,4 +1,4 @@
-.PHONY: help setup install-hermes hermes-install-skills dev down build rebuild logs trainer \
+.PHONY: help setup install-hermes hermes-install-skills dev down build rebuild logs trainer ratchet \
         seed-data download-base-model train-sample clean ensure-lock
 
 help: ## Show this help
@@ -6,14 +6,11 @@ help: ## Show this help
 	@echo ""
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-24s\033[0m %s\n", $$1, $$2}'
 
-setup: ## Install all deps (Python via uv, Node via npm) and create lock files
+setup: ## Install all deps (Python via uv, Node via npm)
 	@command -v uv >/dev/null 2>&1 || { echo "✗ uv not found. Install: brew install uv"; exit 1; }
 	@command -v node >/dev/null 2>&1 || { echo "✗ node not found. Install: brew install node"; exit 1; }
-	@echo "→ Installing Python deps with uv (Python 3.12+)..."
 	uv sync --all-extras
-	@echo "→ Installing Node deps for web app..."
 	cd apps/web && npm install
-	@echo "✓ Setup complete."
 
 install-hermes: ## Install Ollama + Hermes Agent + qwen2.5-coder:14b
 	bash scripts/install_hermes.sh
@@ -24,50 +21,42 @@ hermes-install-skills: ## Copy .hermes-skills/* into ~/.hermes/skills/
 seed-data: ## Copy bundled sample datasets into data/datasets/
 	uv run python scripts/seed_datasets.py
 
-download-base-model: ## Download Gemma 3n E2B base model from HF (~1.5 GB, one-time)
+download-base-model: ## Download Gemma 3n E2B base model from HF (~1.5 GB)
 	bash scripts/download_base_model.sh
 
-trainer: ## Run the host trainer worker (needs Metal access; do NOT run in Docker)
-	@echo "→ Starting host trainer worker..."
-	@echo "  Make sure 'make dev' is running in another terminal."
+trainer: ## Run the host trainer worker (Metal access)
 	uv run python -m packages.trainer
 
-ensure-lock: ## Internal: auto-run setup if lock files are missing
+ratchet: ## Run the autoresearch ratchet worker (needs trainer + Ollama)
+	@echo "→ Starting autoresearch ratchet worker..."
+	@echo "  Required: 'make dev', 'make trainer', and Ollama running."
+	uv run python -m packages.ratchet
+
+ensure-lock:
 	@if [ ! -f uv.lock ] || [ ! -f apps/web/package-lock.json ]; then \
-		echo "→ Lock files missing — running 'make setup' first..."; \
+		echo "→ Lock files missing — running 'make setup'..."; \
 		$(MAKE) setup; \
 	fi
 
-dev: ensure-lock ## Start UI + API (docker-compose up, live reload)
+dev: ensure-lock ## Start UI + API (docker-compose, live reload)
 	docker compose up
 
 rebuild: ensure-lock ## Force-rebuild Docker images (use after editing package.json / pyproject.toml)
-	@echo "→ Rebuilding Docker images with current package.json + pyproject.toml..."
 	docker compose down
 	docker compose build --no-cache
-	@echo "✓ Rebuilt. Run 'make dev' to start."
 
 down: ## Stop dev stack
 	docker compose down
 
-build: ensure-lock ## Build Docker images (incremental — use 'make rebuild' for no-cache)
+build: ensure-lock ## Build Docker images (incremental)
 	docker compose build
 
-logs: ## Tail dev stack logs
+logs:
 	docker compose logs -f
 
-train-sample: ## Quick end-to-end smoke test (Phase 1+: seed + train stock-analyst)
-	@echo "→ Smoke test: this kicks off a stock-analyst LoRA run."
-	@echo "  Make sure 'make dev' + 'make trainer' are both running."
-	@curl -sf -X POST http://localhost:8000/api/v1/runs \
-		-H "Content-Type: application/json" \
-		-d '{"dataset":"stock-analyst","base_model":"mlx-community/gemma-3n-E2B-it-bf16","method":"lora","iters":100}' \
-		| python3 -m json.tool
-
-clean: ## Remove venv, node_modules, caches
+clean:
 	rm -rf .venv apps/web/node_modules apps/web/dist
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name .pytest_cache -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name .ruff_cache -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name .mypy_cache -exec rm -rf {} + 2>/dev/null || true
-	@echo "✓ Cleaned"

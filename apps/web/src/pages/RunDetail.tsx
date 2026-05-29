@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import LiveLossChart from '../components/ratchet/LiveLossChart';
 import { useRunMetrics } from '../hooks/useRunMetrics';
-import { type Run, type RunStatus, api } from '../lib/api';
+import { type Run, type RunStatus, api, exportsApi } from '../lib/api';
 
 const STATUS_STYLES: Record<RunStatus, string> = {
   queued: 'text-zinc-400',
@@ -53,7 +53,25 @@ export default function RunDetail() {
             {run.dataset} · {run.base_model.replace(/^mlx-community\//, '')} · {run.method}
           </p>
         </div>
-        <div className={`font-mono text-sm ${STATUS_STYLES[effectiveStatus]}`}>● {effectiveStatus}</div>
+        <div className="flex items-center gap-3">
+          {run.status === 'completed' && run.adapter_path && (
+            <button
+              onClick={async () => {
+                try {
+                  const x = await exportsApi.create({ run_id: run.id, quant_levels: ['Q4_K_M', 'Q8_0'] });
+                  window.location.href = `/exports`;
+                  console.log('Queued export', x.id);
+                } catch (e) {
+                  alert(`Failed to queue export: ${e instanceof Error ? e.message : String(e)}`);
+                }
+              }}
+              className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500"
+            >
+              Export to GGUF →
+            </button>
+          )}
+          <div className={`font-mono text-sm ${STATUS_STYLES[effectiveStatus]}`}>● {effectiveStatus}</div>
+        </div>
       </div>
 
       {run.error_message && (

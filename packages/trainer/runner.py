@@ -130,6 +130,7 @@ def _write_yaml_config(run: dict, dataset_dir: Path, adapter_dir: Path) -> Path:
         "max_seq_length": run["max_seq_length"],
         "grad_checkpoint": run["grad_checkpoint"],
         "seed": run["seed"],
+        "mask_prompt": True,  # loss only on assistant tokens (proper SFT)
     }
     adapter_dir.parent.mkdir(parents=True, exist_ok=True)
     cfg_path = adapter_dir.parent / "config.yaml"

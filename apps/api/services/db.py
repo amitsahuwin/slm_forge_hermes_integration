@@ -20,15 +20,17 @@ if DB_URL.startswith("sqlite:///"):
 
 engine = create_engine(DB_URL, echo=False, connect_args={"check_same_thread": False})
 
-# Idempotent ADD COLUMN migrations for the `runs` table (Phase 2 schema additions)
+# Phase 2 migrations for runs table
 _RUN_MIGRATIONS: list[tuple[str, str]] = [
     ("session_id", "INTEGER"),
     ("parent_run_id", "INTEGER"),
     ("iteration_number", "INTEGER"),
-    ("was_accepted", "INTEGER"),  # SQLite has no BOOL — uses INTEGER 0/1
+    ("was_accepted", "INTEGER"),
     ("mutation_reasoning", "TEXT"),
     ("canary_loss", "REAL"),
 ]
+
+# Phase 4 — exports table is created by SQLModel; no ALTER needed unless schema changes
 
 
 def _migrate_runs() -> None:
@@ -42,7 +44,7 @@ def _migrate_runs() -> None:
 
 
 def init_db() -> None:
-    """Create all tables, then run forward-migrations."""
+    from apps.api.models import export as _export  # noqa: F401
     from apps.api.models import metric as _metric  # noqa: F401
     from apps.api.models import run as _run  # noqa: F401
     from apps.api.models import session as _session  # noqa: F401

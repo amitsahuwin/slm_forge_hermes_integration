@@ -1,4 +1,4 @@
-"""SLM-Forge API — Phase 3."""
+"""SLM-Forge API — Phase 4."""
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from apps.api.routers import datasets, ingest, models, runs, sessions
+from apps.api.routers import datasets, exports, ingest, models, runs, sessions
 from apps.api.services.db import init_db
 
 
@@ -26,7 +26,7 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
     yield
 
 
-app = FastAPI(title="SLM-Forge API", version="0.4.0", lifespan=lifespan)
+app = FastAPI(title="SLM-Forge API", version="0.5.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -41,11 +41,12 @@ app.include_router(sessions.router, prefix="/api/v1/sessions", tags=["sessions"]
 app.include_router(datasets.router, prefix="/api/v1/datasets", tags=["datasets"])
 app.include_router(models.router, prefix="/api/v1/models", tags=["models"])
 app.include_router(ingest.router, prefix="/api/v1/ingest", tags=["ingest"])
+app.include_router(exports.router, prefix="/api/v1/exports", tags=["exports"])
 
 
 @app.get("/")
 async def root() -> dict[str, Any]:
-    return {"name": "SLM-Forge API", "version": "0.4.0", "docs": "/docs"}
+    return {"name": "SLM-Forge API", "version": "0.5.0", "docs": "/docs"}
 
 
 @app.get("/api/v1/health", response_model=HealthResponse)
@@ -53,14 +54,14 @@ async def health() -> HealthResponse:
     import sys
     return HealthResponse(
         status="ok",
-        version="0.4.0",
-        phase="Phase 3 — data ingestion",
+        version="0.5.0",
+        phase="Phase 4 — export to GGUF",
         python=f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
         capabilities={
             "trainer": True,
             "autoresearch": True,
             "ingestion": True,
-            "export_gguf": False,
+            "export_gguf": True,
             "hermes_bridge": True,
         },
     )

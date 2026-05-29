@@ -11,6 +11,7 @@ services:
       - ./packages:/app/packages
       - ./data:/app/data
       - ./runs:/app/runs:ro
+      - ./exports:/app/exports:ro
     environment:
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONUNBUFFERED=1

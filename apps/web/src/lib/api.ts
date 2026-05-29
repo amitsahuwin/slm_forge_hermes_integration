@@ -193,3 +193,41 @@ export const ingest = {
       return r.json() as Promise<FinalizeResponse>;
     }),
 };
+
+// ─── Phase 4 exports ──────────────────────────────────────────
+
+export type ExportStatus =
+  | 'queued' | 'fusing' | 'converting' | 'quantizing'
+  | 'completed' | 'failed' | 'cancelled';
+
+export type ExportRow = {
+  id: number;
+  run_id: number;
+  base_model: string;
+  method: string;
+  quant_levels: string;
+  status: ExportStatus;
+  error_message: string | null;
+  progress_text: string | null;
+  fused_path: string | null;
+  gguf_f16_path: string | null;
+  gguf_q4_path: string | null;
+  gguf_q5_path: string | null;
+  gguf_q8_path: string | null;
+  gguf_f16_bytes: number | null;
+  gguf_q4_bytes: number | null;
+  gguf_q5_bytes: number | null;
+  gguf_q8_bytes: number | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+};
+
+export const exportsApi = {
+  list: () => jget<ExportRow[]>('/api/v1/exports'),
+  get: (id: number) => jget<ExportRow>(`/api/v1/exports/${id}`),
+  create: (body: { run_id: number; quant_levels?: string[] }) =>
+    jpost<ExportRow>('/api/v1/exports', body),
+  downloadUrl: (id: number, variant: 'f16' | 'q4' | 'q5' | 'q8') =>
+    `${API_URL}/api/v1/exports/${id}/download/${variant}`,
+};

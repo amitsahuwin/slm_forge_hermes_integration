@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import Nav from './components/Nav';
 import Dashboard from './pages/Dashboard';
 import Datasets from './pages/Datasets';
+import Exports from './pages/Exports';
 import NewDataset from './pages/NewDataset';
 import NewRun from './pages/NewRun';
 import NewSession from './pages/NewSession';
@@ -24,6 +25,7 @@ export default function App() {
             <Route path="/runs" element={<Runs />} />
             <Route path="/runs/new" element={<NewRun />} />
             <Route path="/runs/:id" element={<RunDetail />} />
+            <Route path="/exports" element={<Exports />} />
             <Route path="/datasets" element={<Datasets />} />
             <Route path="/datasets/new" element={<NewDataset />} />
             <Route path="*" element={<Navigate to="/" replace />} />

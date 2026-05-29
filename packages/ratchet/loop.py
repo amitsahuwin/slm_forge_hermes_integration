@@ -258,5 +258,17 @@ def run_session(session_id: int, api: API) -> None:
 
     # ─── session complete ───
     api.patch_session(session_id, status="completed")
+
+    # Auto-queue export for the session's winner (if any)
+    if best_run_id is not None:
+        try:
+            httpx.post(
+                f"{api.base}/api/v1/exports",
+                json={"run_id": best_run_id, "quant_levels": ["Q4_K_M", "Q8_0"]},
+                timeout=10,
+            ).raise_for_status()
+            log.info("  auto-queue export for best run #%s", best_run_id)
+        except Exception as e:  # noqa: BLE001
+            log.warning("  failed to auto-queue export: %s", e)
     log.info("─── Session #%s complete. Best run: #%s (val_loss=%s) ───",
              session_id, best_run_id, best_metric)

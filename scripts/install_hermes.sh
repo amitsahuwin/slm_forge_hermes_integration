@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────
-# Install Ollama + qwen2.5-coder:14b + Hermes Agent.
+# Install Ollama + qwen3:30b-a3b + Hermes Agent.
 # Configure Hermes to use the local Ollama instance.
 # ─────────────────────────────────────────────────────────────
 set -euo pipefail
@@ -55,12 +55,12 @@ for i in {1..15}; do
     sleep 1
 done
 
-# ── 4. Pull qwen2.5-coder:14b ─────────────────────────────────
-if ollama list 2>/dev/null | grep -q "qwen2.5-coder:14b"; then
-    echo "✓ qwen2.5-coder:14b already pulled"
+# ── 4. Pull qwen3:30b-a3b ─────────────────────────────────
+if ollama list 2>/dev/null | grep -q "qwen3:30b-a3b"; then
+    echo "✓ qwen3:30b-a3b already pulled"
 else
-    echo "→ Pulling qwen2.5-coder:14b (~9 GB, takes a few minutes)..."
-    ollama pull qwen2.5-coder:14b
+    echo "→ Pulling qwen3:30b-a3b (~9 GB, takes a few minutes)..."
+    ollama pull qwen3:30b-a3b
 fi
 
 # ── 5. Install Hermes Agent ───────────────────────────────────
@@ -89,7 +89,7 @@ fi
 # ── 6. Configure Hermes for local Ollama ──────────────────────
 echo "→ Configuring Hermes to use local Ollama..."
 hermes config set provider ollama         || true
-hermes config set model qwen2.5-coder:14b || true
+hermes config set model qwen3:30b-a3b || true
 hermes config set base_url http://localhost:11434 || true
 
 echo ""

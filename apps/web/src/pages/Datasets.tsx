@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { type DatasetInfo, api } from '../lib/api';
 
 export default function Datasets() {
@@ -6,19 +7,35 @@ export default function Datasets() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api
-      .listDatasets()
-      .then(setDatasets)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+    let alive = true;
+    const tick = () =>
+      api
+        .listDatasets()
+        .then((d) => alive && setDatasets(d))
+        .catch((e: unknown) => alive && setError(e instanceof Error ? e.message : String(e)));
+    tick();
+    const iv = window.setInterval(tick, 3000);
+    return () => {
+      alive = false;
+      window.clearInterval(iv);
+    };
   }, []);
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Datasets</h1>
-        <p className="mt-1 text-sm text-zinc-500">
-          Available training datasets under <code className="text-zinc-400">data/datasets/</code>.
-        </p>
+      <div className="flex items-end justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Datasets</h1>
+          <p className="mt-1 text-sm text-zinc-500">
+            Available training datasets under <code className="text-zinc-400">data/datasets/</code>.
+          </p>
+        </div>
+        <Link
+          to="/datasets/new"
+          className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500"
+        >
+          + New Dataset
+        </Link>
       </div>
 
       {error && <div className="rounded-md bg-rose-950/50 px-3 py-2 text-sm text-rose-300">{error}</div>}
@@ -27,8 +44,10 @@ export default function Datasets() {
         <div className="text-sm text-zinc-500">Loading…</div>
       ) : datasets.length === 0 ? (
         <div className="rounded-lg border border-dashed border-zinc-800 px-6 py-10 text-center text-sm text-zinc-500">
-          No datasets yet. Run{' '}
-          <code className="rounded bg-zinc-800 px-1.5 py-0.5">make seed-data</code> to seed sample data.
+          No datasets yet.{' '}
+          <Link to="/datasets/new" className="text-emerald-400 hover:underline">
+            Ingest your first dataset →
+          </Link>
         </div>
       ) : (
         <ul className="space-y-3">

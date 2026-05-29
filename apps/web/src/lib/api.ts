@@ -117,3 +117,79 @@ export const api = {
   listDatasets: () => jget<DatasetInfo[]>('/api/v1/datasets'),
   listModels: () => jget<BaseModelInfo[]>('/api/v1/models'),
 };
+
+// ─── Phase 3 ingestion ────────────────────────────────────────
+
+export type IngestPreview = {
+  staging_id: string;
+  source_type: 'upload' | 'url' | 'scrape' | 's3';
+  format: string;
+  detected_fields: string[];
+  sample_rows: Record<string, unknown>[];
+  total_rows: number;
+};
+
+export type FinalizeResponse = {
+  dataset_name: string;
+  total_input_rows: number;
+  train_count: number;
+  valid_count: number;
+  canary_count: number;
+  skipped: number;
+};
+
+export const ingest = {
+  async previewUpload(file: File): Promise<IngestPreview> {
+    const fd = new FormData();
+    fd.append('file', file);
+    const r = await fetch(`${API_URL}/api/v1/ingest/upload/preview`, { method: 'POST', body: fd });
+    if (!r.ok) throw new Error(`Upload failed: HTTP ${r.status} — ${await r.text()}`);
+    return r.json();
+  },
+  previewUrl: (u: string) =>
+    fetch(`${API_URL}/api/v1/ingest/url/preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: u }),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`URL fetch failed: HTTP ${r.status} — ${await r.text()}`);
+      return r.json() as Promise<IngestPreview>;
+    }),
+  previewScrape: (u: string) =>
+    fetch(`${API_URL}/api/v1/ingest/scrape/preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: u }),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`Scrape failed: HTTP ${r.status} — ${await r.text()}`);
+      return r.json() as Promise<IngestPreview>;
+    }),
+  previewS3: (args: { s3_path: string; access_key?: string; secret_key?: string; region?: string }) =>
+    fetch(`${API_URL}/api/v1/ingest/s3/preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(args),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`S3 fetch failed: HTTP ${r.status} — ${await r.text()}`);
+      return r.json() as Promise<IngestPreview>;
+    }),
+  finalize: (args: {
+    staging_id: string;
+    dataset_name: string;
+    prompt_field: string;
+    response_field: string;
+    template: 'gemma' | 'llama3' | 'qwen' | 'raw';
+    system_prompt?: string;
+    valid_fraction?: number;
+    canary_fraction?: number;
+    overwrite?: boolean;
+  }) =>
+    fetch(`${API_URL}/api/v1/ingest/finalize`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(args),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`Finalize failed: HTTP ${r.status} — ${await r.text()}`);
+      return r.json() as Promise<FinalizeResponse>;
+    }),
+};

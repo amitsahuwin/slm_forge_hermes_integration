@@ -44,3 +44,7 @@ exports/*/
 
 # uv.lock IS committed (intentional)
 # package-lock.json IS committed (intentional)
+
+# Phase 3 ingest staging (temp files between preview and finalize)
+data/.ingest_staging/*
+!data/.ingest_staging/.gitkeep

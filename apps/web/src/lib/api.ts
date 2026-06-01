@@ -231,3 +231,50 @@ export const exportsApi = {
   downloadUrl: (id: number, variant: 'f16' | 'q4' | 'q5' | 'q8') =>
     `${API_URL}/api/v1/exports/${id}/download/${variant}`,
 };
+
+// ─── Phase 5B admin / maintenance ────────────────────────────
+
+export type DiskUsageEntry = {
+  label: string;
+  path: string;
+  bytes: number;
+  items: number;
+};
+
+export type DiskUsageResponse = {
+  entries: DiskUsageEntry[];
+  total_bytes: number;
+};
+
+export type CleanupPlan = {
+  rejected_runs: number[];
+  bytes_freed_estimate: number;
+  description: string;
+};
+
+export type CleanupResponse = {
+  deleted_run_ids: number[];
+  bytes_freed: number;
+};
+
+async function jdelete(path: string): Promise<void> {
+  const r = await fetch(`${API_URL}${path}`, { method: 'DELETE' });
+  if (!r.ok && r.status !== 204) {
+    let detail = '';
+    try { detail = (await r.json()).detail ?? ''; } catch { /* ignore */ }
+    throw new Error(`DELETE ${path} → HTTP ${r.status}${detail ? ` — ${detail}` : ''}`);
+  }
+}
+
+export const admin = {
+  diskUsage: () => jget<DiskUsageResponse>('/api/v1/admin/disk-usage'),
+  cleanupPlan: () => jget<CleanupPlan>('/api/v1/admin/cleanup/plan'),
+  cleanupExecute: () => jpost<CleanupResponse>('/api/v1/admin/cleanup/execute', {}),
+};
+
+// Add deletes to existing API objects
+export const deletes = {
+  run: (id: number) => jdelete(`/api/v1/runs/${id}`),
+  session: (id: number) => jdelete(`/api/v1/sessions/${id}`),
+  export: (id: number) => jdelete(`/api/v1/exports/${id}`),
+};

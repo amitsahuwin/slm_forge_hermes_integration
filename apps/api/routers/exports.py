@@ -181,3 +181,24 @@ def download_export(xid: int, variant: str, db: SessionDep) -> FileResponse:
             return FileResponse(p, filename=os.path.basename(p), media_type="application/octet-stream")
 
     raise HTTPException(404, f"File not found on disk: {target}")
+
+
+@router.delete("/{xid}", status_code=204)
+def delete_export(xid: int, db: SessionDep) -> None:
+    """Delete an export and its on-disk artifacts."""
+    import shutil
+    from pathlib import Path
+
+    e = db.get(Export, xid)
+    if not e:
+        raise HTTPException(404, "Export not found")
+
+    db.delete(e)
+    db.commit()
+
+    export_dir = Path("/app/exports") / str(xid)
+    if export_dir.exists():
+        try:
+            shutil.rmtree(export_dir)
+        except OSError:
+            pass

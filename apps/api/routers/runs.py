@@ -170,3 +170,39 @@ async def stream_run(run_id: int) -> EventSourceResponse:
             await asyncio.sleep(0.75)
 
     return EventSourceResponse(event_gen())
+
+
+@router.delete("/{run_id}", status_code=204)
+def delete_run(run_id: int, session: SessionDep) -> None:
+    """Delete a run and its metrics. Blocks if the run has exports."""
+    from apps.api.models.export import Export
+    import shutil
+    from pathlib import Path
+
+    run = session.get(Run, run_id)
+    if not run:
+        raise HTTPException(404, "Run not found")
+
+    # Block if exports exist
+    exp = session.exec(select(Export).where(Export.run_id == run_id).limit(1)).first()
+    if exp:
+        raise HTTPException(
+            409,
+            f"Run #{run_id} has export #{exp.id}. Delete the export first.",
+        )
+
+    # Delete metrics (cascade)
+    metrics_to_delete = session.exec(select(Metric).where(Metric.run_id == run_id)).all()
+    for m in metrics_to_delete:
+        session.delete(m)
+
+    session.delete(run)
+    session.commit()
+
+    # Delete on-disk artifacts
+    run_dir = Path("/app/runs") / str(run_id)
+    if run_dir.exists():
+        try:
+            shutil.rmtree(run_dir)
+        except OSError:
+            pass

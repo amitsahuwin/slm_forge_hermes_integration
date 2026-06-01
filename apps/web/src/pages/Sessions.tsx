@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { type SessionStatus, type TrainingSession, api } from '../lib/api';
+import { type SessionStatus, type TrainingSession, api, deletes } from '../lib/api';
 
 const STATUS_STYLES: Record<SessionStatus, string> = {
   queued: 'text-zinc-400',
@@ -68,6 +68,7 @@ export default function Sessions() {
                 <th className="px-4 py-2.5 text-left">Status</th>
                 <th className="px-4 py-2.5 text-right">Round</th>
                 <th className="px-4 py-2.5 text-right">Best metric</th>
+                <th className="px-4 py-2.5 text-right"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800">
@@ -86,6 +87,23 @@ export default function Sessions() {
                   </td>
                   <td className="px-4 py-2.5 text-right">
                     {s.best_metric_value !== null ? s.best_metric_value.toFixed(4) : '—'}
+                  </td>
+                  <td className="px-4 py-2.5 text-right">
+                    <button
+                      onClick={async (e) => {
+                        e.preventDefault();
+                        if (!confirm(`Delete session #${s.id} AND all its iteration runs?`)) return;
+                        try {
+                          await deletes.session(s.id);
+                        } catch (err) {
+                          alert(err instanceof Error ? err.message : String(err));
+                        }
+                      }}
+                      className="text-xs text-zinc-600 hover:text-rose-400"
+                      title="Delete session and all child runs"
+                    >
+                      delete
+                    </button>
                   </td>
                 </tr>
               ))}

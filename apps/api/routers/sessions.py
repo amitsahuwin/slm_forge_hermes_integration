@@ -104,3 +104,46 @@ def list_iterations(sid: int, db: SessionDep) -> list[Run]:
             select(Run).where(Run.session_id == sid).order_by(Run.iteration_number)
         ).all()
     )
+
+
+@router.delete("/{sid}", status_code=204)
+def delete_session(sid: int, db: SessionDep) -> None:
+    """Delete a session and ALL its child runs (cascading). Blocks if any child run has exports."""
+    from apps.api.models.export import Export
+    from apps.api.models.metric import Metric
+    import shutil
+    from pathlib import Path
+
+    s = db.get(TrainingSession, sid)
+    if not s:
+        raise HTTPException(404, "Session not found")
+
+    child_runs = list(db.exec(select(Run).where(Run.session_id == sid)).all())
+    child_ids = [r.id for r in child_runs]
+
+    # Block if any child has exports
+    if child_ids:
+        exp = db.exec(
+            select(Export).where(Export.run_id.in_(child_ids)).limit(1)
+        ).first()
+        if exp:
+            raise HTTPException(
+                409,
+                f"Session #{sid} has run #{exp.run_id} with export #{exp.id}. "
+                "Delete that export first.",
+            )
+
+    # Cascade delete metrics → runs → session
+    for r in child_runs:
+        for m in list(db.exec(select(Metric).where(Metric.run_id == r.id)).all()):
+            db.delete(m)
+        db.delete(r)
+        run_dir = Path("/app/runs") / str(r.id)
+        if run_dir.exists():
+            try:
+                shutil.rmtree(run_dir)
+            except OSError:
+                pass
+
+    db.delete(s)
+    db.commit()

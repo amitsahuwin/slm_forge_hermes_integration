@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { type Run, type RunStatus, api } from '../lib/api';
+import { type Run, type RunStatus, api, deletes } from '../lib/api';
 
 const STATUS_STYLES: Record<RunStatus, string> = {
   queued: 'text-zinc-400',
@@ -69,6 +69,7 @@ export default function Runs() {
                 <th className="px-4 py-2.5 text-left">Status</th>
                 <th className="px-4 py-2.5 text-right">Train loss</th>
                 <th className="px-4 py-2.5 text-right">Val loss</th>
+                <th className="px-4 py-2.5 text-right"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800">
@@ -91,6 +92,23 @@ export default function Runs() {
                   </td>
                   <td className="px-4 py-2.5 text-right">
                     {r.final_val_loss !== null ? r.final_val_loss.toFixed(3) : '—'}
+                  </td>
+                  <td className="px-4 py-2.5 text-right">
+                    <button
+                      onClick={async (e) => {
+                        e.preventDefault();
+                        if (!confirm(`Delete run #${r.id}? This also deletes its metrics and on-disk artifacts.`)) return;
+                        try {
+                          await deletes.run(r.id);
+                        } catch (err) {
+                          alert(err instanceof Error ? err.message : String(err));
+                        }
+                      }}
+                      className="text-xs text-zinc-600 hover:text-rose-400"
+                      title="Delete run"
+                    >
+                      delete
+                    </button>
                   </td>
                 </tr>
               ))}

@@ -1,77 +1,119 @@
 # SLM-Forge
 
-> Local-first SLM fine-tuning lab on Apple Silicon. **Phase 1: live training works.**
+> Local-first fine-tuning lab for small language models on Apple Silicon. Hermes Agent drives autoresearch. One-click export to iPhone via PocketPal.
 
-**Target:** MacBook Pro M3 Max, 36 GB · Python 3.12+ · React 19 · MLX-LM 0.30+
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Built for Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-MLX-orange.svg)](https://github.com/ml-explore/mlx)
 
 ---
 
-## Phase 1 quickstart
+## What this is
+
+A complete pipeline for fine-tuning small language models (Qwen 2.5 3B, Llama 3.2 3B) on your MacBook Pro, with a Hermes-agent-driven autoresearch loop that automatically explores hyperparameters, and a one-click GGUF export so you can run your fine-tuned model on your iPhone offline.
+
+Built specifically for M3 Max with 36GB unified memory. Smaller Apple Silicon Macs work too with reduced model sizes.
+
+## What it does
+
+| Capability | Status |
+|---|---|
+| LoRA / DoRA / full SFT on Apple Silicon via MLX | ✓ |
+| Autoresearch ratchet (Hermes-driven hyperparameter sweeps) | ✓ |
+| Live training metrics + ratchet timeline graphs | ✓ |
+| Data ingestion: upload, URL, web scrape, S3 | ✓ |
+| Export to GGUF + quantize for iPhone | ✓ |
+| Maintenance UI (disk usage, cleanup) | ✓ |
+| 6 starter datasets (stock-analyst, code-review, email, recipes, medical QA, support classifier) | ✓ |
+
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                    macOS Host (M3 Max)                           │
+│                                                                  │
+│   ┌──────────┐    ┌──────────┐                                   │
+│   │ React UI │───▶│ FastAPI  │ ← Docker                          │
+│   └──────────┘    └────┬─────┘                                   │
+│                        │ SQLite + Huey queue                     │
+│                        │                                         │
+│   ┌────────────────────▼─────────────────────────┐               │
+│   │ Trainer  │ Ratchet  │ Exporter │ Hermes      │ ← host procs  │
+│   │ (MLX-LM) │ (loop)   │ (GGUF)   │ Bridge      │   (Metal)     │
+│   └──────────┴──────────┴──────────┴──────┬──────┘               │
+│                                            │                     │
+│   ┌────────────────────────────────────────▼────┐                │
+│   │ Ollama : qwen3:30b-a3b (or any model)       │                │
+│   └─────────────────────────────────────────────┘                │
+└────────────────────────┬─────────────────────────────────────────┘
+                         │ GGUF transfer
+                         ▼
+                  ┌─────────────┐
+                  │   iPhone    │
+                  │ PocketPal AI│
+                  └─────────────┘
+```
+
+See `docs/ARCHITECTURE.md` for the full architecture write-up.
+
+## Requirements
+
+- macOS on Apple Silicon (M1/M2/M3 — M3 Max with 36GB unified memory is the development target)
+- Python 3.12 or 3.13
+- Node.js 20+
+- Homebrew
+- Docker Desktop for Mac
+- ~30 GB free disk for models + exports
+
+## Quick start
 
 ```bash
-# One-time setup
-./init-repo.sh                  # push to GitHub
-make setup                      # uv + Node deps
-make install-hermes             # Ollama + qwen2.5-coder:14b (Phase 2 prep)
-make seed-data                  # copy sample datasets into data/datasets/
-make download-base-model        # ~1.5 GB Gemma 3n E2B from HF
+# 1. Clone
+git clone git@github.com:<you>/slm_forge_hermes_integration.git
+cd slm_forge_hermes_integration
 
-# Daily loop — two terminals
-make dev                        # Terminal 1: UI + API in Docker
-make trainer                    # Terminal 2: host trainer worker (Metal access)
+# 2. One-time setup
+make setup                    # uv + Python + Node deps
+make install-hermes           # Ollama + qwen3:30b-a3b
+brew install llama.cpp        # GGUF tooling
+
+# 3. Start everything (four terminals)
+make dev                      # T1: UI on :5173, API on :8000
+make trainer                  # T2: LoRA training worker
+make ratchet                  # T3: autoresearch loop
+make exporter                 # T4: GGUF export worker
+
+# 4. Open the UI
+open http://localhost:5173
 ```
 
-Then open http://localhost:5173/runs/new, pick `stock-analyst` + default settings, click **Start training**, and watch the loss curve drop live.
-
----
-
-## What's in Phase 1
-
-- ✅ Sample dataset: `stock-analyst` (24 examples — smoke test scale)
-- ✅ Host trainer worker: invokes `mlx_lm.lora`, streams stdout, posts metrics to API
-- ✅ SQLite (via SQLModel) for runs + metrics
-- ✅ REST API: `POST/GET /api/v1/runs`, `GET /api/v1/runs/{id}/metrics`
-- ✅ SSE endpoint: `GET /api/v1/runs/{id}/stream` for live updates
-- ✅ UI pages: Dashboard, Runs (list), New Run (form), Run Detail (live chart), Datasets
-- ✅ Recharts-based live loss curve (train + val)
-- ✅ Configurable: model, method (LoRA/DoRA/full SFT), iters, batch size, LR, num layers
-
-## What's NOT in Phase 1 (next phases)
-
-- ❌ Autoresearch ratchet loop (Phase 2)
-- ❌ Hermes-driven hyperparameter mutation (Phase 2)
-- ❌ Canary drift detection (Phase 2)
-- ❌ Web/URL/S3 ingestion (Phase 3)
-- ❌ GGUF export pipeline (Phase 4)
-- ❌ Remaining 5 sample datasets (Phase 5)
-
----
-
-## Why two terminals?
-
-| Process | Where | Why |
-|---|---|---|
-| UI + API | Docker (`make dev`) | Lightweight, isolated |
-| Trainer worker | Host (`make trainer`) | MLX needs Apple Metal/MPS — not available inside Linux containers |
-
-This is a deliberate architectural choice — see `docs/ARCHITECTURE.md`.
-
----
-
-## Project structure
+## End-to-end walkthrough
 
 ```
-.
-├── apps/
-│   ├── api/                # FastAPI: runs/metrics/datasets/models endpoints
-│   └── web/                # React 19 + Vite + Tailwind + Recharts
-├── packages/
-│   ├── trainer/            # MLX-LM trainer worker (host process)
-│   ├── ratchet/            # Autoresearch (Phase 2)
-│   ├── ingest/             # Data ingestion (Phase 3)
-│   └── exporter/           # GGUF export (Phase 4)
-├── data/datasets/          # Datasets in mlx_lm.lora format
-│   └── stock-analyst/      # train.jsonl + valid.jsonl + canary.jsonl
-├── runs/                   # Per-run output (adapter/, config.yaml, training.log)
-└── scripts/                # setup, seeding, model download
+1. Ingest a dataset            → /datasets/new
+2. Start an autoresearch run   → /sessions/new
+3. Watch the ratchet graph     → /sessions/:id
+4. Export the winner to GGUF   → /runs/:id → "Export to GGUF"
+5. Download Q4_K_M.gguf        → /exports
+6. AirDrop to iPhone           → PocketPal AI → Add Local Model
 ```
+
+## Documentation
+
+- `docs/ARCHITECTURE.md` — why this architecture (and what we rejected)
+- `docs/SETUP.md` — detailed setup, troubleshooting
+- `docs/IPHONE_DEPLOY.md` — getting your model onto iPhone
+- `docs/DEMO_SCRIPT.md` — 2-minute video walkthrough
+- `docs/SCREENSHOTS.md` — UI captures (what to record)
+
+## What's intentionally NOT here
+
+- ❌ Kubernetes / ArgoCD — single-machine tool, no cluster
+- ❌ Auth — local-only, single-user
+- ❌ Multi-GPU — Apple Silicon unified memory only
+- ❌ RLHF PPO — DPO works, full PPO needs cluster
+- ❌ Production monitoring — this is a personal lab
+
+## License
+
+MIT

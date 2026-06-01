@@ -3,6 +3,7 @@ import Nav from './components/Nav';
 import Dashboard from './pages/Dashboard';
 import Datasets from './pages/Datasets';
 import Exports from './pages/Exports';
+import Maintenance from './pages/Maintenance';
 import NewDataset from './pages/NewDataset';
 import NewRun from './pages/NewRun';
 import NewSession from './pages/NewSession';
@@ -28,6 +29,7 @@ export default function App() {
             <Route path="/exports" element={<Exports />} />
             <Route path="/datasets" element={<Datasets />} />
             <Route path="/datasets/new" element={<NewDataset />} />
+            <Route path="/maintenance" element={<Maintenance />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>

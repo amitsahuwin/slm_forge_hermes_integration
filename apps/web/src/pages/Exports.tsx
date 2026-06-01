@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { type ExportRow, type ExportStatus, exportsApi } from '../lib/api';
+import { type ExportRow, type ExportStatus, exportsApi, deletes } from '../lib/api';
 
 const STATUS_STYLES: Record<ExportStatus, string> = {
   queued: 'text-zinc-400',
@@ -71,7 +71,23 @@ export default function Exports() {
                   <span className="text-xs text-zinc-500">·</span>
                   <span className="font-mono text-xs text-zinc-500">{e.base_model.replace(/^mlx-community\//, '')}</span>
                 </div>
-                <span className={`font-mono text-xs ${STATUS_STYLES[e.status]}`}>● {e.status}</span>
+                <div className="flex items-center gap-3">
+                  <span className={`font-mono text-xs ${STATUS_STYLES[e.status]}`}>● {e.status}</span>
+                  <button
+                    onClick={async () => {
+                      if (!confirm(`Delete export #${e.id}? This also removes the on-disk GGUF files.`)) return;
+                      try {
+                        await deletes.export(e.id);
+                      } catch (err) {
+                        alert(err instanceof Error ? err.message : String(err));
+                      }
+                    }}
+                    className="text-xs text-zinc-600 hover:text-rose-400"
+                    title="Delete export and GGUF files"
+                  >
+                    delete
+                  </button>
+                </div>
               </div>
 
               {e.progress_text && (

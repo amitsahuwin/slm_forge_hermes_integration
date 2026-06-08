@@ -28,6 +28,8 @@ _ITER_TRAIN = re.compile(
     r"Tokens/sec\s+([\d.]+)"
 )
 _ITER_VAL = re.compile(r"Iter\s+(\d+):\s+Val loss\s+([\d.]+)")
+# Phase E: parse mlx-lm's --test mode output to extract canary loss.
+_TEST_LOSS = re.compile(r"Test loss\s+([\d.]+)")
 
 
 def _count_jsonl(path: Path) -> int:
@@ -140,6 +142,129 @@ def _write_yaml_config(run: dict, dataset_dir: Path, adapter_dir: Path) -> Path:
     return cfg_path
 
 
+def _run_canary_eval(
+    run: dict,
+    dataset_dir: Path,
+    adapter_dir: Path,
+    run_dir: Path,
+    env: dict[str, str],
+) -> float | None:
+    """Run mlx-lm in --test mode against canary.jsonl and return the loss.
+
+    Why: the autoresearch ratchet's Goodhart guardrail compares canary loss
+    against val loss. The trainer didn't emit this metric (Phase 2.5 leftover),
+    so the CanaryDriftChart was empty. This evaluates the trained adapter on
+    the held-out canary set and returns a single ``canary_loss`` value.
+
+    Returns ``None`` if the dataset has no canary.jsonl or the eval subprocess
+    fails — caller treats that as "no canary signal this run" rather than a
+    fatal failure.
+    """
+    import shutil
+    import tempfile
+
+    canary_src = dataset_dir / "canary.jsonl"
+    if not canary_src.exists():
+        log.info("Run #%s: no canary.jsonl in %s — skipping canary eval", run["id"], dataset_dir)
+        return None
+
+    n_canary = _count_jsonl(canary_src)
+    if n_canary == 0:
+        log.info("Run #%s: canary.jsonl is empty — skipping", run["id"])
+        return None
+
+    # mlx-lm's --test mode reads test.jsonl from --data. Build a tiny temp
+    # dataset dir that just contains the canary set under that name.
+    tmp_root = Path(tempfile.mkdtemp(prefix=f"slm_canary_run{run['id']}_"))
+    try:
+        # mlx-lm requires train.jsonl and valid.jsonl even in --test mode for
+        # config validation in some versions. Symlink to the originals to avoid
+        # copying large files; fall back to copy if symlink isn't supported.
+        for split in ("train.jsonl", "valid.jsonl"):
+            src = dataset_dir / split
+            if src.exists():
+                try:
+                    (tmp_root / split).symlink_to(src.resolve())
+                except OSError:
+                    shutil.copy2(src, tmp_root / split)
+        shutil.copy2(canary_src, tmp_root / "test.jsonl")
+
+        # test_batches must be small enough that test_batches * batch_size <= n_canary.
+        batch_size = max(1, run["batch_size"])
+        test_batches = max(1, min(10, n_canary // batch_size))
+
+        # Write a minimal config — reuse base model + adapter, skip training.
+        canary_cfg: dict[str, Any] = {
+            "model": run["base_model"],
+            "train": False,
+            "test": True,
+            "data": str(tmp_root),
+            "fine_tune_type": run["method"],
+            "batch_size": batch_size,
+            "test_batches": test_batches,
+            "adapter_path": str(adapter_dir),
+            "max_seq_length": run["max_seq_length"],
+        }
+        canary_cfg_path = run_dir / "canary_config.yaml"
+        with canary_cfg_path.open("w", encoding="utf-8") as f:
+            yaml.safe_dump(canary_cfg, f, sort_keys=False)
+
+        cmd = _build_mlx_lora_cmd(canary_cfg_path)
+        if cmd is None:
+            log.warning("Run #%s: canary cmd unavailable", run["id"])
+            return None
+
+        canary_log = run_dir / "canary.log"
+        log.info(
+            "Run #%s: evaluating canary (%d rows, %d batches) → %s",
+            run["id"],
+            n_canary,
+            test_batches,
+            canary_log,
+        )
+
+        canary_loss: float | None = None
+        with canary_log.open("w", encoding="utf-8") as lf:
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                cwd=str(PROJECT_ROOT),
+                env=env,
+            )
+            assert proc.stdout is not None
+            for raw in proc.stdout:
+                line = raw.rstrip()
+                lf.write(line + "\n")
+                lf.flush()
+                print(f"  [run #{run['id']} canary] {line}", flush=True)
+                m = _TEST_LOSS.search(line)
+                if m:
+                    canary_loss = float(m.group(1))
+            proc.wait()
+
+        if proc.returncode != 0:
+            log.warning(
+                "Run #%s: canary eval exited %d (no signal recorded)",
+                run["id"],
+                proc.returncode,
+            )
+            return None
+        if canary_loss is None:
+            log.warning(
+                "Run #%s: canary eval completed but no 'Test loss' line found",
+                run["id"],
+            )
+            return None
+
+        log.info("Run #%s: canary_loss=%.4f", run["id"], canary_loss)
+        return canary_loss
+    finally:
+        shutil.rmtree(tmp_root, ignore_errors=True)
+
+
 def run_training_job(run: dict, api_url: str) -> None:
     """Run one mlx_lm.lora job and stream metrics back to the API."""
     run_id = run["id"]
@@ -228,13 +353,29 @@ def run_training_job(run: dict, api_url: str) -> None:
 
     if proc.returncode == 0:
         log.info("Run #%s: completed.", run_id)
-        _patch_run(
-            api_url, run_id,
-            status="completed",
-            adapter_path=str(adapter_dir),
-            final_train_loss=final_train_loss,
-            final_val_loss=final_val_loss,
-        )
+
+        # Phase E — Canary eval. Best-effort: a failure here doesn't fail
+        # the run, just leaves canary_loss unset so the chart skips this iter.
+        canary_loss: float | None = None
+        try:
+            canary_loss = _run_canary_eval(run, dataset_dir, adapter_dir, run_dir, env)
+        except Exception as e:  # noqa: BLE001
+            log.warning("Run #%s: canary eval crashed: %s", run_id, e)
+
+        patch_fields: dict[str, Any] = {
+            "status": "completed",
+            "adapter_path": str(adapter_dir),
+            "final_train_loss": final_train_loss,
+            "final_val_loss": final_val_loss,
+        }
+        if canary_loss is not None:
+            # Persist on the Run row so the existing CanaryDriftChart picks it up,
+            # and also emit as a step metric so per-run views (and any future
+            # time-series plot) can see it.
+            patch_fields["canary_loss"] = canary_loss
+            _post_metric(api_url, run_id, run["iters"], "canary_loss", canary_loss)
+
+        _patch_run(api_url, run_id, **patch_fields)
     else:
         msg = f"mlx_lm exited with code {proc.returncode}. See {log_path}"
         log.error("Run #%s: %s", run_id, msg)

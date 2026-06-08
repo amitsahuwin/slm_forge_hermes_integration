@@ -32,7 +32,14 @@ from packages.chat_agent.tools import ALL_TOOLS
 
 log = logging.getLogger("chat_agent.graph")
 
-CHAT_MODEL = os.environ.get("CHAT_MODEL", "qwen2.5:7b")
+# Default to qwen3:30b-a3b — the model SLM-Forge already requires for the
+# Hermes autoresearch loop — so the user doesn't need to pull a second model
+# just for the chat UI. Override with CHAT_MODEL env var if a faster model
+# is preferred (e.g. qwen2.5:7b for snappier responses).
+CHAT_MODEL = os.environ.get(
+    "CHAT_MODEL",
+    os.environ.get("HERMES_MODEL", "qwen3:30b-a3b"),
+)
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
 
 

@@ -38,18 +38,50 @@ type Message = {
 
 // ─── Page ─────────────────────────────────────────────────────────
 
+type ChatHealth = {
+  imports_ok: boolean;
+  imports_error: string | null;
+  ollama_reachable: boolean;
+  chat_model: string;
+  model_available: boolean;
+  ollama_url: string;
+  hint: string | null;
+};
+
+type StreamErrorBanner = {
+  message: string;
+  imports_ok?: boolean;
+  imports_error?: string;
+  ollama_reachable?: boolean;
+  model_available?: boolean;
+  chat_model?: string;
+  stage?: string;
+};
+
 export default function Chat() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
+  const [health, setHealth] = useState<ChatHealth | null>(null);
+  const [streamError, setStreamError] = useState<StreamErrorBanner | null>(null);
   const threadRef = useRef<HTMLDivElement | null>(null);
   const esRef = useRef<EventSource | null>(null);
 
   // initial load
   useEffect(() => {
     void refreshConversations();
+    // Pre-flight chat backend on mount so we can show a helpful banner
+    // BEFORE the user discovers brokenness by typing.
+    void (async () => {
+      try {
+        const r = await fetch(`${API_URL}/api/v1/chat/health`);
+        if (r.ok) setHealth((await r.json()) as ChatHealth);
+      } catch {
+        /* non-fatal */
+      }
+    })();
   }, []);
 
   // when active changes, fetch messages
@@ -251,14 +283,36 @@ export default function Chat() {
       void refreshConversations();
     });
 
-    es.addEventListener('error', () => {
+    es.addEventListener('error', (ev) => {
+      // Two cases:
+      //  1) Server emitted a custom `error` event (typed MessageEvent with .data)
+      //     — surface the structured payload as a banner with a hint.
+      //  2) Native EventSource error (network/CORS/close) — generic banner.
+      const me = ev as MessageEvent;
+      let banner: StreamErrorBanner | null = null;
+      if (me && typeof me.data === 'string' && me.data.length > 0) {
+        try {
+          banner = JSON.parse(me.data) as StreamErrorBanner;
+        } catch {
+          banner = { message: me.data };
+        }
+      }
+      if (!banner) {
+        banner = {
+          message:
+            'Stream interrupted before completion. Check the API logs ' +
+            '(docker compose logs api) for details.',
+        };
+      }
+      setStreamError(banner);
       es.close();
       esRef.current = null;
       setStreaming(false);
       upd((m) => ({
         ...m,
         pending: false,
-        content: m.content || '(stream interrupted)',
+        // Drop the empty placeholder bubble — the banner conveys the failure.
+        content: m.content || '',
       }));
     });
   }, [input, activeId, streaming, refreshConversations]);
@@ -303,6 +357,11 @@ export default function Chat() {
 
       {/* Center: thread */}
       <section className="flex flex-col rounded-xl border border-zinc-800 bg-zinc-950">
+        <ChatBanner
+          health={health}
+          streamError={streamError}
+          onDismiss={() => setStreamError(null)}
+        />
         <div
           ref={threadRef}
           className="flex-1 overflow-y-auto p-4 space-y-4"
@@ -343,6 +402,53 @@ export default function Chat() {
 }
 
 // ─── Subviews ─────────────────────────────────────────────────────
+
+function ChatBanner({
+  health,
+  streamError,
+  onDismiss,
+}: {
+  health: ChatHealth | null;
+  streamError: StreamErrorBanner | null;
+  onDismiss: () => void;
+}) {
+  // The most actionable message wins. Stream errors are the most recent +
+  // most specific signal; otherwise surface a static health hint.
+  if (streamError) {
+    return (
+      <div className="m-3 mb-0 rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-2 text-sm text-rose-200">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1">
+            <div className="font-medium">Chat backend error</div>
+            <div className="mt-0.5 text-rose-300/90">{streamError.message}</div>
+            {streamError.imports_error && (
+              <div className="mt-1 font-mono text-[11px] text-rose-400/80">
+                {streamError.imports_error}
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="text-rose-300/70 hover:text-rose-100"
+            aria-label="dismiss"
+          >
+            ×
+          </button>
+        </div>
+      </div>
+    );
+  }
+  if (health && health.hint) {
+    return (
+      <div className="m-3 mb-0 rounded-md border border-amber-700/40 bg-amber-950/30 px-3 py-2 text-sm text-amber-200">
+        <div className="font-medium">Chat not fully ready</div>
+        <div className="mt-0.5 text-amber-300/90">{health.hint}</div>
+      </div>
+    );
+  }
+  return null;
+}
 
 function EmptyState() {
   return (

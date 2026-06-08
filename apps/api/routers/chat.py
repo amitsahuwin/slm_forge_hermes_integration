@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from collections.abc import AsyncGenerator
 from typing import Annotated, Any
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlmodel import Session, desc, select
@@ -18,6 +20,101 @@ log = logging.getLogger("api.chat")
 router = APIRouter()
 
 SessionDep = Annotated[Session, Depends(get_session)]
+
+
+# ─── Pre-flight health ────────────────────────────────────────────
+
+
+class ChatHealth(BaseModel):
+    imports_ok: bool
+    imports_error: str | None
+    ollama_reachable: bool
+    chat_model: str
+    model_available: bool
+    ollama_url: str
+    hint: str | None
+
+
+def _check_chat_health() -> ChatHealth:
+    """Verify everything the chat graph needs is in place."""
+    imports_ok = True
+    imports_error: str | None = None
+    try:
+        # These are the two heavy imports that fail when the chat extra isn't
+        # installed in the API container. Importing here surfaces the real
+        # exception instead of dying inside the SSE generator.
+        import langgraph  # noqa: F401
+        import langchain_ollama  # noqa: F401
+
+        from packages.chat_agent.graph import CHAT_MODEL, OLLAMA_URL  # noqa: F401
+    except Exception as e:  # noqa: BLE001
+        imports_ok = False
+        imports_error = f"{type(e).__name__}: {e}"
+
+    ollama_url = os.environ.get("OLLAMA_URL", "http://localhost:11434")
+    chat_model = os.environ.get(
+        "CHAT_MODEL", os.environ.get("HERMES_MODEL", "qwen3:30b-a3b")
+    )
+
+    ollama_reachable = False
+    model_available = False
+    hint: str | None = None
+    if imports_ok:
+        try:
+            r = httpx.get(f"{ollama_url}/api/version", timeout=2)
+            ollama_reachable = r.status_code == 200
+        except Exception:  # noqa: BLE001
+            ollama_reachable = False
+
+        if ollama_reachable:
+            try:
+                r = httpx.post(
+                    f"{ollama_url}/api/show",
+                    json={"name": chat_model},
+                    timeout=5,
+                )
+                model_available = r.status_code == 200
+            except Exception:  # noqa: BLE001
+                model_available = False
+
+    if not imports_ok:
+        hint = (
+            "LangGraph/LangChain not installed in the API. Rebuild with "
+            "`docker compose up -d --build` (the Dockerfile now installs the "
+            "`chat` extra) or run `uv sync --extra chat` if running outside Docker."
+        )
+    elif not ollama_reachable:
+        hint = (
+            f"Ollama is not reachable at {ollama_url}. From the host: "
+            "`brew services restart ollama` and verify with `ollama list`."
+        )
+    elif not model_available:
+        hint = (
+            f"Chat model '{chat_model}' is not pulled in Ollama. Run "
+            f"`ollama pull {chat_model}` — or set CHAT_MODEL in .env to a "
+            "model you already have."
+        )
+
+    return ChatHealth(
+        imports_ok=imports_ok,
+        imports_error=imports_error,
+        ollama_reachable=ollama_reachable,
+        chat_model=chat_model,
+        model_available=model_available,
+        ollama_url=ollama_url,
+        hint=hint,
+    )
+
+
+@router.get("/health", response_model=ChatHealth)
+def chat_health() -> ChatHealth:
+    """Return everything that has to be working for the chat UI to function.
+
+    The frontend calls this on mount and surfaces ``hint`` as a banner if any
+    component is unhealthy — that way users see "pull this model" instead of
+    a generic "stream interrupted".
+    """
+    return _check_chat_health()
 
 
 # ─── Schemas ──────────────────────────────────────────────────────
@@ -158,19 +255,73 @@ def _load_history_as_langchain(
 
 @router.get("/conversations/{cid}/stream")
 async def stream_conversation(cid: int) -> EventSourceResponse:
-    """Run the LangGraph agent against the conversation history & stream events."""
+    """Run the LangGraph agent against the conversation history & stream events.
+
+    Pre-flights health first. If the env isn't viable (deps missing, Ollama
+    down, model not pulled) we emit a single structured ``error`` event with
+    a human-readable hint and close cleanly — the UI renders this as a banner
+    rather than a generic "stream interrupted".
+    """
     from apps.api.services.db import engine
     from sqlmodel import Session as _Session
 
-    from packages.chat_agent.graph import build_graph, stream_response
+    # 1. Pre-flight before importing the graph (graph import triggers langgraph).
+    health = _check_chat_health()
+    if not (health.imports_ok and health.ollama_reachable and health.model_available):
+        msg = health.hint or "Chat backend is not ready."
 
-    # Build state up front using a short-lived session
+        async def error_gen() -> AsyncGenerator[dict[str, str], None]:
+            yield {
+                "event": "error",
+                "data": json.dumps(
+                    {
+                        "message": msg,
+                        "imports_ok": health.imports_ok,
+                        "imports_error": health.imports_error,
+                        "ollama_reachable": health.ollama_reachable,
+                        "chat_model": health.chat_model,
+                        "model_available": health.model_available,
+                    }
+                ),
+            }
+            yield {
+                "event": "done",
+                "data": json.dumps({"conversation_id": cid, "reason": "pre-flight"}),
+            }
+
+        return EventSourceResponse(error_gen())
+
+    # 2. Validate the conversation exists and snapshot history.
     with _Session(engine) as db:
         if not db.get(ChatConversation, cid):
             raise HTTPException(404, "Conversation not found")
         history = _load_history_as_langchain(db, cid)
 
-    graph = build_graph()
+    # 3. Import + build the graph; if this fails (rare after pre-flight) we
+    # still surface a usable error.
+    try:
+        from packages.chat_agent.graph import build_graph, stream_response
+
+        graph = build_graph()
+    except Exception as e:  # noqa: BLE001
+        log.exception("graph build failed")
+
+        async def build_error_gen() -> AsyncGenerator[dict[str, str], None]:
+            yield {
+                "event": "error",
+                "data": json.dumps(
+                    {
+                        "message": f"Failed to build chat graph: {e}",
+                        "stage": "build_graph",
+                    }
+                ),
+            }
+            yield {
+                "event": "done",
+                "data": json.dumps({"conversation_id": cid, "reason": "build-error"}),
+            }
+
+        return EventSourceResponse(build_error_gen())
 
     async def event_gen() -> AsyncGenerator[dict[str, str], None]:
         final_text = ""
@@ -182,8 +333,20 @@ async def stream_conversation(cid: int) -> EventSourceResponse:
                     final_text = ev["data"].get("text", "") or final_text
                     final_tool_results = ev["data"].get("tool_results", []) or []
         except Exception as e:  # noqa: BLE001
-            log.exception("chat stream failed")
-            yield {"event": "error", "data": json.dumps({"message": str(e)})}
+            log.exception("chat stream failed mid-run")
+            yield {
+                "event": "error",
+                "data": json.dumps(
+                    {
+                        "message": f"{type(e).__name__}: {e}",
+                        "stage": "stream",
+                    }
+                ),
+            }
+            yield {
+                "event": "done",
+                "data": json.dumps({"conversation_id": cid, "reason": "stream-error"}),
+            }
             return
 
         # Persist the assistant turn

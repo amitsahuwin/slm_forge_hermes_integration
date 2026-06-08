@@ -9,7 +9,8 @@ RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir uv
 COPY pyproject.toml uv.lock /app/
 
 # Install dependencies (no trainer extra — MLX is macOS-only; trainer runs on host)
-RUN uv sync --extra ingest --no-install-project
+# `chat` extra brings in langgraph + langchain-ollama so /api/v1/chat works.
+RUN uv sync --extra ingest --extra chat --no-install-project
 
 # Copy source
 COPY apps /app/apps

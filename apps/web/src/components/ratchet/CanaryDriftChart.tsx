@@ -37,8 +37,9 @@ export default function CanaryDriftChart({ iterations, threshold }: Props) {
         <span className="font-mono text-xs text-zinc-500">threshold: {threshold.toFixed(2)}</span>
       </div>
       {!hasAny ? (
-        <div className="flex h-32 items-center justify-center text-sm text-zinc-500">
-          Canary eval not yet wired into the trainer (Phase 2.5).
+        <div className="flex h-32 items-center justify-center px-3 text-center text-sm text-zinc-500">
+          No canary signal yet — waiting for a completed iteration on a dataset
+          with <code className="ml-1 font-mono text-zinc-400">canary.jsonl</code>.
         </div>
       ) : (
         <div className="h-40">

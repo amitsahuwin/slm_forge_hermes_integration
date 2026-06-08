@@ -106,13 +106,54 @@ def _post_metric(api_url: str, run_id: int, step: int, name: str, value: float) 
         log.warning("POST metric failed: %s", e)
 
 
+def _detect_dataset_format(dataset_dir: Path) -> str:
+    """Inspect train.jsonl's first non-empty row and return ``"chat"`` or ``"text"``.
+
+    MLX-LM supports both:
+      • chat:  ``{"messages": [{"role": ..., "content": ...}, ...]}``
+      • prompt+completion: ``{"prompt": "...", "completion": "..."}``  (also chat-like)
+      • text:  ``{"text": "..."}``
+
+    ``mask_prompt: True`` only works for chat/completion formats. If the dataset
+    is plain text (the format of all 6 seed datasets) we must set it to False
+    or MLX-LM raises ``ValueError("Prompt masking not supported for text dataset.")``.
+    """
+    train_path = dataset_dir / "train.jsonl"
+    if not train_path.exists():
+        return "text"  # caller will fail later with a clearer error
+    try:
+        with train_path.open("r", encoding="utf-8") as f:
+            for line in f:
+                s = line.strip()
+                if not s:
+                    continue
+                obj = json.loads(s)
+                if not isinstance(obj, dict):
+                    return "text"
+                if "messages" in obj or ("prompt" in obj and "completion" in obj):
+                    return "chat"
+                return "text"
+    except (OSError, json.JSONDecodeError) as e:
+        log.warning("Could not detect dataset format (%s) — defaulting to text", e)
+    return "text"
+
+
 def _write_yaml_config(run: dict, dataset_dir: Path, adapter_dir: Path) -> Path:
     batch_size = run["batch_size"]
     val_batches = _safe_val_batches(dataset_dir, batch_size)
+    ds_format = _detect_dataset_format(dataset_dir)
+    # ``mask_prompt`` only applies to chat / prompt-completion rows. MLX-LM
+    # raises a hard error if we set it on a plain-text dataset.
+    mask_prompt = ds_format == "chat"
 
     log.info(
-        "Run #%s: valid=%d rows, batch_size=%d → val_batches=%d",
-        run["id"], _count_jsonl(dataset_dir / "valid.jsonl"), batch_size, val_batches,
+        "Run #%s: valid=%d rows, batch_size=%d → val_batches=%d, format=%s, mask_prompt=%s",
+        run["id"],
+        _count_jsonl(dataset_dir / "valid.jsonl"),
+        batch_size,
+        val_batches,
+        ds_format,
+        mask_prompt,
     )
 
     cfg: dict[str, Any] = {
@@ -132,7 +173,10 @@ def _write_yaml_config(run: dict, dataset_dir: Path, adapter_dir: Path) -> Path:
         "max_seq_length": run["max_seq_length"],
         "grad_checkpoint": run["grad_checkpoint"],
         "seed": run["seed"],
-        "mask_prompt": True,  # loss only on assistant tokens (proper SFT)
+        # loss only on assistant tokens for chat-style datasets; for text-style
+        # we have to train on all tokens because MLX-LM doesn't support masking
+        # there (see ValueError in tuner/datasets.py).
+        "mask_prompt": mask_prompt,
     }
     adapter_dir.parent.mkdir(parents=True, exist_ok=True)
     cfg_path = adapter_dir.parent / "config.yaml"

@@ -18,6 +18,14 @@ type HermesStatus = {
   worker_last_seen: string | null;
 };
 
+type HeartbeatEntry = {
+  last_seen: string;
+  version: string;
+  running: boolean;
+};
+
+type HeartbeatsMap = Record<string, HeartbeatEntry>;
+
 type WorkerTone = 'ok' | 'warn' | 'down' | 'unknown';
 
 type WorkerActivity = {
@@ -139,6 +147,7 @@ export default function Dashboard() {
   const [health, setHealth] = useState<Health | null>(null);
   const [healthError, setHealthError] = useState<string | null>(null);
   const [hermes, setHermes] = useState<HermesStatus | null>(null);
+  const [heartbeats, setHeartbeats] = useState<HeartbeatsMap>({});
   const [logs, setLogs] = useState<Record<WorkerName, LogsResponse | null>>({
     api: null,
     trainer: null,
@@ -184,11 +193,24 @@ export default function Dashboard() {
       }
     };
 
+    const loadHeartbeats = async () => {
+      try {
+        const r = await fetch(`${API_URL}/api/v1/hermes/heartbeats`);
+        if (!r.ok) return;
+        const data = (await r.json()) as HeartbeatsMap;
+        if (!cancelled) setHeartbeats(data);
+      } catch {
+        /* non-fatal */
+      }
+    };
+
     loadHealth();
     loadHermes();
+    loadHeartbeats();
     const id = window.setInterval(() => {
       loadHealth();
       loadHermes();
+      loadHeartbeats();
     }, 5000);
     return () => {
       cancelled = true;
@@ -248,6 +270,29 @@ export default function Dashboard() {
           lastLine: `Responding · ${health.version}`,
         };
       }
+
+      // Heartbeats are the primary truth for trainer/exporter/ratchet —
+      // each worker POSTs every 10s to /api/v1/hermes/heartbeat from the
+      // host process. If a heartbeat is fresh, the tile is "running" even
+      // if the worker happens to be idle (no log output) at the moment.
+      const hb = heartbeats[worker];
+      if (hb) {
+        if (hb.running) {
+          return {
+            tone: 'ok',
+            label: 'running',
+            lastLine: `Heartbeat ${relativeTime(hb.last_seen)}`,
+          };
+        }
+        return {
+          tone: 'warn',
+          label: 'idle',
+          lastLine: `Last heartbeat ${relativeTime(hb.last_seen)}`,
+        };
+      }
+
+      // Ratchet has a separate field on /hermes/status (legacy). Use that if
+      // the heartbeats endpoint hasn't returned yet for whatever reason.
       if (worker === 'ratchet' && hermes) {
         if (hermes.worker_running) {
           return {
@@ -265,11 +310,12 @@ export default function Dashboard() {
             lastLine: `Last seen ${relativeTime(hermes.worker_last_seen)}`,
           };
         }
-        // Fall through to log-based detection if hermes hasn't started yet.
       }
+
+      // No heartbeat ever seen → fall back to log timestamps.
       return deriveWorkerActivity(logs[worker], logsErr[worker]);
     },
-    [health, healthError, hermes, logs, logsErr],
+    [health, healthError, hermes, heartbeats, logs, logsErr],
   );
 
   const workers: WorkerName[] = ['api', 'trainer', 'exporter', 'ratchet'];

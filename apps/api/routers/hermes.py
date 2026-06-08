@@ -2,22 +2,22 @@
 
 Surfaces a real-time view of the autoresearch stack to the Dashboard:
   • Ollama reachability + model availability (via hermes_bridge.healthcheck)
-  • Ratchet worker liveness (heartbeat-driven, in-memory)
+  • Worker liveness (heartbeat-driven, persisted in SQLite so the API
+    restarting doesn't make tiles show "down" until each worker re-registers)
   • Skills installed on disk (.hermes-skills/ + HERMES_SKILLS_DIR)
-
-This module deliberately avoids new DB tables — worker liveness is tracked
-in a module-level dict that resets on API restart. Stale entries (>30s)
-are treated as "worker down".
 """
 from __future__ import annotations
 
-import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Annotated
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+from sqlmodel import Session, select
 
+from apps.api.models.heartbeat import WorkerHeartbeat
+from apps.api.services.db import get_session
 from packages.ratchet.hermes_bridge import (
     HERMES_MODEL,
     SKILLS_DIR,
@@ -26,12 +26,10 @@ from packages.ratchet.hermes_bridge import (
 
 router = APIRouter()
 
-# ─── Worker liveness (in-memory, per API process) ─────────────────────────────
+SessionDep = Annotated[Session, Depends(get_session)]
 
+# Stale heartbeat threshold. After this, the worker is considered down.
 WORKER_STALE_AFTER = timedelta(seconds=30)
-
-# {"ratchet": {"last_seen": datetime, "version": "0.6.0"}}
-_worker_registry: dict[str, dict[str, object]] = {}
 
 
 # ─── Skills discovery ─────────────────────────────────────────────────────────
@@ -108,8 +106,15 @@ class HeartbeatAck(BaseModel):
 # ─── Endpoints ────────────────────────────────────────────────────────────────
 
 
+def _aware(dt: datetime) -> datetime:
+    """Ensure a datetime is timezone-aware (SQLite drops tz info on load)."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt
+
+
 @router.get("/status", response_model=HermesStatus)
-def hermes_status() -> HermesStatus:
+def hermes_status(db: SessionDep) -> HermesStatus:
     """Compose a single-shot status snapshot for the dashboard card."""
     ok, message = healthcheck()
     # The bridge healthcheck only returns ok=True when BOTH Ollama is reachable
@@ -122,12 +127,11 @@ def hermes_status() -> HermesStatus:
         ollama_reachable = "not reachable" not in message.lower()
         model_available = False
 
-    entry = _worker_registry.get("ratchet")
+    entry = db.get(WorkerHeartbeat, "ratchet")
     worker_running = False
     worker_last_seen: str | None = None
     if entry is not None:
-        last_seen = entry["last_seen"]
-        assert isinstance(last_seen, datetime)
+        last_seen = _aware(entry.last_seen)
         worker_last_seen = last_seen.isoformat()
         worker_running = (datetime.now(UTC) - last_seen) < WORKER_STALE_AFTER
 
@@ -146,11 +150,37 @@ def hermes_status() -> HermesStatus:
 
 
 @router.post("/heartbeat", response_model=HeartbeatAck)
-def hermes_heartbeat(payload: Heartbeat) -> HeartbeatAck:
+def hermes_heartbeat(payload: Heartbeat, db: SessionDep) -> HeartbeatAck:
     """Workers POST here every N seconds to advertise liveness."""
     now = datetime.now(UTC)
-    _worker_registry[payload.worker] = {
-        "last_seen": now,
-        "version": payload.version or "unknown",
-    }
+    row = db.get(WorkerHeartbeat, payload.worker)
+    if row is None:
+        row = WorkerHeartbeat(
+            worker=payload.worker,
+            last_seen=now,
+            version=payload.version or "unknown",
+        )
+    else:
+        row.last_seen = now
+        if payload.version:
+            row.version = payload.version
+    db.add(row)
+    db.commit()
     return HeartbeatAck(ok=True, worker=payload.worker, received_at=now.isoformat())
+
+
+@router.get("/heartbeats")
+def list_heartbeats(db: SessionDep) -> dict[str, dict[str, str | bool]]:
+    """Return every worker's last heartbeat. Dashboard reads this for the
+    trainer/exporter tiles so they don't depend on log-line timestamps."""
+    rows = db.exec(select(WorkerHeartbeat)).all()
+    out: dict[str, dict[str, str | bool]] = {}
+    now = datetime.now(UTC)
+    for r in rows:
+        last_seen = _aware(r.last_seen)
+        out[r.worker] = {
+            "last_seen": last_seen.isoformat(),
+            "version": r.version,
+            "running": (now - last_seen) < WORKER_STALE_AFTER,
+        }
+    return out

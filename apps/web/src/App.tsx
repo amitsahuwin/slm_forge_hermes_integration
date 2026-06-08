@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import Nav from './components/Nav';
 import Chat from './pages/Chat';
 import Dashboard from './pages/Dashboard';
+import DatasetDetail from './pages/DatasetDetail';
 import Datasets from './pages/Datasets';
 import ExperimentDetail from './pages/ExperimentDetail';
 import Experiments from './pages/Experiments';
@@ -38,6 +39,7 @@ export default function App() {
             <Route path="/exports" element={<Exports />} />
             <Route path="/datasets" element={<Datasets />} />
             <Route path="/datasets/new" element={<NewDataset />} />
+            <Route path="/datasets/:name" element={<DatasetDetail />} />
             <Route path="/maintenance" element={<Maintenance />} />
             <Route path="/chat" element={<Chat />} />
             <Route path="/chat/:cid" element={<Chat />} />

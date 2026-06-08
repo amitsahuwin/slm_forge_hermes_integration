@@ -17,6 +17,7 @@ except ImportError:
 
 from packages._logging import setup_worker_logging
 from packages.exporter.pipeline import _check_tools, run_export_job
+from packages.ratchet.heartbeat import start_heartbeat
 
 LOG_FMT = "%(asctime)s  %(levelname)-7s  %(name)s  %(message)s"
 logging.basicConfig(level=logging.INFO, format=LOG_FMT, datefmt="%H:%M:%S")
@@ -50,6 +51,7 @@ def main() -> int:
         try:
             httpx.get(f"{API_URL}/api/v1/health", timeout=2).raise_for_status()
             log.info("API is up.")
+            start_heartbeat(API_URL, worker="exporter")
             break
         except Exception:  # noqa: BLE001
             if attempt == 0:

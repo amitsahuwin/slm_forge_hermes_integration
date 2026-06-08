@@ -52,15 +52,22 @@ export default function Datasets() {
       ) : (
         <ul className="space-y-3">
           {datasets.map((d) => (
-            <li key={d.name} className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
-              <div className="flex items-baseline justify-between gap-4">
-                <h3 className="font-mono text-sm font-semibold text-zinc-100">{d.name}</h3>
-                <div className="font-mono text-xs text-zinc-500">
-                  {d.train_count} train · {d.valid_count} valid
-                  {d.has_canary && ' · canary ✓'}
+            <li key={d.name}>
+              <Link
+                to={`/datasets/${encodeURIComponent(d.name)}`}
+                className="block rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 transition-colors hover:border-zinc-700 hover:bg-zinc-900/60"
+              >
+                <div className="flex items-baseline justify-between gap-4">
+                  <h3 className="font-mono text-sm font-semibold text-zinc-100">{d.name}</h3>
+                  <div className="font-mono text-xs text-zinc-500">
+                    {d.train_count} train · {d.valid_count} valid
+                    {d.has_canary && ' · canary ✓'}
+                  </div>
                 </div>
-              </div>
-              {d.description && <p className="mt-1.5 text-sm text-zinc-400">{d.description}</p>}
+                {d.description && (
+                  <p className="mt-1.5 text-sm text-zinc-400">{d.description}</p>
+                )}
+              </Link>
             </li>
           ))}
         </ul>

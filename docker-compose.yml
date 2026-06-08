@@ -10,8 +10,12 @@ services:
       - ./apps/api:/app/apps/api
       - ./packages:/app/packages
       - ./data:/app/data
-      - ./runs:/app/runs:ro
+      # ./runs is read-write so the API can write its own _api.log alongside
+      # the worker logs (ratchet/trainer/exporter) that the dashboard tails.
+      - ./runs:/app/runs
       - ./exports:/app/exports:ro
+      # Hermes skills directory — read-only is fine, the API only enumerates.
+      - ./.hermes-skills:/app/.hermes-skills:ro
     environment:
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONUNBUFFERED=1

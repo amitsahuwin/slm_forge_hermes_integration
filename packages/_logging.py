@@ -63,15 +63,28 @@ def setup_worker_logging(worker: str, *, level: int = logging.INFO) -> Path:
 
     # Ensure runs/ exists. The trainer and ratchet workers create per-run
     # subdirs later, but the parent must exist before the handler opens.
-    os.makedirs(RUNS_DIR, exist_ok=True)
+    # If the directory is on a read-only mount (e.g. ./runs:/app/runs:ro in
+    # docker-compose) this fails — we swallow it and fall back to stderr-only.
+    try:
+        os.makedirs(RUNS_DIR, exist_ok=True)
+        handler = logging.handlers.RotatingFileHandler(
+            log_path,
+            maxBytes=_MAX_BYTES,
+            backupCount=_BACKUP_COUNT,
+            encoding="utf-8",
+            delay=False,
+        )
+    except OSError as exc:
+        logging.getLogger(f"slm_forge.{worker}").warning(
+            "Could not open %s for write (%s). Worker log will be stderr-only; "
+            "the dashboard tail will be empty for this worker. If running in "
+            "Docker, ensure ./runs is mounted read-write in docker-compose.yml.",
+            log_path,
+            exc,
+        )
+        _configured.add(worker)
+        return log_path
 
-    handler = logging.handlers.RotatingFileHandler(
-        log_path,
-        maxBytes=_MAX_BYTES,
-        backupCount=_BACKUP_COUNT,
-        encoding="utf-8",
-        delay=False,
-    )
     handler.setFormatter(logging.Formatter(_LOG_FMT, datefmt=_DATE_FMT))
     handler.setLevel(level)
     # Tag so we can find + dedupe across reloads (uvicorn --reload).

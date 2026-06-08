@@ -19,6 +19,7 @@ import time
 import httpx
 
 from packages._logging import setup_worker_logging
+from packages.ratchet.heartbeat import start_heartbeat
 from packages.trainer.runner import run_training_job
 
 LOG_FMT = "%(asctime)s  %(levelname)-7s  %(name)s  %(message)s"
@@ -50,6 +51,7 @@ def main() -> int:
         try:
             httpx.get(f"{API_URL}/api/v1/health", timeout=2).raise_for_status()
             log.info("API is up.")
+            start_heartbeat(API_URL, worker="trainer")
             break
         except Exception:  # noqa: BLE001
             if attempt == 0:

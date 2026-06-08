@@ -24,7 +24,13 @@ router = APIRouter()
 
 class ExportCreate(BaseModel):
     run_id: int
-    quant_levels: list[QuantLevel] = [QuantLevel.Q4_K_M, QuantLevel.Q8_0]
+    # Default now includes Q5_K_M (good iPhone trade-off between Q4 quality
+    # loss and Q8 size). Callers can still pass a custom list.
+    quant_levels: list[QuantLevel] = [
+        QuantLevel.Q4_K_M,
+        QuantLevel.Q5_K_M,
+        QuantLevel.Q8_0,
+    ]
 
 
 class ExportPatch(BaseModel):
@@ -155,6 +161,26 @@ async def stream_export(xid: int) -> EventSourceResponse:
     return EventSourceResponse(event_gen())
 
 
+def _to_container_path(host_path: str) -> str | None:
+    """Translate a stored host path into the API container's view.
+
+    The exporter (running on host) writes paths like
+        /Users/<you>/.../<repo>/exports/<id>/gguf/model-Q4_K_M.gguf
+    into the DB. Inside Docker, ``./exports`` is bind-mounted at
+    ``/app/exports`` (see docker-compose.yml), so anything under the project's
+    ``/exports/`` directory becomes ``/app/exports/<same suffix>``.
+
+    Returns the translated path, or None if the host path doesn't contain an
+    ``/exports/`` segment we can anchor on.
+    """
+    marker = "/exports/"
+    idx = host_path.find(marker)
+    if idx == -1:
+        return None
+    suffix = host_path[idx + len(marker) :]
+    return f"/app/exports/{suffix}"
+
+
 @router.get("/{xid}/download/{variant}")
 def download_export(xid: int, variant: str, db: SessionDep) -> FileResponse:
     """Download a specific GGUF variant file. variant in {f16, q4, q5, q8}."""
@@ -172,15 +198,30 @@ def download_export(xid: int, variant: str, db: SessionDep) -> FileResponse:
     if not target:
         raise HTTPException(404, f"Variant '{variant}' not available for this export")
 
-    # The path in the DB is host-side; inside Docker it's mounted at /app/exports/...
-    # Try both — if exports dir is mounted into the container, the host path works
-    # because we use the same project-relative layout.
-    candidates = [target, target.replace("/Users/", "/app/", 1) if "/Users/" in target else target]
+    # Try the path as stored, then re-anchor via the project-relative ``/exports/``
+    # mount point. This covers (a) the API running on host (path-as-stored works)
+    # and (b) the API running in Docker (host path is meaningless, container path
+    # via the bind mount works).
+    candidates: list[str] = [target]
+    container = _to_container_path(target)
+    if container and container != target:
+        candidates.append(container)
+    # Also try the simple basename lookup under /app/exports/<export_id>/gguf/
+    # as a last resort for legacy rows that stored a relative path.
+    candidates.append(f"/app/exports/{xid}/gguf/{os.path.basename(target)}")
+
     for p in candidates:
         if p and os.path.exists(p):
-            return FileResponse(p, filename=os.path.basename(p), media_type="application/octet-stream")
+            return FileResponse(
+                p,
+                filename=os.path.basename(p),
+                media_type="application/octet-stream",
+            )
 
-    raise HTTPException(404, f"File not found on disk: {target}")
+    raise HTTPException(
+        404,
+        f"File not found on disk. Tried: {candidates}",
+    )
 
 
 @router.delete("/{xid}", status_code=204)

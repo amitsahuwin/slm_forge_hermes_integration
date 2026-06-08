@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { type SessionStatus, type TrainingSession, api, deletes } from '../lib/api';
+import {
+  type SessionStatus,
+  type TrainingSession as Experiment,
+  api,
+  deletes,
+} from '../lib/api';
 
 const STATUS_STYLES: Record<SessionStatus, string> = {
   queued: 'text-zinc-400',
@@ -10,8 +15,8 @@ const STATUS_STYLES: Record<SessionStatus, string> = {
   cancelled: 'text-zinc-500',
 };
 
-export default function Sessions() {
-  const [sessions, setSessions] = useState<TrainingSession[] | null>(null);
+export default function Experiments() {
+  const [items, setItems] = useState<Experiment[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -19,7 +24,7 @@ export default function Sessions() {
     const tick = () =>
       api
         .listSessions()
-        .then((ss) => alive && setSessions(ss))
+        .then((ss) => alive && setItems(ss))
         .catch((e: unknown) => alive && setError(e instanceof Error ? e.message : String(e)));
     tick();
     const iv = window.setInterval(tick, 2500);
@@ -33,28 +38,30 @@ export default function Sessions() {
     <div className="space-y-6">
       <div className="flex items-end justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Sessions</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Experiments</h1>
           <p className="mt-1 text-sm text-zinc-500">
-            Autoresearch sessions — Hermes-driven hyperparameter sweeps.
+            Autoresearch experiments — Hermes-driven hyperparameter sweeps.
           </p>
         </div>
         <Link
-          to="/sessions/new"
+          to="/experiments/new"
           className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500"
         >
-          + New Session
+          + New Experiment
         </Link>
       </div>
 
-      {error && <div className="rounded-md bg-rose-950/50 px-3 py-2 text-sm text-rose-300">{error}</div>}
+      {error && (
+        <div className="rounded-md bg-rose-950/50 px-3 py-2 text-sm text-rose-300">{error}</div>
+      )}
 
-      {sessions === null ? (
+      {items === null ? (
         <div className="text-sm text-zinc-500">Loading…</div>
-      ) : sessions.length === 0 ? (
+      ) : items.length === 0 ? (
         <div className="rounded-lg border border-dashed border-zinc-800 px-6 py-10 text-center text-sm text-zinc-500">
-          No sessions yet.{' '}
-          <Link to="/sessions/new" className="text-emerald-400 hover:underline">
-            Start your first autoresearch session →
+          No experiments yet.{' '}
+          <Link to="/experiments/new" className="text-emerald-400 hover:underline">
+            Start your first autoresearch experiment →
           </Link>
         </div>
       ) : (
@@ -72,10 +79,10 @@ export default function Sessions() {
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800">
-              {sessions.map((s) => (
+              {items.map((s) => (
                 <tr key={s.id} className="font-mono text-zinc-300 hover:bg-zinc-900/30">
                   <td className="px-4 py-2.5">
-                    <Link to={`/sessions/${s.id}`} className="text-emerald-400 hover:underline">
+                    <Link to={`/experiments/${s.id}`} className="text-emerald-400 hover:underline">
                       {s.id}
                     </Link>
                   </td>
@@ -92,7 +99,12 @@ export default function Sessions() {
                     <button
                       onClick={async (e) => {
                         e.preventDefault();
-                        if (!confirm(`Delete session #${s.id} AND all its iteration runs?`)) return;
+                        if (
+                          !confirm(
+                            `Delete experiment #${s.id} AND all its iteration runs?`,
+                          )
+                        )
+                          return;
                         try {
                           await deletes.session(s.id);
                         } catch (err) {
@@ -100,7 +112,7 @@ export default function Sessions() {
                         }
                       }}
                       className="text-xs text-zinc-600 hover:text-rose-400"
-                      title="Delete session and all child runs"
+                      title="Delete experiment and all child runs"
                     >
                       delete
                     </button>

@@ -6,11 +6,11 @@ A walkthrough of the UI for documentation and demos. Capture these in order and 
    - Filename: `01-dashboard.png`
    - Shows capability matrix (all green after Phase 4)
 
-## 2. New Session form (`/sessions/new`)
+## 2. New Experiment form (`/experiments/new`)
    - Filename: `02-new-session.png`
    - Hyperparameters configured, dataset = stock-analyst
 
-## 3. Session detail with ratchet graph (`/sessions/:id` while running)
+## 3. Experiment detail with ratchet graph (`/experiments/:id` while running)
    - Filename: `03-ratchet-running.png`
    - At least 3-4 iterations done so you see green + red dots
 

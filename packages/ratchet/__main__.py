@@ -17,12 +17,16 @@ import time
 
 import httpx
 
+from packages._logging import setup_worker_logging
+from packages.ratchet.heartbeat import start_heartbeat
 from packages.ratchet.hermes_bridge import healthcheck
 from packages.ratchet.loop import API, run_session
 
 LOG_FMT = "%(asctime)s  %(levelname)-7s  %(name)s  %(message)s"
 logging.basicConfig(level=logging.INFO, format=LOG_FMT, datefmt="%H:%M:%S")
+_log_path = setup_worker_logging("ratchet")
 log = logging.getLogger("ratchet.worker")
+log.info("Logging to %s", _log_path)
 
 API_URL = os.environ.get("SLM_FORGE_API_URL", "http://localhost:8000")
 POLL_INTERVAL = float(os.environ.get("SLM_FORGE_POLL_INTERVAL", "3.0"))
@@ -51,6 +55,7 @@ def main() -> int:
         try:
             httpx.get(f"{API_URL}/api/v1/health", timeout=2).raise_for_status()
             log.info("API is up.")
+            start_heartbeat(API_URL)
             break
         except Exception:  # noqa: BLE001
             if attempt == 0:

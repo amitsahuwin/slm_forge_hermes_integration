@@ -18,11 +18,14 @@ import time
 
 import httpx
 
+from packages._logging import setup_worker_logging
 from packages.trainer.runner import run_training_job
 
 LOG_FMT = "%(asctime)s  %(levelname)-7s  %(name)s  %(message)s"
 logging.basicConfig(level=logging.INFO, format=LOG_FMT, datefmt="%H:%M:%S")
+_log_path = setup_worker_logging("trainer")
 log = logging.getLogger("trainer.worker")
+log.info("Logging to %s", _log_path)
 
 API_URL = os.environ.get("SLM_FORGE_API_URL", "http://localhost:8000")
 POLL_INTERVAL = float(os.environ.get("SLM_FORGE_POLL_INTERVAL", "2.0"))

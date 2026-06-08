@@ -44,6 +44,7 @@ def _migrate_runs() -> None:
 
 
 def init_db() -> None:
+    from apps.api.models import chat as _chat  # noqa: F401
     from apps.api.models import export as _export  # noqa: F401
     from apps.api.models import metric as _metric  # noqa: F401
     from apps.api.models import run as _run  # noqa: F401

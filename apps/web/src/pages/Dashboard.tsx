@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import HermesStatusCard from '../components/HermesStatusCard';
+import LogPane from '../components/LogPane';
 import { API_URL } from '../lib/api';
 
 type Health = {
@@ -57,9 +59,14 @@ export default function Dashboard() {
           </code>
         </Card>
 
-        <Card title="Hermes Agent">
-          <p className="text-sm text-zinc-400">Coming online in Phase 2 (autoresearch).</p>
-        </Card>
+        <HermesStatusCard />
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-sm font-medium uppercase tracking-wider text-zinc-500">
+          Ratchet worker logs
+        </h2>
+        <LogPane ratchet height="18rem" />
       </section>
 
       {health && (

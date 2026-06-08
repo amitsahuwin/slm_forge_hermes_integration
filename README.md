@@ -91,8 +91,8 @@ open http://localhost:5173
 
 ```
 1. Ingest a dataset            → /datasets/new
-2. Start an autoresearch run   → /sessions/new
-3. Watch the ratchet graph     → /sessions/:id
+2. Start an autoresearch experiment   → /experiments/new
+3. Watch the ratchet graph     → /experiments/:id
 4. Export the winner to GGUF   → /runs/:id → "Export to GGUF"
 5. Download Q4_K_M.gguf        → /exports
 6. AirDrop to iPhone           → PocketPal AI → Add Local Model

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import LiveLossChart from '../components/ratchet/LiveLossChart';
+import LogPane from '../components/LogPane';
 import { useRunMetrics } from '../hooks/useRunMetrics';
 import { type Run, type RunStatus, api, exportsApi } from '../lib/api';
 
@@ -90,6 +91,13 @@ export default function RunDetail() {
       <LiveLossChart metrics={metrics} />
 
       {streamError && <div className="font-mono text-xs text-zinc-600">stream: {streamError}</div>}
+
+      <section>
+        <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
+          Training log
+        </h3>
+        <LogPane runId={runId} height="22rem" />
+      </section>
 
       <section className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
         <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">

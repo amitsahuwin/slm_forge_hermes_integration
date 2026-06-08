@@ -15,11 +15,14 @@ try:
 except ImportError:
     pass
 
+from packages._logging import setup_worker_logging
 from packages.exporter.pipeline import _check_tools, run_export_job
 
 LOG_FMT = "%(asctime)s  %(levelname)-7s  %(name)s  %(message)s"
 logging.basicConfig(level=logging.INFO, format=LOG_FMT, datefmt="%H:%M:%S")
+_log_path = setup_worker_logging("exporter")
 log = logging.getLogger("exporter.worker")
+log.info("Logging to %s", _log_path)
 
 API_URL = os.environ.get("SLM_FORGE_API_URL", "http://localhost:8000")
 POLL_INTERVAL = float(os.environ.get("SLM_FORGE_POLL_INTERVAL", "2.0"))

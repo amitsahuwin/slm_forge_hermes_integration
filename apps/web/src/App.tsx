@@ -1,16 +1,17 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import Nav from './components/Nav';
+import Chat from './pages/Chat';
 import Dashboard from './pages/Dashboard';
 import Datasets from './pages/Datasets';
+import ExperimentDetail from './pages/ExperimentDetail';
+import Experiments from './pages/Experiments';
 import Exports from './pages/Exports';
 import Maintenance from './pages/Maintenance';
 import NewDataset from './pages/NewDataset';
+import NewExperiment from './pages/NewExperiment';
 import NewRun from './pages/NewRun';
-import NewSession from './pages/NewSession';
 import RunDetail from './pages/RunDetail';
 import Runs from './pages/Runs';
-import SessionDetail from './pages/SessionDetail';
-import Sessions from './pages/Sessions';
 
 export default function App() {
   return (
@@ -20,9 +21,17 @@ export default function App() {
         <main className="mx-auto max-w-7xl px-8 py-10">
           <Routes>
             <Route path="/" element={<Dashboard />} />
-            <Route path="/sessions" element={<Sessions />} />
-            <Route path="/sessions/new" element={<NewSession />} />
-            <Route path="/sessions/:id" element={<SessionDetail />} />
+
+            {/* Experiments (new canonical URLs) */}
+            <Route path="/experiments" element={<Experiments />} />
+            <Route path="/experiments/new" element={<NewExperiment />} />
+            <Route path="/experiments/:id" element={<ExperimentDetail />} />
+
+            {/* Legacy /sessions URLs redirect to /experiments for bookmark compatibility */}
+            <Route path="/sessions" element={<Navigate to="/experiments" replace />} />
+            <Route path="/sessions/new" element={<Navigate to="/experiments/new" replace />} />
+            <Route path="/sessions/:id" element={<LegacySessionRedirect />} />
+
             <Route path="/runs" element={<Runs />} />
             <Route path="/runs/new" element={<NewRun />} />
             <Route path="/runs/:id" element={<RunDetail />} />
@@ -30,10 +39,19 @@ export default function App() {
             <Route path="/datasets" element={<Datasets />} />
             <Route path="/datasets/new" element={<NewDataset />} />
             <Route path="/maintenance" element={<Maintenance />} />
+            <Route path="/chat" element={<Chat />} />
+            <Route path="/chat/:cid" element={<Chat />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
       </div>
     </BrowserRouter>
   );
+}
+
+/** Redirects /sessions/:id → /experiments/:id, preserving the id. */
+function LegacySessionRedirect() {
+  // useParams isn't easily accessible without making this a small component
+  const id = window.location.pathname.split('/').pop();
+  return <Navigate to={`/experiments/${id}`} replace />;
 }

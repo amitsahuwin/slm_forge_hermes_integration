@@ -22,9 +22,9 @@ Show: Dashboard at `/`. Read the tagline aloud.
 Show: Click "+ Dataset" → flip through the four source tabs → upload a small JSONL → land on the preview screen.
 
 ### 0:30–1:00 — Train + autoresearch (30s)
-> "Start a session. Hermes Agent — running on local Ollama — proposes hyperparameter mutations. The ratchet keeps improvements, discards regressions. No PyTorch, no CUDA — pure MLX."
+> "Start an experiment. Hermes Agent — running on local Ollama — proposes hyperparameter mutations. The ratchet keeps improvements, discards regressions. No PyTorch, no CUDA — pure MLX."
 
-Show: Navigate to a running session → ratchet timeline graph descending → zoom on the green/red dots → switch to a single run page showing live loss curves.
+Show: Navigate to a running experiment → ratchet timeline graph descending → zoom on the green/red dots → switch to a single run page showing live loss curves.
 
 ### 1:00–1:30 — Export to GGUF (30s)
 > "Click 'Export to GGUF'. Behind the scenes: LoRA fuses into the base, converts to GGUF, quantizes to Q4_K_M and Q8_0."

@@ -8,8 +8,20 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from apps.api.routers import admin, datasets, exports, ingest, models, runs, sessions
+from apps.api.routers import (
+    admin,
+    chat,
+    datasets,
+    exports,
+    hermes,
+    ingest,
+    logs,
+    models,
+    runs,
+    sessions,
+)
 from apps.api.services.db import init_db
+from packages._logging import setup_worker_logging
 
 
 class HealthResponse(BaseModel):
@@ -22,6 +34,7 @@ class HealthResponse(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):  # noqa: ARG001
+    setup_worker_logging("api")
     init_db()
     yield
 
@@ -43,6 +56,10 @@ app.include_router(models.router, prefix="/api/v1/models", tags=["models"])
 app.include_router(ingest.router, prefix="/api/v1/ingest", tags=["ingest"])
 app.include_router(exports.router, prefix="/api/v1/exports", tags=["exports"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
+# Phase 6 — live logs, Hermes status, LangGraph chat
+app.include_router(logs.router, prefix="/api/v1", tags=["logs"])
+app.include_router(hermes.router, prefix="/api/v1/hermes", tags=["hermes"])
+app.include_router(chat.router, prefix="/api/v1/chat", tags=["chat"])
 
 
 @app.get("/")

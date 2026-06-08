@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import SynthesizeButton from '../components/SynthesizeButton';
 import { type DatasetInfo, api } from '../lib/api';
 
 export default function Datasets() {
@@ -59,9 +60,15 @@ export default function Datasets() {
               >
                 <div className="flex items-baseline justify-between gap-4">
                   <h3 className="font-mono text-sm font-semibold text-zinc-100">{d.name}</h3>
-                  <div className="font-mono text-xs text-zinc-500">
-                    {d.train_count} train · {d.valid_count} valid
-                    {d.has_canary && ' · canary ✓'}
+                  <div className="flex items-center gap-3">
+                    <div className="font-mono text-xs text-zinc-500">
+                      {d.train_count} train · {d.valid_count} valid
+                      {d.has_canary && ' · canary ✓'}
+                    </div>
+                    <SynthesizeButton
+                      dataset={d.name}
+                      count={d.train_count + d.valid_count}
+                    />
                   </div>
                 </div>
                 {d.description && (

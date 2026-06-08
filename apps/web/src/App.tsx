@@ -8,7 +8,7 @@ import ExperimentDetail from './pages/ExperimentDetail';
 import Experiments from './pages/Experiments';
 import Exports from './pages/Exports';
 import Maintenance from './pages/Maintenance';
-import NewDataset from './pages/NewDataset';
+import NewDatasetV2 from './pages/NewDatasetV2';
 import NewExperiment from './pages/NewExperiment';
 import NewRun from './pages/NewRun';
 import RunDetail from './pages/RunDetail';
@@ -38,7 +38,7 @@ export default function App() {
             <Route path="/runs/:id" element={<RunDetail />} />
             <Route path="/exports" element={<Exports />} />
             <Route path="/datasets" element={<Datasets />} />
-            <Route path="/datasets/new" element={<NewDataset />} />
+            <Route path="/datasets/new" element={<NewDatasetV2 />} />
             <Route path="/datasets/:name" element={<DatasetDetail />} />
             <Route path="/maintenance" element={<Maintenance />} />
             <Route path="/chat" element={<Chat />} />

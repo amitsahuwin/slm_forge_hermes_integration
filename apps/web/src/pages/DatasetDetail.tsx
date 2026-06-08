@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import SynthesizeButton from '../components/SynthesizeButton';
 import {
   type DatasetDetail as DDetail,
   type RowsResponse,
@@ -67,14 +68,23 @@ export default function DatasetDetail() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <Link to="/datasets" className="text-xs text-zinc-500 hover:text-emerald-400">
-          ← all datasets
-        </Link>
-        <h1 className="mt-2 font-mono text-2xl font-semibold tracking-tight">{detail.name}</h1>
-        {detail.description && (
-          <p className="mt-1 text-sm text-zinc-400">{detail.description}</p>
-        )}
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <Link to="/datasets" className="text-xs text-zinc-500 hover:text-emerald-400">
+            ← all datasets
+          </Link>
+          <h1 className="mt-2 font-mono text-2xl font-semibold tracking-tight">
+            {detail.name}
+          </h1>
+          {detail.description && (
+            <p className="mt-1 text-sm text-zinc-400">{detail.description}</p>
+          )}
+        </div>
+        <SynthesizeButton
+          dataset={detail.name}
+          count={detail.train_count + detail.valid_count}
+          variant="header"
+        />
       </div>
 
       <section className="grid grid-cols-2 gap-3 md:grid-cols-4">

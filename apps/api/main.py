@@ -19,10 +19,12 @@ from apps.api.routers import (
     exports,
     hermes,
     ingest,
+    ingest_v2,
     logs,
     models,
     runs,
     sessions,
+    synth,
 )
 from apps.api.services.db import init_db
 from packages._logging import setup_worker_logging
@@ -72,6 +74,10 @@ app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(logs.router, prefix="/api/v1", tags=["logs"])
 app.include_router(hermes.router, prefix="/api/v1/hermes", tags=["hermes"])
 app.include_router(chat.router, prefix="/api/v1/chat", tags=["chat"])
+# Phase G — Ollama-driven dataset synthesis
+app.include_router(synth.router, prefix="/api/v1/synth", tags=["synth"])
+# Phase H — Universal ingest converter (uploads any format → standard splits)
+app.include_router(ingest_v2.router, prefix="/api/v1/ingest", tags=["ingest"])
 
 
 @app.get("/")
@@ -82,36 +88,48 @@ async def root() -> dict[str, Any]:
 def _capabilities() -> dict[str, bool]:
     """Probe what's actually available at runtime, not hardcoded.
 
-    Each check is cheap and best-effort. Anything unreachable returns False
-    without blowing up the health endpoint.
+    The trainer and exporter run on the **host** (MLX is Apple-Silicon-only,
+    llama.cpp lives outside the container) so we can't detect them via
+    in-process imports inside the API. Instead we read each worker's
+    persisted heartbeat from SQLite — if the worker is heartbeating, the
+    capability is live.
     """
+    from sqlmodel import Session
+
+    from apps.api.models.heartbeat import WorkerHeartbeat
+    from apps.api.routers.hermes import WORKER_STALE_AFTER, _aware
+    from apps.api.services.db import engine
+
     caps: dict[str, bool] = {}
+    now = datetime.now(UTC)
 
-    # Trainer dependency: mlx_lm importable in this Python (only true on host).
+    # Heartbeat-driven capabilities — trainer + exporter + ratchet run on host.
     try:
-        __import__("mlx_lm")
-        caps["trainer"] = True
-    except ImportError:
-        caps["trainer"] = False
-
-    # GGUF export tooling — best-effort detection.
-    try:
-        import shutil
-
-        caps["export_gguf"] = bool(
-            shutil.which("llama-quantize") or shutil.which("llama-quantize-bin")
-        )
+        with Session(engine) as db:
+            for worker_name, cap_name in (
+                ("trainer", "trainer"),
+                ("exporter", "export_gguf"),
+                ("ratchet", "autoresearch"),
+            ):
+                hb = db.get(WorkerHeartbeat, worker_name)
+                caps[cap_name] = bool(
+                    hb is not None
+                    and (now - _aware(hb.last_seen)) < WORKER_STALE_AFTER
+                )
     except Exception:  # noqa: BLE001
-        caps["export_gguf"] = False
+        # Fall back to all-false on DB hiccup rather than crashing /health.
+        caps.setdefault("trainer", False)
+        caps.setdefault("export_gguf", False)
+        caps.setdefault("autoresearch", False)
 
-    # Ingestion deps.
+    # Ingestion deps run inside the API container, so this in-process import is correct.
     try:
         __import__("trafilatura")
         caps["ingestion"] = True
     except ImportError:
         caps["ingestion"] = False
 
-    # Hermes bridge — verify Ollama is reachable. Quick HEAD-style ping.
+    # Hermes bridge — verify Ollama is reachable from the API container.
     try:
         from packages.ratchet.hermes_bridge import OLLAMA_URL
 
@@ -120,11 +138,11 @@ def _capabilities() -> dict[str, bool]:
     except Exception:  # noqa: BLE001
         caps["hermes_bridge"] = False
 
-    # Autoresearch is the ratchet worker plus the bridge.
-    caps["autoresearch"] = caps["hermes_bridge"]
-
-    # Chat LLM — same probe; we just label it separately.
+    # Chat LLM is the same probe — labeled separately for clarity.
     caps["chat_llm"] = caps["hermes_bridge"]
+
+    # Autoresearch requires BOTH the ratchet worker AND the bridge to be live.
+    caps["autoresearch"] = caps.get("autoresearch", False) and caps["hermes_bridge"]
 
     return caps
 

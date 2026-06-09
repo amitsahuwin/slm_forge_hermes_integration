@@ -71,16 +71,21 @@ export default function NewDatasetV2() {
   // ─── Preview dispatch ──────────────────────────────────────
 
   const runPreview = useCallback(
-    async (force: boolean) => {
+    // `explicitFile` lets callers pass the file they just picked, bypassing
+    // the stale-closure trap when `setFile` + `runPreview` are called in the
+    // same React tick (the closure would otherwise still see file=null from
+    // the prior render).
+    async (force: boolean, explicitFile?: File | null) => {
       setPreviewing(true);
       setError(null);
       setStatus('Detecting format…');
       try {
         let r: Response;
         if (source === 'file') {
-          if (!file) throw new Error('Select a file first');
+          const f = explicitFile ?? file;
+          if (!f) throw new Error('Select a file first');
           const fd = new FormData();
-          fd.append('file', file);
+          fd.append('file', f);
           fd.append('force_ollama', String(force));
           r = await fetch(`${API_URL}/api/v1/ingest/preview`, {
             method: 'POST',
@@ -133,7 +138,9 @@ export default function NewDatasetV2() {
     setError(null);
     if (f) {
       setForceOllama(false);
-      void runPreview(false);
+      // Pass the file explicitly — setFile() hasn't committed for the
+      // closure runPreview captured this render.
+      void runPreview(false, f);
     }
   }
 

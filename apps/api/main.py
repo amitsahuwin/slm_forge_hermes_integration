@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from apps.api.routers import (
     admin,
+    agents,
     chat,
     datasets,
     datasets_detail,
@@ -81,6 +82,8 @@ app.include_router(synth.router, prefix="/api/v1/synth", tags=["synth"])
 app.include_router(ingest_v2.router, prefix="/api/v1/ingest", tags=["ingest"])
 # Phase K — Market research engine
 app.include_router(research.router, prefix="/api/v1/research", tags=["research"])
+# Phase N.3 — Multi-step Hermes agents
+app.include_router(agents.router, prefix="/api/v1/agents", tags=["agents"])
 
 
 @app.get("/")

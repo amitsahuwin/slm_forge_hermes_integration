@@ -29,11 +29,21 @@ from typing import Any, Literal
 
 import httpx
 
+from packages.research.web_search import (
+    SearchHit,
+    format_hits_for_prompt,
+    format_hits_for_sources_section,
+    search as web_search,
+)
+
 log = logging.getLogger("research.engine")
 
 Depth = Literal["quick", "standard", "deep"]
 ProgressEvent = dict[str, Any]
 ProgressCb = Callable[[ProgressEvent], None]
+
+# How many search hits to inject as context. Tunable per-depth.
+_WEB_HITS: dict[str, int] = {"quick": 4, "standard": 6, "deep": 10}
 
 # Mounted via ./docs:/app/docs in docker-compose (see integration patches).
 _REPORTS_DIR = Path("/app/docs/market-research")
@@ -279,12 +289,28 @@ def build_report(
     if not topic_clean:
         raise ValueError("topic must be non-empty")
 
+    # ── 0. Web grounding (K.2) ──────────────────────────────────────────
+    # Free, no-key DuckDuckGo by default; SerpAPI/Tavily if their env vars
+    # are set. An empty list is fine — the engine just falls back to
+    # pure-Ollama generation (the original Phase K behavior).
+    _emit({"stage": "web_search", "query": topic_clean})
+    web_hits: list[SearchHit] = []
+    try:
+        web_hits = web_search(topic_clean, max_results=_WEB_HITS[depth])
+    except Exception as e:  # noqa: BLE001
+        log.warning("Web search failed (%s); proceeding without grounding", e)
+    web_context = format_hits_for_prompt(web_hits)
+    _emit({"stage": "web_search_done", "hits": len(web_hits)})
+
     # ── 1. Outline ──────────────────────────────────────────────────────
     _emit({"stage": "outline"})
+    outline_user = _outline_user(topic_clean, depth)
+    if web_context:
+        outline_user = f"{web_context}\n\n---\n\n{outline_user}"
     try:
         outline_raw = _post_ollama(
             system=_OUTLINE_SYSTEM,
-            user=_outline_user(topic_clean, depth),
+            user=outline_user,
             model=model,
             ollama_url=ollama_url,
             expect_json=True,
@@ -303,10 +329,13 @@ def build_report(
     prior_titles: list[str] = []
     for i, title in enumerate(sections):
         _emit({"stage": "section_start", "title": title, "index": i, "total": total})
+        section_user = _section_user(topic_clean, title, prior_titles)
+        if web_context:
+            section_user = f"{web_context}\n\n---\n\n{section_user}"
         try:
             body = _post_ollama(
                 system=_section_system(word_target),
-                user=_section_user(topic_clean, title, prior_titles),
+                user=section_user,
                 model=model,
                 ollama_url=ollama_url,
                 expect_json=False,
@@ -384,6 +413,10 @@ def build_report(
     if open_questions is not None:
         parts.append(f"## Open questions\n\n{open_questions}\n")
     parts.append(f"## Comparison table\n\n{comparison_table}\n")
+    # K.2 — append the Sources section so readers can verify cited facts.
+    sources_md = format_hits_for_sources_section(web_hits)
+    if sources_md:
+        parts.append(f"{sources_md}\n")
 
     return frontmatter + "\n".join(parts)
 

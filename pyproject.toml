@@ -56,6 +56,11 @@ chat = [
     "langchain-ollama>=0.2.0",
     "langgraph-checkpoint-sqlite>=2.0.1",
 ]
+research = [
+    # Free web grounding for the R&D engine. SerpAPI / Tavily can be used
+    # without installing this extra by setting SERPAPI_KEY / TAVILY_API_KEY.
+    "ddgs>=8.0",
+]
 
 [tool.ruff]
 line-length = 100

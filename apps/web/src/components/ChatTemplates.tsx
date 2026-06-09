@@ -142,6 +142,32 @@ const GROUPS: Group[] = [
     ],
   },
   {
+    name: 'Multi-step agents',
+    emoji: '🤖',
+    templates: [
+      {
+        title: 'Experiment recommender',
+        prompt:
+          'Run the experiment_recommender agent on the stock-analyst dataset for a terse-tone Q&A model targeting iPhone Pro.',
+      },
+      {
+        title: 'Optimization coach',
+        prompt:
+          'Run the optimization_coach on session 3 and tell me whether to continue, pivot, or stop.',
+      },
+      {
+        title: 'Evaluation designer',
+        prompt:
+          'Run the evaluation_designer on the recipe-extractor dataset to produce canary set + benchmark questions.',
+      },
+      {
+        title: 'Incident responder',
+        prompt:
+          'Run the incident_responder on the most recent failed run and post the markdown post-mortem.',
+      },
+    ],
+  },
+  {
     name: 'Diagnostics',
     emoji: '🩺',
     templates: [

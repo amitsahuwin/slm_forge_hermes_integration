@@ -110,10 +110,9 @@ export default function RunDetail() {
     };
   }, [runId]);
 
-  if (error) return <div className="rounded-md bg-rose-950/50 px-3 py-2 text-sm text-rose-300">{error}</div>;
-  if (!run) return <div className="text-sm text-zinc-500">Loading run #{id}…</div>;
-
-  const effectiveStatus = status ?? run.status;
+  // Compute these BEFORE any early return so React's rules-of-hooks holds —
+  // useMemo below must always be called on every render or the hook order
+  // changes between renders and React unmounts the component (blank page bug).
   const latestTrain = [...metrics].reverse().find((m) => m.name === 'train_loss')?.value;
   const latestVal = [...metrics].reverse().find((m) => m.name === 'val_loss')?.value;
   const latestTps = [...metrics].reverse().find((m) => m.name === 'tokens_per_sec')?.value;
@@ -124,6 +123,11 @@ export default function RunDetail() {
     const ratio = latestVal / latestTrain;
     return ratio > 1.5 || ratio < 0.6;
   }, [latestTrain, latestVal]);
+
+  if (error) return <div className="rounded-md bg-rose-950/50 px-3 py-2 text-sm text-rose-300">{error}</div>;
+  if (!run) return <div className="text-sm text-zinc-500">Loading run #{id}…</div>;
+
+  const effectiveStatus = status ?? run.status;
 
   return (
     <div className="space-y-6">

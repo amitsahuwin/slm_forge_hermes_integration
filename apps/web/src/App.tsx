@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import Nav from './components/Nav';
+import Agents from './pages/Agents';
 import Chat from './pages/Chat';
 import Dashboard from './pages/Dashboard';
 import DatasetDetail from './pages/DatasetDetail';
@@ -45,6 +46,7 @@ export default function App() {
             <Route path="/chat" element={<Chat />} />
             <Route path="/chat/:cid" element={<Chat />} />
             <Route path="/research" element={<Research />} />
+            <Route path="/agents" element={<Agents />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>

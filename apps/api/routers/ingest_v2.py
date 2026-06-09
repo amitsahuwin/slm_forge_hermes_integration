@@ -1,10 +1,12 @@
 """Universal dataset ingestion v2.
 
-Accepts any file (jsonl / json / csv / txt / md / unknown), detects the
-format, and either parses it directly or falls back to Ollama-driven
-conversion into chat-style records. Auto-splits into train/valid/canary.
+Accepts a dataset from any of four sources — file upload, URL, web scrape,
+S3 — detects the format, parses it directly when recognized, or falls back
+to Ollama-driven conversion. Auto-splits into train/valid/canary.
 
-Sibling to the existing `ingest` router (URL/scrape/s3 still live there).
+The four source endpoints all feed the same ``_convert`` pipeline so the
+auto-convert + auto-split behavior is identical regardless of where bytes
+came from.
 """
 from __future__ import annotations
 
@@ -13,6 +15,7 @@ import re
 from pathlib import Path
 from typing import Literal
 
+import httpx
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
@@ -239,4 +242,287 @@ async def preview_file(
         predicted_valid=len(splits["valid"]),
         predicted_canary=len(splits["canary"]),
         warnings=warnings,
+    )
+
+
+# ─────────────────────────────────────────────────────────────
+#   URL / Web scrape / S3 fetchers
+# ─────────────────────────────────────────────────────────────
+
+
+def _ensure_under_cap(content: bytes) -> bytes:
+    if len(content) > MAX_BYTES:
+        raise HTTPException(
+            413,
+            f"Source is too large ({len(content)} bytes). Limit is "
+            f"{MAX_BYTES} bytes (10 MB).",
+        )
+    return content
+
+
+def _fetch_url(url: str) -> tuple[bytes, str]:
+    """Download bytes from a public HTTP(S) URL. Returns (content, filename)."""
+    if not url or not (url.startswith("http://") or url.startswith("https://")):
+        raise HTTPException(400, "URL must start with http:// or https://")
+    try:
+        with httpx.Client(timeout=60, follow_redirects=True) as c:
+            r = c.get(url, headers={"User-Agent": "SLM-Forge/0.1 (+local)"})
+            r.raise_for_status()
+            content = r.content
+    except httpx.HTTPError as e:
+        raise HTTPException(400, f"URL fetch failed: {e}") from e
+    _ensure_under_cap(content)
+    filename = url.rsplit("/", 1)[-1] or "download"
+    return content, filename
+
+
+def _fetch_scrape(url: str) -> tuple[bytes, str]:
+    """Scrape main article text out of a URL via trafilatura.
+
+    Returns the extracted text as UTF-8 bytes (treated as plain_text downstream).
+    """
+    from packages.ingest.scrape import scrape_url
+
+    try:
+        row = scrape_url(url)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(400, f"Scrape failed: {e}") from e
+    title = row.get("title") or ""
+    body = row.get("content") or ""
+    if not body.strip():
+        raise HTTPException(
+            400,
+            "Scrape returned no body content. The page may be JS-rendered "
+            "(SPA) — try saving it locally and uploading the file instead.",
+        )
+    combined = f"# {title}\n\n{body}" if title else body
+    content = combined.encode("utf-8")
+    _ensure_under_cap(content)
+    filename = (url.rsplit("/", 1)[-1] or "scraped") + ".txt"
+    return content, filename
+
+
+def _fetch_s3(
+    s3_path: str,
+    access_key: str | None,
+    secret_key: str | None,
+    region: str | None,
+) -> tuple[bytes, str]:
+    """Download bytes from an S3 object."""
+    from packages.ingest import s3 as s3_mod
+
+    if s3_mod.boto3 is None:
+        raise HTTPException(
+            500,
+            "boto3 not installed in this image. Add the `ingest` extra "
+            "(`uv sync --extra ingest`) and rebuild.",
+        )
+    try:
+        bucket, key = s3_mod.parse_s3_path(s3_path)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    session_kwargs: dict = {}
+    if access_key and secret_key:
+        session_kwargs["aws_access_key_id"] = access_key
+        session_kwargs["aws_secret_access_key"] = secret_key
+    if region:
+        session_kwargs["region_name"] = region
+    try:
+        client = s3_mod.boto3.client("s3", **session_kwargs)
+        obj = client.get_object(Bucket=bucket, Key=key)
+        content = obj["Body"].read()
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(400, f"S3 fetch failed: {e}") from e
+    _ensure_under_cap(content)
+    filename = key.rsplit("/", 1)[-1] or "object"
+    return content, filename
+
+
+# ─────────────────────────────────────────────────────────────
+#   URL endpoints
+# ─────────────────────────────────────────────────────────────
+
+
+class UrlIngest(BaseModel):
+    name: str
+    url: str
+    description: str | None = None
+    force_ollama: bool = False
+
+
+class UrlPreview(BaseModel):
+    url: str
+    force_ollama: bool = False
+
+
+def _finalize_from_bytes(
+    *,
+    name: str,
+    description: str | None,
+    content: bytes,
+    filename: str,
+    force_ollama: bool,
+    source_tag: str,
+) -> IngestFileResponse:
+    safe_name = _validate_name(name)
+    dataset_dir = DATA_ROOT / safe_name
+    if dataset_dir.exists():
+        raise HTTPException(
+            409, f"Dataset '{safe_name}' already exists. Pick a different name."
+        )
+
+    records, fmt, conversion, warnings = _convert(
+        content, filename, force_ollama=force_ollama
+    )
+    splits = auto_split(records)
+    if not splits["valid"]:
+        log.warning(
+            "ingest %s (%s): empty valid split (n=%d)", safe_name, source_tag, len(records),
+        )
+
+    notes_lines = [
+        f"Source: {source_tag}",
+        f"Conversion path: {conversion}",
+    ]
+    if description:
+        notes_lines.append(f"User description: {description}")
+    if warnings:
+        notes_lines.append("Warnings:")
+        notes_lines.extend(f"- {w}" for w in warnings)
+
+    write_dataset(
+        name=safe_name,
+        dataset_root=DATA_ROOT,
+        splits=splits,
+        source_format=fmt,
+        source_filename=filename,
+        conversion_notes="\n".join(notes_lines),
+    )
+    return IngestFileResponse(
+        name=safe_name,
+        train=len(splits["train"]),
+        valid=len(splits["valid"]),
+        canary=len(splits["canary"]),
+        format=fmt,
+        conversion=conversion,
+    )
+
+
+def _preview_from_bytes(
+    *, content: bytes, filename: str, force_ollama: bool
+) -> IngestPreviewResponse:
+    records, fmt, conversion, warnings = _convert(
+        content, filename, force_ollama=force_ollama
+    )
+    splits = auto_split(records)
+    return IngestPreviewResponse(
+        format=fmt,
+        conversion=conversion,
+        sample_records=records[:5],
+        total_records=len(records),
+        predicted_train=len(splits["train"]),
+        predicted_valid=len(splits["valid"]),
+        predicted_canary=len(splits["canary"]),
+        warnings=warnings,
+    )
+
+
+@router.post("/from-url", response_model=IngestFileResponse)
+def ingest_from_url(payload: UrlIngest) -> IngestFileResponse:
+    """Fetch a URL and write it as a new dataset."""
+    content, filename = _fetch_url(payload.url)
+    return _finalize_from_bytes(
+        name=payload.name,
+        description=payload.description,
+        content=content,
+        filename=filename,
+        force_ollama=payload.force_ollama,
+        source_tag=f"url:{payload.url}",
+    )
+
+
+@router.post("/from-url/preview", response_model=IngestPreviewResponse)
+def preview_from_url(payload: UrlPreview) -> IngestPreviewResponse:
+    """Preview what would be written from a URL — no disk side-effects."""
+    content, filename = _fetch_url(payload.url)
+    return _preview_from_bytes(
+        content=content, filename=filename, force_ollama=payload.force_ollama
+    )
+
+
+# ─────────────────────────────────────────────────────────────
+#   Scrape endpoints
+# ─────────────────────────────────────────────────────────────
+
+
+@router.post("/from-scrape", response_model=IngestFileResponse)
+def ingest_from_scrape(payload: UrlIngest) -> IngestFileResponse:
+    """Scrape main text from a web page and write it as a new dataset."""
+    content, filename = _fetch_scrape(payload.url)
+    return _finalize_from_bytes(
+        name=payload.name,
+        description=payload.description,
+        content=content,
+        filename=filename,
+        force_ollama=payload.force_ollama,
+        source_tag=f"scrape:{payload.url}",
+    )
+
+
+@router.post("/from-scrape/preview", response_model=IngestPreviewResponse)
+def preview_from_scrape(payload: UrlPreview) -> IngestPreviewResponse:
+    """Preview what would be written from a scrape — no disk side-effects."""
+    content, filename = _fetch_scrape(payload.url)
+    return _preview_from_bytes(
+        content=content, filename=filename, force_ollama=payload.force_ollama
+    )
+
+
+# ─────────────────────────────────────────────────────────────
+#   S3 endpoints
+# ─────────────────────────────────────────────────────────────
+
+
+class S3Ingest(BaseModel):
+    name: str
+    s3_path: str  # s3://bucket/key OR https://...amazonaws.com URL
+    access_key: str | None = None
+    secret_key: str | None = None
+    region: str | None = None
+    description: str | None = None
+    force_ollama: bool = False
+
+
+class S3Preview(BaseModel):
+    s3_path: str
+    access_key: str | None = None
+    secret_key: str | None = None
+    region: str | None = None
+    force_ollama: bool = False
+
+
+@router.post("/from-s3", response_model=IngestFileResponse)
+def ingest_from_s3(payload: S3Ingest) -> IngestFileResponse:
+    """Download an S3 object and write it as a new dataset."""
+    content, filename = _fetch_s3(
+        payload.s3_path, payload.access_key, payload.secret_key, payload.region
+    )
+    return _finalize_from_bytes(
+        name=payload.name,
+        description=payload.description,
+        content=content,
+        filename=filename,
+        force_ollama=payload.force_ollama,
+        source_tag=f"s3:{payload.s3_path}",
+    )
+
+
+@router.post("/from-s3/preview", response_model=IngestPreviewResponse)
+def preview_from_s3(payload: S3Preview) -> IngestPreviewResponse:
+    """Preview what would be written from S3 — no disk side-effects."""
+    content, filename = _fetch_s3(
+        payload.s3_path, payload.access_key, payload.secret_key, payload.region
+    )
+    return _preview_from_bytes(
+        content=content, filename=filename, force_ollama=payload.force_ollama
     )

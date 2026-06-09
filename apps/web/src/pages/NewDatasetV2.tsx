@@ -1,6 +1,8 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_URL } from '../lib/api';
+
+// ─── Types ─────────────────────────────────────────────────────────
 
 type PreviewResp = {
   format: string;
@@ -22,43 +24,96 @@ type FileResp = {
   conversion: 'direct' | 'ollama';
 };
 
-const JSONL_FORMATS = new Set(['jsonl_chat', 'jsonl_text', 'jsonl_pc']);
+type SourceType = 'file' | 'url' | 'scrape' | 's3';
+
+const SOURCE_META: Record<SourceType, { label: string; sub: string }> = {
+  file: { label: 'File', sub: 'Upload from your computer' },
+  url: { label: 'URL', sub: 'Fetch a remote JSONL / CSV / JSON' },
+  scrape: { label: 'Web scrape', sub: 'Extract article text from any page' },
+  s3: { label: 'S3', sub: 'Pull an object from an S3 bucket' },
+};
+
+// ─── Page ──────────────────────────────────────────────────────────
 
 export default function NewDatasetV2() {
   const navigate = useNavigate();
+  const [source, setSource] = useState<SourceType>('file');
+
+  // Shared
   const [name, setName] = useState('');
-  const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<PreviewResp | null>(null);
   const [forceOllama, setForceOllama] = useState(false);
-  const [dragOver, setDragOver] = useState(false);
+  const [preview, setPreview] = useState<PreviewResp | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
 
+  // File-source state
+  const [file, setFile] = useState<File | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  // URL / scrape state (reused across both)
+  const [url, setUrl] = useState('');
+
+  // S3 state
+  const [s3Path, setS3Path] = useState('');
+  const [s3Key, setS3Key] = useState('');
+  const [s3Secret, setS3Secret] = useState('');
+  const [s3Region, setS3Region] = useState('us-east-1');
+
+  // Switching tabs clears the preview so we don't show stale info.
+  useEffect(() => {
+    setPreview(null);
+    setError(null);
+    setStatus(null);
+  }, [source]);
+
+  // ─── Preview dispatch ──────────────────────────────────────
+
   const runPreview = useCallback(
-    async (f: File, force: boolean) => {
+    async (force: boolean) => {
       setPreviewing(true);
       setError(null);
       setStatus('Detecting format…');
       try {
-        const fd = new FormData();
-        fd.append('file', f);
-        fd.append('force_ollama', String(force));
-        const r = await fetch(`${API_URL}/api/v1/ingest/preview`, {
-          method: 'POST',
-          body: fd,
-        });
+        let r: Response;
+        if (source === 'file') {
+          if (!file) throw new Error('Select a file first');
+          const fd = new FormData();
+          fd.append('file', file);
+          fd.append('force_ollama', String(force));
+          r = await fetch(`${API_URL}/api/v1/ingest/preview`, {
+            method: 'POST',
+            body: fd,
+          });
+        } else if (source === 'url' || source === 'scrape') {
+          if (!url) throw new Error('URL required');
+          const endpoint =
+            source === 'url' ? 'from-url' : 'from-scrape';
+          r = await fetch(`${API_URL}/api/v1/ingest/${endpoint}/preview`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url, force_ollama: force }),
+          });
+        } else {
+          if (!s3Path) throw new Error('S3 path required');
+          r = await fetch(`${API_URL}/api/v1/ingest/from-s3/preview`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              s3_path: s3Path,
+              access_key: s3Key || undefined,
+              secret_key: s3Secret || undefined,
+              region: s3Region || undefined,
+              force_ollama: force,
+            }),
+          });
+        }
         if (!r.ok) {
           const detail = await safeError(r);
           throw new Error(`Preview failed: ${detail}`);
         }
-        const data = (await r.json()) as PreviewResp;
-        setPreview(data);
-        // Default force_ollama ON for unknown / non-jsonl formats
-        if (!JSONL_FORMATS.has(data.format) && data.conversion === 'direct') {
-          // Keep user's manual choice; only auto-flip if they haven't touched it
-        }
+        setPreview((await r.json()) as PreviewResp);
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : String(e));
         setPreview(null);
@@ -67,19 +122,18 @@ export default function NewDatasetV2() {
         setStatus(null);
       }
     },
-    [],
+    [source, file, url, s3Path, s3Key, s3Secret, s3Region],
   );
+
+  // ─── File-tab helpers ──────────────────────────────────────
 
   function onFile(f: File | null) {
     setFile(f);
     setPreview(null);
     setError(null);
     if (f) {
-      // Heuristic: filename-based default for the checkbox
-      const lower = f.name.toLowerCase();
-      const isJsonl = lower.endsWith('.jsonl') || lower.endsWith('.ndjson');
-      setForceOllama(!isJsonl ? false : false); // start OFF; user can flip
-      void runPreview(f, false);
+      setForceOllama(false);
+      void runPreview(false);
     }
   }
 
@@ -90,28 +144,55 @@ export default function NewDatasetV2() {
     if (f) onFile(f);
   }
 
+  // ─── Create (finalize) ──────────────────────────────────────
+
   async function onCreate() {
-    if (!file || !name) return;
+    if (!name) return;
+    if (!preview) {
+      setError('Click Preview first to validate the source.');
+      return;
+    }
     setSubmitting(true);
     setError(null);
     setStatus(
-      preview?.conversion === 'ollama'
+      preview.conversion === 'ollama'
         ? 'Converting via Ollama (this can take a minute)…'
         : 'Writing dataset…',
     );
     try {
-      const fd = new FormData();
-      fd.append('name', name);
-      fd.append('file', file);
-      fd.append('force_ollama', String(forceOllama));
-      const r = await fetch(`${API_URL}/api/v1/ingest/file`, {
-        method: 'POST',
-        body: fd,
-      });
-      if (!r.ok) {
-        const detail = await safeError(r);
-        throw new Error(detail);
+      let r: Response;
+      if (source === 'file') {
+        if (!file) throw new Error('Select a file first');
+        const fd = new FormData();
+        fd.append('name', name);
+        fd.append('file', file);
+        fd.append('force_ollama', String(forceOllama));
+        r = await fetch(`${API_URL}/api/v1/ingest/file`, {
+          method: 'POST',
+          body: fd,
+        });
+      } else if (source === 'url' || source === 'scrape') {
+        const endpoint = source === 'url' ? 'from-url' : 'from-scrape';
+        r = await fetch(`${API_URL}/api/v1/ingest/${endpoint}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, url, force_ollama: forceOllama }),
+        });
+      } else {
+        r = await fetch(`${API_URL}/api/v1/ingest/from-s3`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name,
+            s3_path: s3Path,
+            access_key: s3Key || undefined,
+            secret_key: s3Secret || undefined,
+            region: s3Region || undefined,
+            force_ollama: forceOllama,
+          }),
+        });
       }
+      if (!r.ok) throw new Error(await safeError(r));
       const data = (await r.json()) as FileResp;
       setStatus(
         `Created '${data.name}' — ${data.train} train / ${data.valid} valid / ${data.canary} canary.`,
@@ -126,18 +207,49 @@ export default function NewDatasetV2() {
   }
 
   const nameValid = /^[a-z0-9][a-z0-9-_]*$/.test(name);
+  const sourceReady =
+    source === 'file'
+      ? !!file
+      : source === 'url' || source === 'scrape'
+      ? !!url
+      : !!s3Path;
+  const canPreview = sourceReady && !previewing && !submitting;
   const canSubmit =
-    !!file && !!name && nameValid && !submitting && !previewing && !!preview;
+    !!name && nameValid && !!preview && !submitting && !previewing;
+
+  // ─── Render ────────────────────────────────────────────────
 
   return (
     <div className="max-w-3xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">New Dataset</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          Upload any file (jsonl, json, csv, txt, md). SLM-Forge will detect the
-          format and, if needed, auto-convert it via Ollama into chat-style
-          training records.
+          Pull data from any source. SLM-Forge will detect the format and, if
+          needed, auto-convert it via Ollama into chat-style training records.
         </p>
+      </div>
+
+      {/* Source tabs */}
+      <div role="tablist" className="flex gap-1 rounded-xl border border-zinc-800 bg-zinc-900/40 p-1">
+        {(Object.keys(SOURCE_META) as SourceType[]).map((s) => {
+          const active = s === source;
+          return (
+            <button
+              key={s}
+              role="tab"
+              aria-selected={active}
+              onClick={() => setSource(s)}
+              className={`flex-1 rounded-lg px-3 py-2 text-sm transition-colors ${
+                active
+                  ? 'bg-zinc-800 text-zinc-100'
+                  : 'text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200'
+              }`}
+            >
+              <div className="font-medium">{SOURCE_META[s].label}</div>
+              <div className="text-[10px] text-zinc-500">{SOURCE_META[s].sub}</div>
+            </button>
+          );
+        })}
       </div>
 
       {error && (
@@ -146,7 +258,119 @@ export default function NewDatasetV2() {
         </div>
       )}
 
-      <Field label="Dataset name (lowercase, hyphens/underscores; will be the folder name)">
+      {/* Source-specific input(s) */}
+      {source === 'file' && (
+        <Field label="File (jsonl / json / csv / txt / md / anything)">
+          <label
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragOver(true);
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={onDrop}
+            className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-8 text-sm transition-colors ${
+              dragOver
+                ? 'border-emerald-500 bg-emerald-950/30 text-emerald-200'
+                : 'border-zinc-800 bg-zinc-900/40 text-zinc-400 hover:border-zinc-700'
+            }`}
+          >
+            <input
+              type="file"
+              className="hidden"
+              onChange={(e) => onFile(e.target.files?.[0] ?? null)}
+            />
+            {file ? (
+              <>
+                <span className="font-mono text-zinc-300">{file.name}</span>
+                <span className="mt-1 text-xs text-zinc-500">
+                  {(file.size / 1024).toFixed(1)} KB · click or drop to replace
+                </span>
+              </>
+            ) : (
+              <>
+                <span>Drag a file here, or click to choose</span>
+                <span className="mt-1 text-xs text-zinc-500">10 MB max</span>
+              </>
+            )}
+          </label>
+        </Field>
+      )}
+
+      {source === 'url' && (
+        <Field label="URL (downloads the file as-is — jsonl, csv, json, txt)">
+          <input
+            type="url"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://example.com/data.jsonl"
+            className="w-full rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm focus:border-emerald-600 focus:outline-none"
+          />
+          <p className="mt-1 text-xs text-zinc-500">
+            10 MB max. Follows redirects. Use scrape mode for HTML pages.
+          </p>
+        </Field>
+      )}
+
+      {source === 'scrape' && (
+        <Field label="URL (extracts main article text via trafilatura)">
+          <input
+            type="url"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://blog.example.com/post/title"
+            className="w-full rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm focus:border-emerald-600 focus:outline-none"
+          />
+          <p className="mt-1 text-xs text-zinc-500">
+            Static HTML only. JS-rendered SPAs won't work — save the rendered
+            page locally and use File upload instead.
+          </p>
+        </Field>
+      )}
+
+      {source === 's3' && (
+        <div className="space-y-3">
+          <Field label="S3 path">
+            <input
+              type="text"
+              value={s3Path}
+              onChange={(e) => setS3Path(e.target.value)}
+              placeholder="s3://my-bucket/path/to/data.jsonl"
+              className="w-full rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm focus:border-emerald-600 focus:outline-none"
+            />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="AWS access key (optional — uses instance role if blank)">
+              <input
+                type="text"
+                value={s3Key}
+                onChange={(e) => setS3Key(e.target.value)}
+                placeholder="AKIA…"
+                className="w-full rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-xs focus:border-emerald-600 focus:outline-none"
+              />
+            </Field>
+            <Field label="AWS secret key">
+              <input
+                type="password"
+                value={s3Secret}
+                onChange={(e) => setS3Secret(e.target.value)}
+                placeholder="••••••"
+                className="w-full rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-xs focus:border-emerald-600 focus:outline-none"
+              />
+            </Field>
+          </div>
+          <Field label="Region">
+            <input
+              type="text"
+              value={s3Region}
+              onChange={(e) => setS3Region(e.target.value)}
+              placeholder="us-east-1"
+              className="w-full rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-xs focus:border-emerald-600 focus:outline-none"
+            />
+          </Field>
+        </div>
+      )}
+
+      <Field label="Dataset name (lowercase, hyphens/underscores; folder name)">
         <input
           type="text"
           value={name}
@@ -161,42 +385,20 @@ export default function NewDatasetV2() {
         )}
       </Field>
 
-      <Field label="File (any format — jsonl / json / csv / txt / md)">
-        <label
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragOver(true);
-          }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={onDrop}
-          className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-8 text-sm transition-colors ${
-            dragOver
-              ? 'border-emerald-500 bg-emerald-950/30 text-emerald-200'
-              : 'border-zinc-800 bg-zinc-900/40 text-zinc-400 hover:border-zinc-700'
-          }`}
-        >
-          <input
-            type="file"
-            className="hidden"
-            onChange={(e) => onFile(e.target.files?.[0] ?? null)}
-          />
-          {file ? (
-            <>
-              <span className="font-mono text-zinc-300">{file.name}</span>
-              <span className="mt-1 text-xs text-zinc-500">
-                {(file.size / 1024).toFixed(1)} KB · click or drop to replace
-              </span>
-            </>
-          ) : (
-            <>
-              <span>Drag a file here, or click to choose</span>
-              <span className="mt-1 text-xs text-zinc-500">10 MB max</span>
-            </>
-          )}
-        </label>
-      </Field>
+      {/* Preview trigger when not auto-previewed (URL / scrape / S3 don't auto-fire) */}
+      {source !== 'file' && (
+        <div>
+          <button
+            onClick={() => void runPreview(forceOllama)}
+            disabled={!canPreview}
+            className="rounded-xl border border-zinc-700 px-4 py-2 text-sm text-zinc-200 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {previewing ? 'Previewing…' : 'Preview'}
+          </button>
+        </div>
+      )}
 
-      {file && (
+      {sourceReady && (
         <Field label="Conversion">
           <label className="flex items-center gap-2 text-sm text-zinc-300">
             <input
@@ -204,14 +406,14 @@ export default function NewDatasetV2() {
               checked={forceOllama}
               onChange={(e) => {
                 setForceOllama(e.target.checked);
-                if (file) void runPreview(file, e.target.checked);
+                if (preview) void runPreview(e.target.checked);
               }}
               className="h-4 w-4 rounded border-zinc-700 bg-zinc-900 accent-emerald-500"
             />
             <span>Force auto-convert via Ollama</span>
           </label>
           <p className="mt-1 text-xs text-zinc-500">
-            On for messy text. Off when the file is already a known chat /
+            On for messy text. Off when the source is already a known chat /
             prompt-completion format.
           </p>
         </Field>
@@ -285,6 +487,8 @@ export default function NewDatasetV2() {
     </div>
   );
 }
+
+// ─── Subviews ──────────────────────────────────────────────────────
 
 function Field({
   label,

@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import HermesSkillButton, {
+  type SkillResponse,
+} from '../components/HermesSkillButton';
 import { API_URL, type BaseModelInfo, type DatasetInfo, type RunMethod, api } from '../lib/api';
 
 type HermesMethodSuggestion = {
@@ -9,6 +12,13 @@ type HermesMethodSuggestion = {
   batch_size?: number;
   iters?: number;
   reasoning?: string;
+};
+
+type ModelRec = {
+  primary?: string;
+  alternatives?: string[];
+  reasoning?: string;
+  expected_iphone_size_gb?: number;
 };
 
 export default function NewExperiment() {
@@ -82,6 +92,10 @@ export default function NewExperiment() {
     if (suggestion.learning_rate) setLearningRate(suggestion.learning_rate);
     if (suggestion.iters) setIters(suggestion.iters);
   }
+
+  // Phase N.4 — model_selection (separate from method selection)
+  const [modelRec, setModelRec] = useState<ModelRec | null>(null);
+  const [modelRecRaw, setModelRecRaw] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([api.listDatasets(), api.listModels()])
@@ -166,19 +180,93 @@ export default function NewExperiment() {
           placeholder="e.g. Stock-analyst Q&A in a curt, factual tone. Sub-3B base model. ~20 examples."
           className="w-full resize-none rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-emerald-600 focus:outline-none"
         />
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
             onClick={askHermes}
             disabled={askingHermes || !taskDescription.trim()}
             className="rounded-md border border-zinc-700 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {askingHermes ? 'Asking…' : 'Ask Hermes'}
+            {askingHermes ? 'Asking…' : 'Recommend method (LoRA/DoRA/SFT)'}
           </button>
+          <HermesSkillButton
+            path="/api/v1/hermes/model-selection"
+            body={{
+              task_description: taskDescription,
+              dataset_name: dataset || undefined,
+              n_train_examples: datasets.find((d) => d.name === dataset)?.train_count,
+              target_device: 'mac_desktop',
+            }}
+            label="Pick base model"
+            emoji="🧬"
+            tone="zinc"
+            disabled={!taskDescription.trim()}
+            onResult={(r: SkillResponse) => {
+              setModelRec((r.parsed as ModelRec) ?? null);
+              setModelRecRaw(r.parsed ? null : r.raw);
+            }}
+            onClear={() => {
+              setModelRec(null);
+              setModelRecRaw(null);
+            }}
+          />
           {suggestionError && (
             <span className="text-xs text-rose-400">{suggestionError}</span>
           )}
         </div>
+
+        {(modelRec || modelRecRaw) && (
+          <div className="rounded-md bg-zinc-950 px-3 py-2 text-xs text-zinc-300 space-y-1">
+            {modelRec ? (
+              <>
+                <div className="flex items-baseline justify-between gap-3">
+                  <div>
+                    <span className="text-zinc-500">Primary:</span>{' '}
+                    <span className="font-mono text-emerald-300">{modelRec.primary}</span>
+                    {modelRec.expected_iphone_size_gb != null && (
+                      <span className="ml-2 text-zinc-500">
+                        ({modelRec.expected_iphone_size_gb.toFixed(1)} GB on iPhone)
+                      </span>
+                    )}
+                  </div>
+                  {modelRec.primary && (
+                    <button
+                      type="button"
+                      onClick={() => setBaseModel(modelRec.primary!)}
+                      className="rounded border border-emerald-700 bg-emerald-900/40 px-2 py-0.5 text-emerald-200 hover:bg-emerald-800/50"
+                    >
+                      Use it ↓
+                    </button>
+                  )}
+                </div>
+                {modelRec.alternatives?.length ? (
+                  <div className="text-zinc-500">
+                    Alternatives:{' '}
+                    {modelRec.alternatives.map((alt, i) => (
+                      <span key={alt}>
+                        <button
+                          type="button"
+                          onClick={() => setBaseModel(alt)}
+                          className="font-mono text-zinc-300 underline-offset-2 hover:text-emerald-300 hover:underline"
+                        >
+                          {alt}
+                        </button>
+                        {i < modelRec.alternatives!.length - 1 ? ', ' : ''}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+                {modelRec.reasoning && (
+                  <p className="italic text-zinc-400">{modelRec.reasoning}</p>
+                )}
+              </>
+            ) : (
+              <pre className="whitespace-pre-wrap font-mono text-[11px] text-zinc-400">
+                {modelRecRaw}
+              </pre>
+            )}
+          </div>
+        )}
         {(suggestion || suggestionRaw) && (
           <div className="rounded-md bg-zinc-950 px-3 py-2 text-xs text-zinc-300">
             {suggestion ? (

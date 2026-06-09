@@ -4,6 +4,7 @@ import Chat from './pages/Chat';
 import Dashboard from './pages/Dashboard';
 import DatasetDetail from './pages/DatasetDetail';
 import Datasets from './pages/Datasets';
+import Research from './pages/Research';
 import ExperimentDetail from './pages/ExperimentDetail';
 import Experiments from './pages/Experiments';
 import Exports from './pages/Exports';
@@ -43,6 +44,7 @@ export default function App() {
             <Route path="/maintenance" element={<Maintenance />} />
             <Route path="/chat" element={<Chat />} />
             <Route path="/chat/:cid" element={<Chat />} />
+            <Route path="/research" element={<Research />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>

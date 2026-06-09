@@ -453,6 +453,19 @@ export default function NewDatasetV2() {
             </ul>
           )}
 
+          {/* Phase N.4 — auto_label_unlabeled hint for raw text */}
+          {(preview.format === 'plain_text' || preview.format === 'markdown') && (
+            <div className="rounded-md bg-sky-950/30 px-3 py-2 text-xs text-sky-300">
+              💡 This is raw text. For chat-style fine-tuning, the{' '}
+              <code className="rounded bg-zinc-800 px-1 py-0.5 font-mono text-[10px]">
+                auto_label_unlabeled
+              </code>{' '}
+              Hermes skill invents plausible user prompts and pairs them with each
+              paragraph as the assistant response. Toggle "Force auto-convert via
+              Ollama" above to use it.
+            </div>
+          )}
+
           {preview.sample_records.length > 0 && (
             <div>
               <p className="mb-1 text-xs uppercase tracking-wider text-zinc-500">

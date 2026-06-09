@@ -1,5 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import HermesSkillButton, {
+  type SkillResponse,
+} from '../components/HermesSkillButton';
 import LiveLossChart from '../components/ratchet/LiveLossChart';
 import LogPane from '../components/LogPane';
 import { useRunMetrics } from '../hooks/useRunMetrics';
@@ -13,6 +16,26 @@ type HermesDiagnosis = {
   learning_rate?: number;
   reasoning?: string;
   expected_outcome?: string;
+};
+
+type AnomalyResp = {
+  severity?: 'info' | 'warning' | 'critical';
+  anomaly_kind?: string;
+  summary?: string;
+  evidence?: string[];
+  recommended_action?: {
+    stop_run?: boolean;
+    config_changes?: Record<string, unknown>;
+    reasoning?: string;
+  };
+};
+
+type QuantsResp = {
+  recommended_quants?: string[];
+  primary?: string;
+  rationale?: string;
+  estimated_sizes_mb?: Record<string, number>;
+  warnings?: string[];
 };
 
 const STATUS_STYLES: Record<RunStatus, string> = {
@@ -35,6 +58,13 @@ export default function RunDetail() {
   const [diagnosis, setDiagnosis] = useState<HermesDiagnosis | null>(null);
   const [diagnosisRaw, setDiagnosisRaw] = useState<string | null>(null);
   const [diagnosisError, setDiagnosisError] = useState<string | null>(null);
+
+  // Phase N.4 — post-mortem (markdown) + anomaly + quants
+  const [postMortemRaw, setPostMortemRaw] = useState<string | null>(null);
+  const [anomaly, setAnomaly] = useState<AnomalyResp | null>(null);
+  const [anomalyRaw, setAnomalyRaw] = useState<string | null>(null);
+  const [quants, setQuants] = useState<QuantsResp | null>(null);
+  const [quantsRaw, setQuantsRaw] = useState<string | null>(null);
 
   async function diagnoseWithHermes() {
     if (!runId) return;
@@ -88,6 +118,13 @@ export default function RunDetail() {
   const latestVal = [...metrics].reverse().find((m) => m.name === 'val_loss')?.value;
   const latestTps = [...metrics].reverse().find((m) => m.name === 'tokens_per_sec')?.value;
 
+  // Phase N.4 — heuristic anomaly detection: val/train ratio out of band.
+  const anomalySuspected = useMemo(() => {
+    if (latestTrain == null || latestVal == null || latestTrain <= 0) return false;
+    const ratio = latestVal / latestTrain;
+    return ratio > 1.5 || ratio < 0.6;
+  }, [latestTrain, latestVal]);
+
   return (
     <div className="space-y-6">
       <div className="flex items-end justify-between">
@@ -99,44 +136,148 @@ export default function RunDetail() {
         </div>
         <div className="flex items-center gap-3">
           {run.status === 'completed' && run.adapter_path && (
-            <button
-              onClick={async () => {
-                try {
-                  const x = await exportsApi.create({ run_id: run.id, quant_levels: ['Q4_K_M', 'Q8_0'] });
-                  window.location.href = `/exports`;
-                  console.log('Queued export', x.id);
-                } catch (e) {
-                  alert(`Failed to queue export: ${e instanceof Error ? e.message : String(e)}`);
-                }
-              }}
-              className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500"
-            >
-              Export to GGUF →
-            </button>
+            <>
+              <HermesSkillButton
+                path={`/api/v1/hermes/recommend-quants/${runId}`}
+                body={{ target_device: 'iphone_pro', use_case: 'chat' }}
+                label="Recommend quants"
+                emoji="💡"
+                tone="zinc"
+                size="sm"
+                onResult={(r: SkillResponse) => {
+                  setQuants((r.parsed as QuantsResp) ?? null);
+                  setQuantsRaw(r.parsed ? null : r.raw);
+                }}
+                onClear={() => {
+                  setQuants(null);
+                  setQuantsRaw(null);
+                }}
+              />
+              <button
+                onClick={async () => {
+                  try {
+                    const x = await exportsApi.create({
+                      run_id: run.id,
+                      quant_levels: (quants?.recommended_quants as (
+                        | 'Q4_K_M'
+                        | 'Q5_K_M'
+                        | 'Q8_0'
+                        | 'F16'
+                      )[]) ?? ['Q4_K_M', 'Q5_K_M', 'Q8_0'],
+                    });
+                    window.location.href = `/exports`;
+                    console.log('Queued export', x.id);
+                  } catch (e) {
+                    alert(`Failed to queue export: ${e instanceof Error ? e.message : String(e)}`);
+                  }
+                }}
+                className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500"
+              >
+                Export to GGUF →
+              </button>
+            </>
           )}
           <div className={`font-mono text-sm ${STATUS_STYLES[effectiveStatus]}`}>● {effectiveStatus}</div>
         </div>
       </div>
+
+      {(quants || quantsRaw) && (
+        <section className="rounded-lg border border-emerald-700/40 bg-emerald-950/15 p-4 text-xs space-y-2">
+          <h3 className="font-medium uppercase tracking-wider text-emerald-300">
+            💡 Hermes quant recommendation
+          </h3>
+          {quants ? (
+            <>
+              <div className="flex flex-wrap items-center gap-2">
+                {quants.recommended_quants?.map((q) => (
+                  <span
+                    key={q}
+                    className={`rounded border px-2 py-0.5 font-mono ${
+                      q === quants.primary
+                        ? 'border-emerald-500 bg-emerald-900/50 text-emerald-100'
+                        : 'border-zinc-700 text-zinc-200'
+                    }`}
+                  >
+                    {q}
+                  </span>
+                ))}
+              </div>
+              {quants.rationale && (
+                <p className="italic text-zinc-300">{quants.rationale}</p>
+              )}
+              {quants.estimated_sizes_mb && (
+                <div className="grid grid-cols-4 gap-2 text-center font-mono text-[11px]">
+                  {Object.entries(quants.estimated_sizes_mb).map(([k, v]) => (
+                    <div
+                      key={k}
+                      className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1"
+                    >
+                      <div className="text-zinc-100">{Math.round(v)} MB</div>
+                      <div className="text-zinc-500">{k}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {quants.warnings?.length ? (
+                <ul className="rounded bg-amber-950/30 px-3 py-2 text-amber-200">
+                  {quants.warnings.map((w, i) => (
+                    <li key={i}>⚠ {w}</li>
+                  ))}
+                </ul>
+              ) : null}
+              <p className="text-[11px] text-zinc-500">
+                The "Export to GGUF" button on the right will use these quants.
+              </p>
+            </>
+          ) : (
+            <pre className="whitespace-pre-wrap font-mono text-[11px] text-zinc-300">
+              {quantsRaw}
+            </pre>
+          )}
+        </section>
+      )}
 
       {run.error_message && (
         <div className="rounded-md bg-rose-950/40 px-3 py-2 font-mono text-xs text-rose-300">
           <div className="flex items-start justify-between gap-3">
             <div className="flex-1 whitespace-pre-wrap">{run.error_message}</div>
             {run.status === 'failed' && (
-              <button
-                type="button"
-                onClick={diagnoseWithHermes}
-                disabled={diagnosing}
-                className="shrink-0 rounded border border-rose-700/60 bg-rose-900/40 px-2 py-1 font-sans text-xs text-rose-100 hover:bg-rose-800/50 disabled:opacity-50"
-              >
-                {diagnosing ? 'Asking Hermes…' : '🔬 Diagnose with Hermes'}
-              </button>
+              <div className="shrink-0 flex flex-col items-end gap-1">
+                <button
+                  type="button"
+                  onClick={diagnoseWithHermes}
+                  disabled={diagnosing}
+                  className="rounded border border-rose-700/60 bg-rose-900/40 px-2 py-1 font-sans text-xs text-rose-100 hover:bg-rose-800/50 disabled:opacity-50"
+                >
+                  {diagnosing ? 'Asking Hermes…' : '🔬 Diagnose (OOM-focused)'}
+                </button>
+                <HermesSkillButton
+                  path={`/api/v1/hermes/post-mortem/${runId}`}
+                  label="Post-mortem (full)"
+                  emoji="📋"
+                  tone="rose"
+                  size="sm"
+                  onResult={(r: SkillResponse) => setPostMortemRaw(r.raw)}
+                  onClear={() => setPostMortemRaw(null)}
+                />
+              </div>
             )}
           </div>
           {diagnosisError && (
             <div className="mt-2 text-amber-300">⚠ {diagnosisError}</div>
           )}
         </div>
+      )}
+
+      {postMortemRaw && (
+        <section className="rounded-lg border border-rose-700/40 bg-rose-950/15 p-4 text-xs">
+          <h3 className="mb-2 font-medium uppercase tracking-wider text-rose-300">
+            📋 Failure post-mortem (also saved to runs/{runId}/post_mortem.md)
+          </h3>
+          <pre className="whitespace-pre-wrap font-mono text-[12px] leading-relaxed text-zinc-200">
+            {postMortemRaw}
+          </pre>
+        </section>
       )}
 
       {(diagnosis || diagnosisRaw) && (
@@ -190,6 +331,91 @@ export default function RunDetail() {
         <Stat label="tokens/sec" value={latestTps?.toFixed(0) ?? '—'} />
         <Stat label="iters" value={`${countSteps(metrics)} / ${run.iters}`} />
       </section>
+
+      {/* Phase N.4 — anomaly chip when val/train ratio is out of band */}
+      {anomalySuspected && (
+        <div className="flex items-center gap-2 rounded-md border border-amber-700/40 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">
+          <span>
+            Heuristic flag: val/train ratio ={' '}
+            <span className="font-mono">
+              {latestVal != null && latestTrain != null && latestTrain > 0
+                ? (latestVal / latestTrain).toFixed(2)
+                : '—'}
+            </span>{' '}
+            — outside the 0.6–1.5 healthy band.
+          </span>
+          <HermesSkillButton
+            path={`/api/v1/hermes/explain-anomaly/${runId}`}
+            label="Explain anomaly"
+            emoji="🔬"
+            tone="amber"
+            size="sm"
+            onResult={(r: SkillResponse) => {
+              setAnomaly((r.parsed as AnomalyResp) ?? null);
+              setAnomalyRaw(r.parsed ? null : r.raw);
+            }}
+            onClear={() => {
+              setAnomaly(null);
+              setAnomalyRaw(null);
+            }}
+          />
+        </div>
+      )}
+
+      {(anomaly || anomalyRaw) && (
+        <section className="rounded-lg border border-amber-700/40 bg-amber-950/20 p-4 space-y-2 text-xs">
+          <div className="flex items-baseline justify-between">
+            <h3 className="font-medium uppercase tracking-wider text-amber-300">
+              🔬 Anomaly explanation
+            </h3>
+            {anomaly?.severity && (
+              <span
+                className={`rounded px-1.5 py-0.5 font-mono text-[10px] ${
+                  anomaly.severity === 'critical'
+                    ? 'bg-rose-900/50 text-rose-300'
+                    : anomaly.severity === 'warning'
+                    ? 'bg-amber-900/50 text-amber-300'
+                    : 'bg-zinc-800 text-zinc-400'
+                }`}
+              >
+                {anomaly.anomaly_kind ?? anomaly.severity}
+              </span>
+            )}
+          </div>
+          {anomaly?.summary && <p className="italic text-zinc-300">{anomaly.summary}</p>}
+          {anomaly?.evidence?.length ? (
+            <ul className="list-disc pl-5 text-zinc-400">
+              {anomaly.evidence.map((e, i) => (
+                <li key={i}>{e}</li>
+              ))}
+            </ul>
+          ) : null}
+          {anomaly?.recommended_action && (
+            <div className="rounded bg-zinc-950 px-3 py-2">
+              <div className="font-mono text-[11px] text-zinc-300">
+                {Object.entries(anomaly.recommended_action.config_changes ?? {}).map(
+                  ([k, v]) => (
+                    <div key={k}>
+                      <span className="text-zinc-500">{k}:</span>{' '}
+                      <span className="text-zinc-100">{String(v)}</span>
+                    </div>
+                  ),
+                )}
+              </div>
+              {anomaly.recommended_action.reasoning && (
+                <p className="mt-1 italic text-zinc-400">
+                  {anomaly.recommended_action.reasoning}
+                </p>
+              )}
+            </div>
+          )}
+          {!anomaly && anomalyRaw && (
+            <pre className="whitespace-pre-wrap font-mono text-[11px] text-zinc-300">
+              {anomalyRaw}
+            </pre>
+          )}
+        </section>
+      )}
 
       <LiveLossChart metrics={metrics} />
 

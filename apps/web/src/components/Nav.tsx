@@ -34,6 +34,9 @@ export default function Nav() {
             <NavLink to="/chat" className={({ isActive }) => `${link} ${isActive ? activeLink : ''}`}>
               Chat
             </NavLink>
+            <NavLink to="/research" className={({ isActive }) => `${link} ${isActive ? activeLink : ''}`}>
+              R&D
+            </NavLink>
           </nav>
         </div>
         <div className="flex items-center gap-2">

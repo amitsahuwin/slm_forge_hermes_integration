@@ -22,6 +22,7 @@ from apps.api.routers import (
     ingest_v2,
     logs,
     models,
+    research,
     runs,
     sessions,
     synth,
@@ -78,6 +79,8 @@ app.include_router(chat.router, prefix="/api/v1/chat", tags=["chat"])
 app.include_router(synth.router, prefix="/api/v1/synth", tags=["synth"])
 # Phase H — Universal ingest converter (uploads any format → standard splits)
 app.include_router(ingest_v2.router, prefix="/api/v1/ingest", tags=["ingest"])
+# Phase K — Market research engine
+app.include_router(research.router, prefix="/api/v1/research", tags=["research"])
 
 
 @app.get("/")

@@ -368,3 +368,286 @@ def analyze_drift(session_id: int, db: SessionDep) -> SkillResponse:
         "iterations": iterations,
     }
     return _run_skill("analyze_canary_drift", payload)
+
+
+# ─── Phase N.2 / N.4 — eight new skill invocations ─────────────────────────
+
+
+def _load_dataset_sample(dataset: str, n: int = 8) -> tuple[str, list[dict]]:
+    """Load up to ``n`` training records from a dataset for skill input.
+
+    Returns (description_from_readme, records). Empty list if dataset missing.
+    """
+    from pathlib import Path as _Path
+
+    candidates = [
+        _Path("/app/data/datasets") / dataset,
+        _Path(__file__).resolve().parents[3] / "data" / "datasets" / dataset,
+    ]
+    ds_dir = next((c for c in candidates if c.exists()), None)
+    if ds_dir is None:
+        return "", []
+    train = ds_dir / "train.jsonl"
+    if not train.exists():
+        return "", []
+    rows: list[dict] = []
+    with train.open("r", encoding="utf-8") as f:
+        for i, line in enumerate(f):
+            if i >= n:
+                break
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rows.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    desc = ""
+    readme = ds_dir / "README.md"
+    if readme.exists():
+        for raw in readme.read_text(encoding="utf-8").splitlines():
+            s = raw.strip()
+            if s and not s.startswith("#"):
+                desc = s
+                break
+    return desc, rows
+
+
+# 4. data_quality_review — DatasetDetail ────────────────────────────────────
+
+
+class DatasetReviewIn(BaseModel):
+    dataset: str
+    sample_size: int = 8
+
+
+@router.post("/data-quality/{dataset}", response_model=SkillResponse)
+def data_quality(dataset: str, sample_size: int = 8) -> SkillResponse:
+    """Run the data_quality_review skill on a dataset sample."""
+    desc, rows = _load_dataset_sample(dataset, n=max(1, min(sample_size, 50)))
+    if not rows:
+        raise HTTPException(404, f"Dataset {dataset!r} not found or empty.")
+    return _run_skill(
+        "data_quality_review",
+        {"dataset": dataset, "description": desc, "sample": rows},
+    )
+
+
+# 5. propose_canary_set — DatasetDetail (when no canary) ────────────────────
+
+
+@router.post("/propose-canary/{dataset}", response_model=SkillResponse)
+def propose_canary(dataset: str) -> SkillResponse:
+    """Generate a 5-record canary set proposal for a dataset."""
+    desc, rows = _load_dataset_sample(dataset, n=10)
+    if not rows:
+        raise HTTPException(404, f"Dataset {dataset!r} not found or empty.")
+    return _run_skill(
+        "propose_canary_set",
+        {"dataset": dataset, "description": desc, "sample": rows},
+    )
+
+
+class SaveCanaryIn(BaseModel):
+    canary: list[dict[str, Any]]
+
+
+@router.post("/propose-canary/{dataset}/save")
+def save_canary(dataset: str, payload: SaveCanaryIn) -> dict[str, Any]:
+    """Persist a proposed canary set to ``data/datasets/<dataset>/canary.jsonl``.
+
+    Refuses to overwrite if a canary file already exists (caller can delete
+    the file first if they really want to replace it). The Hermes review and
+    canary chart will pick this up on next refresh.
+    """
+    if not payload.canary:
+        raise HTTPException(400, "canary list is empty")
+    from pathlib import Path as _Path
+
+    candidates = [
+        _Path("/app/data/datasets") / dataset,
+        _Path(__file__).resolve().parents[3] / "data" / "datasets" / dataset,
+    ]
+    ds_dir = next((c for c in candidates if c.exists()), None)
+    if ds_dir is None:
+        raise HTTPException(404, f"Dataset {dataset!r} not found.")
+    target = ds_dir / "canary.jsonl"
+    if target.exists() and target.stat().st_size > 0:
+        raise HTTPException(
+            409,
+            f"{target.name} already exists for {dataset!r}. Delete it manually first if you want to replace it.",
+        )
+    with target.open("w", encoding="utf-8") as f:
+        for rec in payload.canary:
+            f.write(json.dumps(rec) + "\n")
+    return {"saved": str(target), "count": len(payload.canary)}
+
+
+# 6. synthesize_style_prompt — SynthesizeModal ──────────────────────────────
+
+
+@router.post("/synth-style/{dataset}", response_model=SkillResponse)
+def synth_style(dataset: str) -> SkillResponse:
+    """Build a dataset-specific style-guidance string for the synthesizer."""
+    desc, rows = _load_dataset_sample(dataset, n=10)
+    if not rows:
+        raise HTTPException(404, f"Dataset {dataset!r} not found or empty.")
+    return _run_skill(
+        "synthesize_style_prompt",
+        {"dataset": dataset, "description": desc, "sample": rows},
+    )
+
+
+# 7. explain_metric_anomaly — RunDetail auto-chip ──────────────────────────
+
+
+@router.post("/explain-anomaly/{run_id}", response_model=SkillResponse)
+def explain_anomaly(run_id: int, db: SessionDep) -> SkillResponse:
+    """Inspect a run's metric series and explain any anomaly in plain English."""
+    from apps.api.models.metric import Metric  # local to avoid import cycle
+
+    run = db.get(Run, run_id)
+    if not run:
+        raise HTTPException(404, "Run not found")
+
+    metrics = db.exec(
+        select(Metric).where(Metric.run_id == run_id).order_by(Metric.step, Metric.id)
+    ).all()
+    # Keep last 50 of each named series for prompt compactness.
+    series: dict[str, list[dict[str, float]]] = {}
+    for m in metrics:
+        series.setdefault(m.name, []).append({"step": m.step, "value": m.value})
+    for name, pts in series.items():
+        if len(pts) > 50:
+            series[name] = pts[-50:]
+    payload = {
+        "run_id": run_id,
+        "config": {
+            "method": run.method.value,
+            "lr": run.learning_rate,
+            "batch_size": run.batch_size,
+            "num_layers": run.num_layers,
+            "iters": run.iters,
+        },
+        "series": series,
+        "final_train_loss": run.final_train_loss,
+        "final_val_loss": run.final_val_loss,
+        "canary_loss": run.canary_loss,
+    }
+    return _run_skill("explain_metric_anomaly", payload)
+
+
+# 8. recommend_export_quants — RunDetail export panel ──────────────────────
+
+
+class RecommendQuantsIn(BaseModel):
+    target_device: str = "iphone_pro"
+    use_case: str = "chat"
+
+
+@router.post("/recommend-quants/{run_id}", response_model=SkillResponse)
+def recommend_quants(run_id: int, payload: RecommendQuantsIn, db: SessionDep) -> SkillResponse:
+    """Recommend GGUF quant levels for a completed run + device."""
+    run = db.get(Run, run_id)
+    if not run:
+        raise HTTPException(404, "Run not found")
+    return _run_skill(
+        "recommend_export_quants",
+        {
+            "base_model": run.base_model,
+            "method": run.method.value,
+            "target_device": payload.target_device,
+            "use_case": payload.use_case,
+        },
+    )
+
+
+# 9. model_selection — NewExperiment second button ─────────────────────────
+
+
+class ModelSelectionIn(BaseModel):
+    task_description: str
+    dataset_name: str | None = None
+    n_train_examples: int | None = None
+    target_device: str = "mac_desktop"
+
+
+@router.post("/model-selection", response_model=SkillResponse)
+def model_selection(payload: ModelSelectionIn) -> SkillResponse:
+    """Recommend a base model for the task. Complements `/select-method`."""
+    if not payload.task_description.strip():
+        raise HTTPException(400, "task_description is required")
+    return _run_skill("model_selection", payload.model_dump(exclude_none=True))
+
+
+# 10. failure_post_mortem — RunDetail deeper diagnosis ─────────────────────
+
+
+@router.post("/post-mortem/{run_id}", response_model=SkillResponse)
+def post_mortem(run_id: int, db: SessionDep) -> SkillResponse:
+    """Produce a markdown post-mortem for a failed (or otherwise) run.
+
+    Broader than ``/diagnose-run`` (which is OOM-focused). Returns the full
+    markdown body so the UI can render it; also writes a copy to
+    ``runs/<id>/post_mortem.md`` for the run's artifact set.
+    """
+    from pathlib import Path as _Path
+
+    run = db.get(Run, run_id)
+    if not run:
+        raise HTTPException(404, "Run not found")
+
+    payload = {
+        "run_id": run.id,
+        "status": run.status.value,
+        "method": run.method.value,
+        "base_model": run.base_model,
+        "batch_size": run.batch_size,
+        "num_layers": run.num_layers,
+        "max_seq_length": run.max_seq_length,
+        "iters": run.iters,
+        "learning_rate": run.learning_rate,
+        "error_message": run.error_message or "",
+        "training_log_tail": _tail_training_log(run_id, 80),
+    }
+    resp = _run_skill("failure_post_mortem", payload)
+
+    # Best-effort: persist the markdown body alongside the run artifacts.
+    try:
+        candidates = [
+            _Path("/app/runs") / str(run_id),
+            _Path(__file__).resolve().parents[3] / "runs" / str(run_id),
+        ]
+        run_dir = next((c for c in candidates if c.exists()), None)
+        if run_dir is None and candidates:
+            run_dir = candidates[0]
+            run_dir.mkdir(parents=True, exist_ok=True)
+        (run_dir / "post_mortem.md").write_text(resp.raw, encoding="utf-8")
+    except OSError as e:
+        log.warning("Could not persist post_mortem.md for run %s: %s", run_id, e)
+    return resp
+
+
+# 11. auto_label_unlabeled — NewDatasetV2 helper ───────────────────────────
+
+
+class AutoLabelIn(BaseModel):
+    text: str
+    domain_hint: str | None = None
+
+
+@router.post("/auto-label", response_model=SkillResponse)
+def auto_label(payload: AutoLabelIn) -> SkillResponse:
+    """Convert raw text into chat-style records via the auto_label_unlabeled skill.
+
+    Returned ``raw`` is JSONL — caller parses each line as a separate record.
+    """
+    text = (payload.text or "").strip()
+    if not text:
+        raise HTTPException(400, "text is required")
+    # Cap at 6000 chars for prompt size; caller should chunk longer inputs.
+    text = text[:6000]
+    return _run_skill(
+        "auto_label_unlabeled",
+        {"text": text, "domain_hint": payload.domain_hint or ""},
+    )

@@ -16,6 +16,8 @@ services:
       - ./exports:/app/exports:ro
       # Hermes skills directory — read-only is fine, the API only enumerates.
       - ./.hermes-skills:/app/.hermes-skills:ro
+      # docs/ is RW so the R&D tab can persist generated market-research reports.
+      - ./docs:/app/docs
     environment:
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONUNBUFFERED=1

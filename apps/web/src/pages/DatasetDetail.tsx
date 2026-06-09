@@ -1,12 +1,36 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import HermesSkillButton, {
+  type SkillResponse,
+} from '../components/HermesSkillButton';
 import SynthesizeButton from '../components/SynthesizeButton';
+import { API_URL } from '../lib/api';
 import {
   type DatasetDetail as DDetail,
   type RowsResponse,
   type SplitName,
   datasetsApi,
 } from '../lib/datasets-api';
+
+type QualityIssue = {
+  severity: 'high' | 'medium' | 'low';
+  kind: string;
+  description: string;
+  affected_count?: number;
+  fix?: string;
+};
+
+type QualityReport = {
+  overall_health?: 'good' | 'fair' | 'poor';
+  summary?: string;
+  issues?: QualityIssue[];
+  ready_to_train?: boolean;
+};
+
+type CanaryProposal = {
+  canary?: Record<string, unknown>[];
+  rationale?: string[];
+};
 
 const PAGE_SIZE = 20;
 
@@ -19,6 +43,42 @@ export default function DatasetDetail() {
   const [offset, setOffset] = useState(0);
   const [rows, setRows] = useState<RowsResponse | null>(null);
   const [rowsError, setRowsError] = useState<string | null>(null);
+
+  // Phase N.4 — Hermes panels
+  const [quality, setQuality] = useState<QualityReport | null>(null);
+  const [qualityRaw, setQualityRaw] = useState<string | null>(null);
+  const [canary, setCanary] = useState<CanaryProposal | null>(null);
+  const [canaryRaw, setCanaryRaw] = useState<string | null>(null);
+  const [savingCanary, setSavingCanary] = useState(false);
+  const [canarySaveResult, setCanarySaveResult] = useState<string | null>(null);
+
+  async function saveCanary() {
+    if (!name || !canary?.canary?.length) return;
+    setSavingCanary(true);
+    setCanarySaveResult(null);
+    try {
+      const r = await fetch(
+        `${API_URL}/api/v1/hermes/propose-canary/${encodeURIComponent(name)}/save`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ canary: canary.canary }),
+        },
+      );
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({ detail: `HTTP ${r.status}` }));
+        throw new Error(j.detail || `HTTP ${r.status}`);
+      }
+      const j = (await r.json()) as { saved: string; count: number };
+      setCanarySaveResult(
+        `Saved ${j.count} canary records to ${j.saved.split('/').pop()}`,
+      );
+    } catch (e: unknown) {
+      setCanarySaveResult(`Save failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSavingCanary(false);
+    }
+  }
 
   // Fetch detail once per name.
   useEffect(() => {
@@ -79,6 +139,40 @@ export default function DatasetDetail() {
           {detail.description && (
             <p className="mt-1 text-sm text-zinc-400">{detail.description}</p>
           )}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <HermesSkillButton
+              path={`/api/v1/hermes/data-quality/${encodeURIComponent(detail.name)}`}
+              label="Review quality"
+              emoji="🔬"
+              tone="zinc"
+              onResult={(r: SkillResponse) => {
+                setQuality((r.parsed as QualityReport) ?? null);
+                setQualityRaw(r.parsed ? null : r.raw);
+              }}
+              onClear={() => {
+                setQuality(null);
+                setQualityRaw(null);
+              }}
+            />
+            {!detail.has_canary && (
+              <HermesSkillButton
+                path={`/api/v1/hermes/propose-canary/${encodeURIComponent(detail.name)}`}
+                label="Propose canary set"
+                emoji="🎯"
+                tone="zinc"
+                onResult={(r: SkillResponse) => {
+                  setCanary((r.parsed as CanaryProposal) ?? null);
+                  setCanaryRaw(r.parsed ? null : r.raw);
+                  setCanarySaveResult(null);
+                }}
+                onClear={() => {
+                  setCanary(null);
+                  setCanaryRaw(null);
+                  setCanarySaveResult(null);
+                }}
+              />
+            )}
+          </div>
         </div>
         <SynthesizeButton
           dataset={detail.name}
@@ -86,6 +180,123 @@ export default function DatasetDetail() {
           variant="header"
         />
       </div>
+
+      {/* Phase N.4 — quality report */}
+      {(quality || qualityRaw) && (
+        <section className="rounded-lg border border-amber-700/40 bg-amber-950/20 p-4 space-y-3 text-xs">
+          <div className="flex items-baseline justify-between">
+            <h3 className="font-medium uppercase tracking-wider text-amber-300">
+              🔬 Data quality review
+            </h3>
+            {quality?.overall_health && (
+              <span
+                className={`rounded-full px-2 py-0.5 font-mono ${
+                  quality.overall_health === 'good'
+                    ? 'bg-emerald-900/40 text-emerald-300'
+                    : quality.overall_health === 'fair'
+                    ? 'bg-amber-900/40 text-amber-300'
+                    : 'bg-rose-900/40 text-rose-300'
+                }`}
+              >
+                {quality.overall_health}
+              </span>
+            )}
+          </div>
+          {quality?.summary && (
+            <p className="italic text-zinc-300">{quality.summary}</p>
+          )}
+          {quality?.issues?.length ? (
+            <ul className="space-y-2">
+              {quality.issues.map((it, i) => (
+                <li
+                  key={i}
+                  className="rounded-md bg-zinc-950 px-3 py-2"
+                >
+                  <div className="flex items-baseline gap-2">
+                    <span
+                      className={`rounded px-1.5 py-0.5 font-mono text-[10px] ${
+                        it.severity === 'high'
+                          ? 'bg-rose-900/50 text-rose-300'
+                          : it.severity === 'medium'
+                          ? 'bg-amber-900/50 text-amber-300'
+                          : 'bg-zinc-800 text-zinc-400'
+                      }`}
+                    >
+                      {it.severity}
+                    </span>
+                    <span className="font-mono text-zinc-400">{it.kind}</span>
+                    {it.affected_count != null && (
+                      <span className="text-zinc-500">· {it.affected_count} affected</span>
+                    )}
+                  </div>
+                  <div className="mt-1 text-zinc-300">{it.description}</div>
+                  {it.fix && (
+                    <div className="mt-1 text-emerald-300">→ {it.fix}</div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : qualityRaw ? (
+            <pre className="whitespace-pre-wrap font-mono text-[11px] text-zinc-300">
+              {qualityRaw}
+            </pre>
+          ) : (
+            <p className="text-zinc-500">No issues reported.</p>
+          )}
+        </section>
+      )}
+
+      {/* Phase N.4 — proposed canary set */}
+      {(canary || canaryRaw) && (
+        <section className="rounded-lg border border-emerald-700/40 bg-emerald-950/15 p-4 space-y-3 text-xs">
+          <div className="flex items-baseline justify-between">
+            <h3 className="font-medium uppercase tracking-wider text-emerald-300">
+              🎯 Proposed canary set
+            </h3>
+            {canary?.canary?.length ? (
+              <button
+                type="button"
+                onClick={saveCanary}
+                disabled={savingCanary}
+                className="rounded border border-emerald-700 bg-emerald-900/40 px-2 py-1 text-emerald-100 hover:bg-emerald-800/50 disabled:opacity-50"
+              >
+                {savingCanary
+                  ? 'Saving…'
+                  : `Save ${canary.canary.length} → canary.jsonl`}
+              </button>
+            ) : null}
+          </div>
+          {canarySaveResult && (
+            <div
+              className={`rounded px-3 py-2 ${
+                canarySaveResult.startsWith('Save failed')
+                  ? 'bg-rose-950/50 text-rose-300'
+                  : 'bg-emerald-950/50 text-emerald-200'
+              }`}
+            >
+              {canarySaveResult}
+            </div>
+          )}
+          {canary?.canary?.length ? (
+            <ol className="space-y-2">
+              {canary.canary.map((r, i) => (
+                <li key={i} className="rounded-md bg-zinc-950 px-3 py-2">
+                  <pre className="max-h-32 overflow-auto whitespace-pre-wrap font-mono text-[11px] text-zinc-300">
+                    {JSON.stringify(r, null, 2)}
+                  </pre>
+                  {canary.rationale?.[i] && (
+                    <p className="mt-1 italic text-zinc-400">{canary.rationale[i]}</p>
+                  )}
+                </li>
+              ))}
+            </ol>
+          ) : canaryRaw ? (
+            <pre className="whitespace-pre-wrap font-mono text-[11px] text-zinc-300">
+              {canaryRaw}
+            </pre>
+          ) : null}
+        </section>
+      )}
 
       <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="train rows" value={detail.train_count.toLocaleString()} />

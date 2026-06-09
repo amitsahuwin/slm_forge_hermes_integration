@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import HermesSkillButton, { type SkillResponse } from './HermesSkillButton';
 import { API_URL } from '../lib/api';
 
 type SynthesizeModalProps = {
@@ -283,6 +284,20 @@ export default function SynthesizeModal({
                 className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-emerald-600 focus:outline-none"
                 placeholder="e.g. Make examples more diverse in technical depth"
               />
+              <div className="mt-1">
+                <HermesSkillButton
+                  path={`/api/v1/hermes/synth-style/${encodeURIComponent(sourceDataset)}`}
+                  label="Auto-fill from existing rows"
+                  emoji="✨"
+                  tone="zinc"
+                  size="sm"
+                  onResult={(r: SkillResponse) => {
+                    const guidance = (r.parsed as { style_guidance?: string } | null)
+                      ?.style_guidance;
+                    if (guidance) setStyle(guidance);
+                  }}
+                />
+              </div>
             </Field>
 
             <div>

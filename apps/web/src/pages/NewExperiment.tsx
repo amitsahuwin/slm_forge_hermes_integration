@@ -1,6 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { type BaseModelInfo, type DatasetInfo, type RunMethod, api } from '../lib/api';
+import { API_URL, type BaseModelInfo, type DatasetInfo, type RunMethod, api } from '../lib/api';
+
+type HermesMethodSuggestion = {
+  method?: 'lora' | 'dora' | 'full';
+  num_layers?: number;
+  learning_rate?: number;
+  batch_size?: number;
+  iters?: number;
+  reasoning?: string;
+};
 
 export default function NewExperiment() {
   const navigate = useNavigate();
@@ -20,6 +29,59 @@ export default function NewExperiment() {
   const [maxRounds, setMaxRounds] = useState(6);
   const [plateauPatience, setPlateauPatience] = useState(3);
   const [minDelta, setMinDelta] = useState(0.005);
+
+  // ── Ask Hermes (Phase N.1) ─────────────────────────────────
+  const [taskDescription, setTaskDescription] = useState('');
+  const [askingHermes, setAskingHermes] = useState(false);
+  const [suggestion, setSuggestion] = useState<HermesMethodSuggestion | null>(null);
+  const [suggestionRaw, setSuggestionRaw] = useState<string | null>(null);
+  const [suggestionError, setSuggestionError] = useState<string | null>(null);
+
+  async function askHermes() {
+    if (!taskDescription.trim()) {
+      setSuggestionError('Describe the task first (e.g. "stock-analyst Q&A in a curt, factual tone").');
+      return;
+    }
+    setAskingHermes(true);
+    setSuggestionError(null);
+    setSuggestion(null);
+    setSuggestionRaw(null);
+    try {
+      const ds = datasets.find((d) => d.name === dataset);
+      const r = await fetch(`${API_URL}/api/v1/hermes/select-method`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          task_description: taskDescription,
+          base_model: baseModel,
+          dataset_name: dataset || undefined,
+          n_train_examples: ds ? ds.train_count : undefined,
+        }),
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({ detail: `HTTP ${r.status}` }));
+        throw new Error(j.detail || `HTTP ${r.status}`);
+      }
+      const data = (await r.json()) as {
+        parsed: HermesMethodSuggestion | null;
+        raw: string;
+      };
+      setSuggestion(data.parsed);
+      setSuggestionRaw(data.raw);
+    } catch (e: unknown) {
+      setSuggestionError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAskingHermes(false);
+    }
+  }
+
+  function applySuggestion() {
+    if (!suggestion) return;
+    if (suggestion.method) setMethod(suggestion.method);
+    if (suggestion.num_layers) setNumLayers(suggestion.num_layers);
+    if (suggestion.learning_rate) setLearningRate(suggestion.learning_rate);
+    if (suggestion.iters) setIters(suggestion.iters);
+  }
 
   useEffect(() => {
     Promise.all([api.listDatasets(), api.listModels()])
@@ -72,6 +134,87 @@ export default function NewExperiment() {
           both running.
         </p>
       </div>
+
+      {/* Phase N.1 — Ask Hermes to recommend a method + hyperparams */}
+      <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 space-y-3">
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-sm font-medium text-zinc-200">
+            💡 Ask Hermes for a method recommendation
+          </h2>
+          {suggestion && (
+            <button
+              type="button"
+              onClick={applySuggestion}
+              className="rounded border border-emerald-700 bg-emerald-900/40 px-2.5 py-1 text-xs text-emerald-200 hover:bg-emerald-800/50"
+            >
+              Apply to form ↓
+            </button>
+          )}
+        </div>
+        <p className="text-xs text-zinc-500">
+          Describe the task in plain English. Hermes picks LoRA / DoRA / full SFT
+          and proposes baseline hyperparams using the
+          <code className="ml-1 rounded bg-zinc-800 px-1 py-0.5 font-mono text-[10px] text-zinc-300">
+            select_method_for_task
+          </code>{' '}
+          skill.
+        </p>
+        <textarea
+          value={taskDescription}
+          onChange={(e) => setTaskDescription(e.target.value)}
+          rows={2}
+          placeholder="e.g. Stock-analyst Q&A in a curt, factual tone. Sub-3B base model. ~20 examples."
+          className="w-full resize-none rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-emerald-600 focus:outline-none"
+        />
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={askHermes}
+            disabled={askingHermes || !taskDescription.trim()}
+            className="rounded-md border border-zinc-700 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {askingHermes ? 'Asking…' : 'Ask Hermes'}
+          </button>
+          {suggestionError && (
+            <span className="text-xs text-rose-400">{suggestionError}</span>
+          )}
+        </div>
+        {(suggestion || suggestionRaw) && (
+          <div className="rounded-md bg-zinc-950 px-3 py-2 text-xs text-zinc-300">
+            {suggestion ? (
+              <>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono">
+                  {suggestion.method && (
+                    <Row label="method" value={suggestion.method} />
+                  )}
+                  {suggestion.num_layers != null && (
+                    <Row label="num_layers" value={String(suggestion.num_layers)} />
+                  )}
+                  {suggestion.learning_rate != null && (
+                    <Row
+                      label="learning_rate"
+                      value={suggestion.learning_rate.toExponential(2)}
+                    />
+                  )}
+                  {suggestion.batch_size != null && (
+                    <Row label="batch_size" value={String(suggestion.batch_size)} />
+                  )}
+                  {suggestion.iters != null && (
+                    <Row label="iters" value={String(suggestion.iters)} />
+                  )}
+                </div>
+                {suggestion.reasoning && (
+                  <p className="mt-2 italic text-zinc-400">{suggestion.reasoning}</p>
+                )}
+              </>
+            ) : (
+              <pre className="whitespace-pre-wrap font-mono text-[11px] text-zinc-400">
+                {suggestionRaw}
+              </pre>
+            )}
+          </div>
+        )}
+      </section>
 
       <form onSubmit={onSubmit} className="space-y-5">
         <Field label="Experiment name">
@@ -174,6 +317,15 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       </span>
       {children}
     </label>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <>
+      <span className="text-zinc-500">{label}</span>
+      <span className="text-zinc-100">{value}</span>
+    </>
   );
 }
 

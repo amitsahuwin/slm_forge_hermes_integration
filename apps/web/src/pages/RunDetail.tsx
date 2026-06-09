@@ -3,7 +3,17 @@ import { useParams } from 'react-router-dom';
 import LiveLossChart from '../components/ratchet/LiveLossChart';
 import LogPane from '../components/LogPane';
 import { useRunMetrics } from '../hooks/useRunMetrics';
-import { type Run, type RunStatus, api, exportsApi } from '../lib/api';
+import { API_URL, type Run, type RunStatus, api, exportsApi } from '../lib/api';
+
+type HermesDiagnosis = {
+  batch_size?: number;
+  max_seq_length?: number;
+  num_layers?: number;
+  grad_checkpoint?: boolean;
+  learning_rate?: number;
+  reasoning?: string;
+  expected_outcome?: string;
+};
 
 const STATUS_STYLES: Record<RunStatus, string> = {
   queued: 'text-zinc-400',
@@ -19,6 +29,39 @@ export default function RunDetail() {
   const [run, setRun] = useState<Run | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { metrics, status, error: streamError } = useRunMetrics(runId);
+
+  // Phase N.1 — Diagnose-with-Hermes state
+  const [diagnosing, setDiagnosing] = useState(false);
+  const [diagnosis, setDiagnosis] = useState<HermesDiagnosis | null>(null);
+  const [diagnosisRaw, setDiagnosisRaw] = useState<string | null>(null);
+  const [diagnosisError, setDiagnosisError] = useState<string | null>(null);
+
+  async function diagnoseWithHermes() {
+    if (!runId) return;
+    setDiagnosing(true);
+    setDiagnosisError(null);
+    setDiagnosis(null);
+    setDiagnosisRaw(null);
+    try {
+      const r = await fetch(`${API_URL}/api/v1/hermes/diagnose-run/${runId}`, {
+        method: 'POST',
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({ detail: `HTTP ${r.status}` }));
+        throw new Error(j.detail || `HTTP ${r.status}`);
+      }
+      const data = (await r.json()) as {
+        parsed: HermesDiagnosis | null;
+        raw: string;
+      };
+      setDiagnosis(data.parsed);
+      setDiagnosisRaw(data.raw);
+    } catch (e: unknown) {
+      setDiagnosisError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDiagnosing(false);
+    }
+  }
 
   useEffect(() => {
     if (runId === undefined) return;
@@ -77,8 +120,68 @@ export default function RunDetail() {
 
       {run.error_message && (
         <div className="rounded-md bg-rose-950/40 px-3 py-2 font-mono text-xs text-rose-300">
-          {run.error_message}
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1 whitespace-pre-wrap">{run.error_message}</div>
+            {run.status === 'failed' && (
+              <button
+                type="button"
+                onClick={diagnoseWithHermes}
+                disabled={diagnosing}
+                className="shrink-0 rounded border border-rose-700/60 bg-rose-900/40 px-2 py-1 font-sans text-xs text-rose-100 hover:bg-rose-800/50 disabled:opacity-50"
+              >
+                {diagnosing ? 'Asking Hermes…' : '🔬 Diagnose with Hermes'}
+              </button>
+            )}
+          </div>
+          {diagnosisError && (
+            <div className="mt-2 text-amber-300">⚠ {diagnosisError}</div>
+          )}
         </div>
+      )}
+
+      {(diagnosis || diagnosisRaw) && (
+        <section className="rounded-lg border border-amber-700/50 bg-amber-950/20 p-4 space-y-2">
+          <h3 className="text-xs font-medium uppercase tracking-wider text-amber-300">
+            🔬 Hermes diagnosis
+          </h3>
+          {diagnosis ? (
+            <>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-xs">
+                {diagnosis.batch_size != null && (
+                  <DiagRow label="batch_size" value={String(diagnosis.batch_size)} />
+                )}
+                {diagnosis.max_seq_length != null && (
+                  <DiagRow label="max_seq_length" value={String(diagnosis.max_seq_length)} />
+                )}
+                {diagnosis.num_layers != null && (
+                  <DiagRow label="num_layers" value={String(diagnosis.num_layers)} />
+                )}
+                {diagnosis.grad_checkpoint != null && (
+                  <DiagRow label="grad_checkpoint" value={String(diagnosis.grad_checkpoint)} />
+                )}
+                {diagnosis.learning_rate != null && (
+                  <DiagRow
+                    label="learning_rate"
+                    value={diagnosis.learning_rate.toExponential(2)}
+                  />
+                )}
+              </div>
+              {diagnosis.reasoning && (
+                <p className="text-xs italic text-zinc-300">{diagnosis.reasoning}</p>
+              )}
+              {diagnosis.expected_outcome && (
+                <p className="text-xs text-zinc-400">
+                  <span className="font-medium text-zinc-300">Expected:</span>{' '}
+                  {diagnosis.expected_outcome}
+                </p>
+              )}
+            </>
+          ) : (
+            <pre className="whitespace-pre-wrap font-mono text-[11px] text-zinc-300">
+              {diagnosisRaw}
+            </pre>
+          )}
+        </section>
       )}
 
       <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -139,6 +242,15 @@ function Row({ label, value }: { label: string; value: string }) {
     <>
       <dt className="text-zinc-500">{label}</dt>
       <dd className="truncate text-zinc-300">{value}</dd>
+    </>
+  );
+}
+
+function DiagRow({ label, value }: { label: string; value: string }) {
+  return (
+    <>
+      <span className="text-zinc-500">{label}</span>
+      <span className="text-zinc-100">{value}</span>
     </>
   );
 }

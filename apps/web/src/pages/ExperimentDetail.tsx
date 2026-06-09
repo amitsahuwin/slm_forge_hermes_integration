@@ -1,15 +1,23 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import CanaryDriftChart from '../components/ratchet/CanaryDriftChart';
 import HyperparamHeatmap from '../components/ratchet/HyperparamHeatmap';
 import IterationTable from '../components/ratchet/IterationTable';
 import RatchetTimeline from '../components/ratchet/RatchetTimeline';
 import {
+  API_URL,
   type Run,
   type SessionStatus,
   type TrainingSession as Experiment,
   api,
 } from '../lib/api';
+
+type HermesDriftAnalysis = {
+  learning_rate?: number;
+  num_layers?: number;
+  reasoning?: string;
+  expected_outcome?: string;
+};
 
 const STATUS_STYLES: Record<SessionStatus, string> = {
   queued: 'text-zinc-400',
@@ -25,6 +33,54 @@ export default function ExperimentDetail() {
   const [experiment, setExperiment] = useState<Experiment | null>(null);
   const [iterations, setIterations] = useState<Run[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  // Phase N.1 — Hermes analyze_canary_drift
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysis, setAnalysis] = useState<HermesDriftAnalysis | null>(null);
+  const [analysisRaw, setAnalysisRaw] = useState<string | null>(null);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+
+  // Compute max observed drift across iterations to enable/highlight the button.
+  const maxDrift = useMemo(() => {
+    const drifts = iterations
+      .map((it) =>
+        it.final_val_loss != null && it.canary_loss != null
+          ? Math.abs(it.canary_loss - it.final_val_loss)
+          : null,
+      )
+      .filter((v): v is number => v != null);
+    return drifts.length > 0 ? Math.max(...drifts) : null;
+  }, [iterations]);
+  const hasAnyCanary = maxDrift != null;
+  const exceedsThreshold =
+    hasAnyCanary && !!experiment && maxDrift > experiment.canary_drift_threshold;
+
+  async function analyzeDrift() {
+    if (sid === undefined) return;
+    setAnalyzing(true);
+    setAnalysisError(null);
+    setAnalysis(null);
+    setAnalysisRaw(null);
+    try {
+      const r = await fetch(`${API_URL}/api/v1/hermes/analyze-drift/${sid}`, {
+        method: 'POST',
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({ detail: `HTTP ${r.status}` }));
+        throw new Error(j.detail || `HTTP ${r.status}`);
+      }
+      const data = (await r.json()) as {
+        parsed: HermesDriftAnalysis | null;
+        raw: string;
+      };
+      setAnalysis(data.parsed);
+      setAnalysisRaw(data.raw);
+    } catch (e: unknown) {
+      setAnalysisError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAnalyzing(false);
+    }
+  }
 
   useEffect(() => {
     if (sid === undefined) return;
@@ -111,10 +167,86 @@ export default function ExperimentDetail() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <HyperparamHeatmap iterations={iterations} />
-        <CanaryDriftChart
-          iterations={iterations}
-          threshold={experiment.canary_drift_threshold}
-        />
+        <div className="space-y-3">
+          <CanaryDriftChart
+            iterations={iterations}
+            threshold={experiment.canary_drift_threshold}
+          />
+          {hasAnyCanary && (
+            <div className="flex items-center justify-between gap-3 rounded-md border border-zinc-800 bg-zinc-900/40 px-3 py-2 text-xs">
+              <div className="text-zinc-400">
+                Max observed drift:{' '}
+                <span
+                  className={`font-mono ${
+                    exceedsThreshold ? 'text-amber-300' : 'text-emerald-400'
+                  }`}
+                >
+                  {maxDrift!.toFixed(3)}
+                </span>{' '}
+                <span className="text-zinc-500">
+                  / threshold {experiment.canary_drift_threshold.toFixed(2)}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={analyzeDrift}
+                disabled={analyzing}
+                className={`rounded border px-2.5 py-1 text-xs hover:bg-zinc-800 disabled:opacity-50 ${
+                  exceedsThreshold
+                    ? 'border-amber-700 bg-amber-900/40 text-amber-100'
+                    : 'border-zinc-700 text-zinc-200'
+                }`}
+              >
+                {analyzing ? 'Analyzing…' : '🔬 Analyze drift'}
+              </button>
+            </div>
+          )}
+          {analysisError && (
+            <div className="rounded-md bg-rose-950/40 px-3 py-2 text-xs text-rose-300">
+              {analysisError}
+            </div>
+          )}
+          {(analysis || analysisRaw) && (
+            <div className="rounded-md border border-amber-700/50 bg-amber-950/20 p-3 text-xs space-y-2">
+              <h4 className="font-medium uppercase tracking-wider text-amber-300">
+                🔬 Hermes drift analysis
+              </h4>
+              {analysis ? (
+                <>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono">
+                    {analysis.learning_rate != null && (
+                      <>
+                        <span className="text-zinc-500">learning_rate</span>
+                        <span className="text-zinc-100">
+                          {analysis.learning_rate.toExponential(2)}
+                        </span>
+                      </>
+                    )}
+                    {analysis.num_layers != null && (
+                      <>
+                        <span className="text-zinc-500">num_layers</span>
+                        <span className="text-zinc-100">{analysis.num_layers}</span>
+                      </>
+                    )}
+                  </div>
+                  {analysis.reasoning && (
+                    <p className="italic text-zinc-300">{analysis.reasoning}</p>
+                  )}
+                  {analysis.expected_outcome && (
+                    <p className="text-zinc-400">
+                      <span className="font-medium text-zinc-300">Expected:</span>{' '}
+                      {analysis.expected_outcome}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <pre className="whitespace-pre-wrap font-mono text-[11px] text-zinc-300">
+                  {analysisRaw}
+                </pre>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       <section className="space-y-3">

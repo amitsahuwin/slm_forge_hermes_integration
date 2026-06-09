@@ -7,6 +7,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import ChatTemplates from '../components/ChatTemplates';
 import { API_URL } from '../lib/api';
 
 // ─── Types ────────────────────────────────────────────────────────
@@ -63,6 +64,7 @@ export default function Chat() {
   const [activeId, setActiveId] = useState<number | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const [streaming, setStreaming] = useState(false);
   const [health, setHealth] = useState<ChatHealth | null>(null);
   const [streamError, setStreamError] = useState<StreamErrorBanner | null>(null);
@@ -374,6 +376,7 @@ export default function Chat() {
         </div>
         <div className="border-t border-zinc-800 p-3">
           <textarea
+            ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKeyDown}
@@ -389,13 +392,20 @@ export default function Chat() {
         </div>
       </section>
 
-      {/* Right: context panel */}
-      <aside className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-xs text-zinc-500">
-        <h3 className="text-sm font-medium text-zinc-300">Context</h3>
-        <p className="mt-2">
-          Try: <em>"list completed runs"</em>, <em>"metrics for run 5"</em>,
-          <em>"start an experiment on my-data"</em>.
-        </p>
+      {/* Right: templates panel */}
+      <aside className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 overflow-y-auto">
+        <ChatTemplates
+          onPick={(text) => {
+            setInput(text);
+            // Give React a tick to commit the value before focusing + caret to end.
+            window.setTimeout(() => {
+              const el = inputRef.current;
+              if (!el) return;
+              el.focus();
+              el.setSelectionRange(text.length, text.length);
+            }, 0);
+          }}
+        />
       </aside>
     </div>
   );

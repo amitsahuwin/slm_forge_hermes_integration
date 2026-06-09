@@ -255,13 +255,61 @@ def _parse_paragraphs(text: str) -> list[dict]:
 _CHUNK_THRESHOLD = 4000
 _CHUNK_SIZE = 2000
 
-_OLLAMA_SYSTEM = (
+_BASE_OLLAMA_SYSTEM = (
     "Convert the following text into a JSONL dataset of chat-style records. "
     "Each record must be `{\"messages\": [{\"role\":\"user\",\"content\":\"...\"},"
     "{\"role\":\"assistant\",\"content\":\"...\"}]}`. "
     "Generate one record per logical conversational pair. "
     "Output JSONL only, no prose."
 )
+
+
+def _load_skill(name: str) -> str | None:
+    """Best-effort load of a Hermes skill markdown by stem.
+
+    Searches the project ``.hermes-skills/`` directory first (mounted into
+    Docker), then the user's ``~/.hermes/skills/`` directory. Returns ``None``
+    silently if the skill isn't found — callers should treat that as "skill
+    not installed, use base prompt only".
+    """
+    from pathlib import Path
+
+    candidates = [
+        Path("/app/.hermes-skills") / f"{name}.md",
+        Path(__file__).resolve().parents[2] / ".hermes-skills" / f"{name}.md",
+        Path.home() / ".hermes" / "skills" / f"{name}.md",
+    ]
+    for p in candidates:
+        if p.exists():
+            try:
+                return p.read_text(encoding="utf-8")
+            except OSError:
+                continue
+    return None
+
+
+def _build_ollama_system() -> str:
+    """Compose the system prompt for ``convert_via_ollama``.
+
+    Appends the ``ingest_dataset`` Hermes skill (if installed) as
+    supplementary schema-mapping context, so the model is more likely to
+    produce records that match what SLM-Forge expects downstream. Falls
+    back to the base prompt when the skill isn't present.
+    """
+    skill = _load_skill("ingest_dataset")
+    if not skill:
+        return _BASE_OLLAMA_SYSTEM
+    return (
+        _BASE_OLLAMA_SYSTEM
+        + "\n\n--- Additional guidance from the `ingest_dataset` skill ---\n"
+        + skill.strip()
+        + "\n\nApply the schema-mapping heuristics above when picking which "
+        "field becomes the user message and which becomes the assistant reply."
+    )
+
+
+# Computed at import — cheap I/O, single read.
+_OLLAMA_SYSTEM = _build_ollama_system()
 
 
 def convert_via_ollama(

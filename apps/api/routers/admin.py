@@ -5,10 +5,11 @@ import shutil
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
+from apps.api.middleware.auth import requires
 from apps.api.models.export import Export
 from apps.api.models.run import Run
 from apps.api.models.session import SessionStatus, TrainingSession
@@ -109,7 +110,8 @@ def cleanup_plan(db: SessionDep) -> CleanupPlan:
 
 
 @router.post("/cleanup/execute", response_model=CleanupResponse)
-def cleanup_execute(db: SessionDep) -> CleanupResponse:
+@requires("update", "setting")
+def cleanup_execute(request: Request, db: SessionDep) -> CleanupResponse:
     """Delete on-disk artifacts for rejected runs from completed sessions."""
     rejected = _find_rejected_runs(db)
     deleted = []

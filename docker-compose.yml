@@ -26,6 +26,13 @@ services:
       # has to reach it via host.docker.internal — `localhost` here would mean
       # the container itself.
       - OLLAMA_URL=http://host.docker.internal:11434
+      # Phase M — auth/policy stack. Default OFF so local dev is unchanged.
+      # Flip SLM_FORGE_AUTH_ENABLED to "true" (and bring up the `auth`
+      # profile services) to enforce JWT + OPA decisions.
+      - SLM_FORGE_AUTH_ENABLED=${SLM_FORGE_AUTH_ENABLED:-false}
+      - KEYCLOAK_URL=${KEYCLOAK_URL:-http://keycloak:8080}
+      - KEYCLOAK_REALM=${KEYCLOAK_REALM:-slm-forge}
+      - OPA_URL=${OPA_URL:-http://opa:8181}
     # `host-gateway` makes host.docker.internal resolve even on Linux hosts
     # (Docker Desktop on Mac maps it automatically, but this is harmless +
     # portable).
@@ -52,6 +59,45 @@ services:
       - VITE_API_URL=http://localhost:8000
     depends_on:
       - api
+    restart: unless-stopped
+
+  # Phase M — Keycloak identity provider. Opt-in via the `auth` profile so
+  # default `docker compose up` skips it. Start with:
+  #   docker compose --profile auth up -d keycloak opa
+  # Then set SLM_FORGE_AUTH_ENABLED=true on the `api` service to actually
+  # enforce. See docs/AUTH.md for the full operator workflow.
+  keycloak:
+    image: quay.io/keycloak/keycloak:25.0
+    container_name: slm-forge-keycloak
+    profiles: ["auth"]
+    command: ["start-dev", "--import-realm"]
+    environment:
+      - KEYCLOAK_ADMIN=admin
+      - KEYCLOAK_ADMIN_PASSWORD=admin
+      - KC_HEALTH_ENABLED=true
+      - KC_METRICS_ENABLED=true
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import:ro
+    restart: unless-stopped
+
+  # Phase M — Open Policy Agent for authorization decisions. Hot-reloads
+  # the rego files via --watch so policy edits land without a restart.
+  opa:
+    image: openpolicyagent/opa:1.0.0-rootless
+    container_name: slm-forge-opa
+    profiles: ["auth"]
+    command:
+      - "run"
+      - "--server"
+      - "--addr=0.0.0.0:8181"
+      - "--watch"
+      - "/policies"
+    ports:
+      - "8181:8181"
+    volumes:
+      - ./policies:/policies:ro
     restart: unless-stopped
 
   # MCP server — exposes SLM-Forge to Claude Desktop / Cursor / Claude Code.

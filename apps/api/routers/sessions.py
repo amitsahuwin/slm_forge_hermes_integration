@@ -4,10 +4,11 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlmodel import Session, desc, select
 
+from apps.api.middleware.auth import requires
 from apps.api.models.run import Run, RunMethod
 from apps.api.models.session import SessionStatus, TargetMetric, TrainingSession
 from apps.api.services.db import get_session
@@ -44,7 +45,10 @@ SessionDep = Annotated[Session, Depends(get_session)]
 
 
 @router.post("", response_model=TrainingSession)
-def create_session(payload: SessionCreate, db: SessionDep) -> TrainingSession:
+@requires("create", "experiment")
+def create_session(
+    payload: SessionCreate, request: Request, db: SessionDep
+) -> TrainingSession:
     s = TrainingSession(**payload.model_dump())
     db.add(s)
     db.commit()

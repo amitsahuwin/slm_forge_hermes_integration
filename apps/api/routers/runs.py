@@ -7,11 +7,12 @@ from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlmodel import Session, desc, select
 from sse_starlette.sse import EventSourceResponse
 
+from apps.api.middleware.auth import requires
 from apps.api.models.metric import Metric
 from apps.api.models.run import Run, RunMethod, RunStatus
 from apps.api.services.db import get_session
@@ -173,7 +174,8 @@ async def stream_run(run_id: int) -> EventSourceResponse:
 
 
 @router.delete("/{run_id}", status_code=204)
-def delete_run(run_id: int, session: SessionDep) -> None:
+@requires("delete", "run")
+def delete_run(run_id: int, request: Request, session: SessionDep) -> None:
     """Delete a run and its metrics. Blocks if the run has exports."""
     from apps.api.models.export import Export
     import shutil

@@ -9,12 +9,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlmodel import Session, desc, select
 from sse_starlette.sse import EventSourceResponse
 
+from apps.api.middleware.auth import requires
 from apps.api.models.export import Export, ExportStatus, QuantLevel
 from apps.api.models.run import Run
 from apps.api.services.db import get_session
@@ -225,7 +226,8 @@ def download_export(xid: int, variant: str, db: SessionDep) -> FileResponse:
 
 
 @router.delete("/{xid}", status_code=204)
-def delete_export(xid: int, db: SessionDep) -> None:
+@requires("delete", "export")
+def delete_export(xid: int, request: Request, db: SessionDep) -> None:
     """Delete an export and its on-disk artifacts."""
     import shutil
     from pathlib import Path

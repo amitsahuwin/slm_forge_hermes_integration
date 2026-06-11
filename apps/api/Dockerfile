@@ -11,7 +11,7 @@ COPY pyproject.toml uv.lock /app/
 # Install dependencies (no trainer extra — MLX is macOS-only; trainer runs on host)
 # `chat` extra brings in langgraph + langchain-ollama so /api/v1/chat works.
 # `research` extra brings in ddgs so R&D web grounding works out of the box.
-RUN uv sync --extra ingest --extra chat --extra research --no-install-project
+RUN uv sync --extra ingest --extra chat --extra research --extra auth --no-install-project
 
 # Copy source
 COPY apps /app/apps

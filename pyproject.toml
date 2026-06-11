@@ -71,6 +71,13 @@ mcp = [
     # Claude Desktop / Cursor / Claude Code CLI as MCP tools.
     "mcp>=1.0",
 ]
+auth = [
+    # Phase M — JWT verification against Keycloak's JWKS. python-jose is the
+    # cleaner of the two options (PyJWT + cryptography also works) because
+    # its `jwt.decode` accepts the JWK dict directly without a separate
+    # key-construction step.
+    "python-jose[cryptography]>=3.3",
+]
 
 [tool.ruff]
 line-length = 100

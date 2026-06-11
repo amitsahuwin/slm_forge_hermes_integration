@@ -11,11 +11,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from apps.api.middleware.auth import AuthMiddleware
 from apps.api.middleware.metrics import PrometheusMiddleware
 from apps.api.middleware.request_context import RequestContextMiddleware
 from apps.api.routers import (
     admin,
     agents,
+    auth,
     chat,
     datasets,
     datasets_detail,
@@ -67,7 +69,12 @@ app.add_middleware(
 # Observability — order matters: request-context binds IDs *before* the
 # metrics middleware records its timing, so future correlation labels (if
 # we ever want to count by user) work without re-plumbing.
+# Phase M: AuthMiddleware runs AFTER RequestContextMiddleware so the user
+# context is available for downstream log correlation. (Starlette executes
+# middleware in reverse-of-add order on the request path, so add the auth
+# layer AFTER request-context here to keep request-context outermost.)
 app.add_middleware(PrometheusMiddleware)
+app.add_middleware(AuthMiddleware)
 app.add_middleware(RequestContextMiddleware)
 
 app.include_router(runs.router, prefix="/api/v1/runs", tags=["runs"])
@@ -94,6 +101,9 @@ app.include_router(research.router, prefix="/api/v1/research", tags=["research"]
 app.include_router(agents.router, prefix="/api/v1/agents", tags=["agents"])
 # Phase L — Prometheus metrics scrape endpoint (root /metrics, no prefix).
 app.include_router(metrics.router, tags=["observability"])
+# Phase M — auth (Keycloak + OPA). The endpoints work in both enforcement
+# modes; only /auth/users requires admin role + Keycloak admin creds.
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 
 
 @app.get("/")

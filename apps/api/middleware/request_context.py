@@ -35,12 +35,24 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         incoming = request.headers.get("x-request-id", "").strip()
         request_id = incoming or uuid4().hex
 
-        # Future: pull user_id from `request.state.user` once auth is wired.
+        # Phase M: the auth middleware (which runs INSIDE this one) will
+        # populate request.state.user once it has resolved a JWT (or the
+        # synthetic admin in disabled mode). We can't read that here
+        # because middleware order means AuthMiddleware hasn't dispatched
+        # yet — so we bind the default first, then patch the binding
+        # *after* call_next has set state.user. The log-context helper
+        # accepts a re-bind so subsequent log lines pick up the real user.
         user_id = _DEFAULT_USER
 
         tokens = bind(request_id=request_id, user_id=user_id)
         try:
             response: Response = await call_next(request)
+            # Best-effort re-bind for downstream log emitters running after
+            # this point (response middleware, exception handlers).
+            user = getattr(request.state, "user", None)
+            if user is not None and getattr(user, "id", None):
+                # Re-binding overrides the contextvar in this task scope.
+                bind(user_id=user.id)
         finally:
             reset(tokens)
 

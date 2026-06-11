@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom';
+import UserBadge from './UserBadge';
 
 const link =
   'rounded-md px-3 py-1.5 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800/70 hover:text-zinc-100';
@@ -55,6 +56,9 @@ export default function Nav() {
           >
             + Experiment
           </NavLink>
+          <div className="ml-2 border-l border-zinc-800 pl-3">
+            <UserBadge />
+          </div>
         </div>
       </div>
     </header>

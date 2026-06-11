@@ -1,4 +1,48 @@
+import { auth } from '../auth/keycloak';
+import { toast } from './toast';
+
 export const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
+
+/**
+ * Phase M.5 — auth-aware fetch wrapper.
+ *
+ * - Injects `Authorization: Bearer <token>` when an access token is available.
+ * - 401 → trigger login redirect (token is expired or missing).
+ * - 403 → surface the API's `detail` as a toast.
+ *
+ * All app fetches should go through this. The legacy helpers (`jget` etc.)
+ * already do; ad-hoc `fetch()` calls elsewhere have been migrated to
+ * `authFetch` in the same patch.
+ */
+export async function authFetch(input: string, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers ?? {});
+  const token = auth.getAccessToken();
+  if (token && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+  const res = await fetch(input, { ...init, headers });
+
+  if (res.status === 401) {
+    // Token expired or missing. Only redirect when auth is actually enabled;
+    // in disabled mode a 401 means a real backend bug and shouldn't loop.
+    if (!auth.disabled) {
+      // Fire-and-forget; the redirect will navigate away anyway.
+      void auth.login(window.location.pathname + window.location.search);
+    }
+    return res;
+  }
+  if (res.status === 403) {
+    let detail = 'Forbidden';
+    try {
+      const j = await res.clone().json();
+      if (j && typeof j.detail === 'string') detail = j.detail;
+    } catch {
+      /* ignore */
+    }
+    toast.error(detail);
+  }
+  return res;
+}
 
 export type RunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 export type RunMethod = 'lora' | 'dora' | 'full';
@@ -86,13 +130,13 @@ export type BaseModelInfo = {
 };
 
 async function jget<T>(path: string): Promise<T> {
-  const r = await fetch(`${API_URL}${path}`);
+  const r = await authFetch(`${API_URL}${path}`);
   if (!r.ok) throw new Error(`GET ${path} → HTTP ${r.status}`);
   return (await r.json()) as T;
 }
 
 async function jpost<T>(path: string, body: unknown): Promise<T> {
-  const r = await fetch(`${API_URL}${path}`, {
+  const r = await authFetch(`${API_URL}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -142,12 +186,12 @@ export const ingest = {
   async previewUpload(file: File): Promise<IngestPreview> {
     const fd = new FormData();
     fd.append('file', file);
-    const r = await fetch(`${API_URL}/api/v1/ingest/upload/preview`, { method: 'POST', body: fd });
+    const r = await authFetch(`${API_URL}/api/v1/ingest/upload/preview`, { method: 'POST', body: fd });
     if (!r.ok) throw new Error(`Upload failed: HTTP ${r.status} — ${await r.text()}`);
     return r.json();
   },
   previewUrl: (u: string) =>
-    fetch(`${API_URL}/api/v1/ingest/url/preview`, {
+    authFetch(`${API_URL}/api/v1/ingest/url/preview`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url: u }),
@@ -156,7 +200,7 @@ export const ingest = {
       return r.json() as Promise<IngestPreview>;
     }),
   previewScrape: (u: string) =>
-    fetch(`${API_URL}/api/v1/ingest/scrape/preview`, {
+    authFetch(`${API_URL}/api/v1/ingest/scrape/preview`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url: u }),
@@ -165,7 +209,7 @@ export const ingest = {
       return r.json() as Promise<IngestPreview>;
     }),
   previewS3: (args: { s3_path: string; access_key?: string; secret_key?: string; region?: string }) =>
-    fetch(`${API_URL}/api/v1/ingest/s3/preview`, {
+    authFetch(`${API_URL}/api/v1/ingest/s3/preview`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(args),
@@ -184,7 +228,7 @@ export const ingest = {
     canary_fraction?: number;
     overwrite?: boolean;
   }) =>
-    fetch(`${API_URL}/api/v1/ingest/finalize`, {
+    authFetch(`${API_URL}/api/v1/ingest/finalize`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(args),
@@ -258,7 +302,7 @@ export type CleanupResponse = {
 };
 
 async function jdelete(path: string): Promise<void> {
-  const r = await fetch(`${API_URL}${path}`, { method: 'DELETE' });
+  const r = await authFetch(`${API_URL}${path}`, { method: 'DELETE' });
   if (!r.ok && r.status !== 204) {
     let detail = '';
     try { detail = (await r.json()).detail ?? ''; } catch { /* ignore */ }

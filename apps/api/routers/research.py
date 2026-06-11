@@ -26,7 +26,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
+
+from apps.api.middleware.auth import requires
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
@@ -415,7 +417,8 @@ def get_report(filename: str) -> ReportContent:
 
 
 @router.delete("/reports/{filename}", status_code=204)
-def delete_report(filename: str) -> None:
+@requires("delete", "research")
+def delete_report(filename: str, request: Request) -> None:
     if not _FILENAME_RE.match(filename):
         raise HTTPException(400, "Invalid filename")
     p = _REPORTS_DIR / filename

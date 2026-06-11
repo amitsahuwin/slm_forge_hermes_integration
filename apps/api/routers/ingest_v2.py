@@ -16,8 +16,10 @@ from pathlib import Path
 from typing import Literal
 
 import httpx
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel
+
+from apps.api.middleware.auth import requires
 
 from packages.dataset_ingest.converter import (
     auto_split,
@@ -165,7 +167,9 @@ def _convert(
 
 
 @router.post("/file", response_model=IngestFileResponse)
+@requires("create", "dataset")
 async def ingest_file(
+    request: Request,
     name: str = Form(...),
     file: UploadFile = File(...),
     description: str | None = Form(None),

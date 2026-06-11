@@ -25,9 +25,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
+
+from apps.api.middleware.auth import requires
 
 from packages.dataset_synth.engine import detect_format, synthesize
 from packages.ratchet.hermes_bridge import HERMES_MODEL, OLLAMA_URL
@@ -378,7 +380,8 @@ async def _run_synth_job(job: _Job) -> None:
 
 
 @router.post("/start", response_model=SynthStartResponse)
-async def start_synth(req: SynthRequest) -> SynthStartResponse:
+@requires("create", "dataset")
+async def start_synth(req: SynthRequest, request: Request) -> SynthStartResponse:
     src_dir = _dataset_dir(req.source_dataset)
     if not src_dir.exists() or not src_dir.is_dir():
         raise HTTPException(404, f"Source dataset {req.source_dataset!r} not found")

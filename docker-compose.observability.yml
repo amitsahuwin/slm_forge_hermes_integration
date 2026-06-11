@@ -1,0 +1,62 @@
+# Observability overlay — start alongside the main stack with:
+#   docker compose -f docker-compose.yml -f docker-compose.observability.yml up
+#
+# Loki ingests logs, Promtail tails ./runs and the API container's stdout,
+# Prometheus scrapes the API /metrics endpoint, Grafana ties it together.
+#
+# All four services attach to the implicit default network of the parent
+# compose file so they can reach `slm-forge-api:8000` by service-name DNS.
+services:
+  loki:
+    image: grafana/loki:3.0.0
+    container_name: slm-forge-loki
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:3.0.0
+    container_name: slm-forge-promtail
+    volumes:
+      # File-based tail of the worker logs written by setup_worker_logging.
+      - ./runs:/var/runs:ro
+      # Scrape the API container's stdout via the docker socket.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./observability/promtail-config.yml:/etc/promtail/config.yml:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.55.0
+    container_name: slm-forge-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: slm-forge-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      # Skip the "change password" prompt on first login — this is a local
+      # dev stack, not production.
+      - GF_AUTH_DISABLE_LOGIN_FORM=false
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+      - loki
+    restart: unless-stopped

@@ -18,6 +18,11 @@ dependencies = [
     "sse-starlette>=2.1",
     "pyyaml>=6.0",
     "python-dotenv>=1.0",
+    # Phase L — observability. python-json-logger is kept as a runtime
+    # safety net even though packages/_logging.py uses a stdlib JsonFormatter,
+    # so downstream consumers can swap formatters without code changes.
+    "python-json-logger>=2.0",
+    "prometheus-client>=0.20",
 ]
 
 [dependency-groups]
@@ -60,6 +65,11 @@ research = [
     # Free web grounding for the R&D engine. SerpAPI / Tavily can be used
     # without installing this extra by setting SERPAPI_KEY / TAVILY_API_KEY.
     "ddgs>=8.0",
+]
+mcp = [
+    # Model Context Protocol server. Exposes SLM-Forge capabilities to
+    # Claude Desktop / Cursor / Claude Code CLI as MCP tools.
+    "mcp>=1.0",
 ]
 
 [tool.ruff]

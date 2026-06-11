@@ -1,0 +1,17 @@
+# Prometheus scrape config — single target, the SLM-Forge API.
+# 15-second cadence is plenty for a local dev dashboard.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: slm-forge-local
+
+scrape_configs:
+  - job_name: slm-forge-api
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - slm-forge-api:8000
+        labels:
+          service: api

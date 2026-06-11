@@ -53,3 +53,20 @@ services:
     depends_on:
       - api
     restart: unless-stopped
+
+  # MCP server — exposes SLM-Forge to Claude Desktop / Cursor / Claude Code.
+  # Opt-in via the `mcp` profile so default `docker compose up` skips it.
+  # Start with: docker compose --profile mcp up -d
+  mcp:
+    build:
+      context: .
+      dockerfile: mcp_server/Dockerfile
+    container_name: slm-forge-mcp
+    profiles: ["mcp"]
+    ports:
+      - "8765:8765"
+    environment:
+      - SLM_FORGE_API_URL=http://slm-forge-api:8000
+    depends_on:
+      - api
+    restart: unless-stopped

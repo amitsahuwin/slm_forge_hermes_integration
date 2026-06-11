@@ -15,6 +15,8 @@ try:
 except ImportError:
     pass
 
+from packages._log_context import bind as _bind_log_ctx
+from packages._log_context import reset as _reset_log_ctx
 from packages._logging import setup_worker_logging
 from packages.exporter.pipeline import _check_tools, run_export_job
 from packages.ratchet.heartbeat import start_heartbeat
@@ -79,7 +81,12 @@ def main() -> int:
                 time.sleep(POLL_INTERVAL)
                 continue
             log.info("Picked up export #%s (run=%s)", export["id"], export["run_id"])
-            run_export_job(export, api_url=API_URL)
+            # Bind run_id so per-export lines correlate back to the run.
+            _tokens = _bind_log_ctx(run_id=export["run_id"])
+            try:
+                run_export_job(export, api_url=API_URL)
+            finally:
+                _reset_log_ctx(_tokens)
         except KeyboardInterrupt:
             log.info("Stopping.")
             return 0

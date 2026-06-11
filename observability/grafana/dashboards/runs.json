@@ -1,0 +1,87 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": {"type": "loki", "uid": "Loki"},
+      "description": "Training loss extracted from trainer log lines via LogQL pattern.",
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0},
+      "id": 1,
+      "targets": [
+        {
+          "expr": "avg_over_time({service=\"trainer\"} |= \"Iter\" | regexp `train_loss=(?P<train_loss>[0-9.]+)` | unwrap train_loss [1m]) by (run_id)",
+          "legendFormat": "train_loss run={{run_id}}",
+          "refId": "A"
+        }
+      ],
+      "title": "train_loss (from trainer logs)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "Loki"},
+      "description": "Validation loss reported during eval steps.",
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8},
+      "id": 2,
+      "targets": [
+        {
+          "expr": "avg_over_time({service=\"trainer\"} |= \"val_loss\" | regexp `val_loss=(?P<val_loss>[0-9.]+)` | unwrap val_loss [1m]) by (run_id)",
+          "legendFormat": "val_loss run={{run_id}}",
+          "refId": "A"
+        }
+      ],
+      "title": "val_loss",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "Loki"},
+      "description": "Canary set loss — early-warning signal for catastrophic forgetting.",
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16},
+      "id": 3,
+      "targets": [
+        {
+          "expr": "avg_over_time({service=\"trainer\"} |= \"canary_loss\" | regexp `canary_loss=(?P<canary_loss>[0-9.]+)` | unwrap canary_loss [1m]) by (run_id)",
+          "legendFormat": "canary_loss run={{run_id}}",
+          "refId": "A"
+        }
+      ],
+      "title": "canary_loss",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["slm-forge", "training"],
+  "templating": {
+    "list": [
+      {
+        "current": {"selected": false, "text": "All", "value": "$__all"},
+        "datasource": {"type": "loki", "uid": "Loki"},
+        "definition": "label_values({service=\"trainer\"}, run_id)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Run",
+        "multi": false,
+        "name": "run_id",
+        "options": [],
+        "query": "label_values({service=\"trainer\"}, run_id)",
+        "refresh": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": {"from": "now-6h", "to": "now"},
+  "timepicker": {},
+  "timezone": "",
+  "title": "SLM-Forge Runs",
+  "uid": "slm-forge-runs",
+  "version": 1,
+  "weekStart": ""
+}

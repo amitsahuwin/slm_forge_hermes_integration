@@ -1,0 +1,100 @@
+# Promtail — ship logs to Loki.
+#
+# Two scrape configs:
+#   1. Plain-text rotating logs at /var/runs/_<worker>.log — the default
+#      when SLM_FORGE_LOG_FORMAT is unset / "text". A loose regex extracts
+#      a level so Grafana can colour-code; everything else stays in `msg`.
+#   2. JSON-formatted logs at /var/runs/_<worker>.log.json — when the same
+#      workers are started with SLM_FORGE_LOG_FORMAT=json. We parse the
+#      payload and promote a handful of correlation IDs to labels so they
+#      become filterable in Grafana.
+#
+# Heads up: don't promote `request_id` / `run_id` to labels — they're
+# high-cardinality and would blow up Loki's index. Keep them as parsed
+# fields and filter with `| json | run_id="42"` in LogQL instead.
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # ---- Plain-text worker logs --------------------------------------------
+  - job_name: worker_text
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: slm_forge_workers
+          format: text
+          __path__: /var/runs/_*.log
+    pipeline_stages:
+      # Skip empty lines so they don't show up as zero-content rows.
+      - drop:
+          expression: '^\s*$'
+      # Best-effort parse of the "HH:MM:SS  LEVEL  logger  message" format
+      # produced by packages/_logging.py:_LOG_FMT.
+      - regex:
+          expression: '^(?P<time>\d{2}:\d{2}:\d{2})\s+(?P<level>\w+)\s+(?P<logger>\S+)\s+(?P<msg>.*)$'
+      - labels:
+          level:
+      # Worker name lives in the filename — `_trainer.log` → service=trainer.
+      - match:
+          selector: '{job="slm_forge_workers"}'
+          stages:
+            - regex:
+                source: filename
+                expression: '_(?P<service>[a-z]+)\.log$'
+            - labels:
+                service:
+
+  # ---- JSON worker logs --------------------------------------------------
+  - job_name: worker_json
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: slm_forge_workers
+          format: json
+          __path__: /var/runs/_*.log.json
+    pipeline_stages:
+      - drop:
+          expression: '^\s*$'
+      - json:
+          expressions:
+            ts: ts
+            level: level
+            service: service
+            logger: logger
+            msg: msg
+            request_id: request_id
+            user_id: user_id
+            run_id: run_id
+            session_id: session_id
+            trace_id: trace_id
+      - timestamp:
+          source: ts
+          format: RFC3339Nano
+      # Only the low-cardinality fields become labels; the rest stay in
+      # the log line for ad-hoc filtering.
+      - labels:
+          level:
+          service:
+
+  # ---- API stdout via docker socket --------------------------------------
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 15s
+    relabel_configs:
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(slm-forge-.*)'
+        target_label: 'container'
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/slm-forge-(api|web)'
+        target_label: 'service'

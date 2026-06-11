@@ -17,6 +17,8 @@ import time
 
 import httpx
 
+from packages._log_context import bind as _bind_log_ctx
+from packages._log_context import reset as _reset_log_ctx
 from packages._logging import setup_worker_logging
 from packages.ratchet.heartbeat import start_heartbeat
 from packages.ratchet.hermes_bridge import healthcheck
@@ -82,7 +84,13 @@ def main() -> int:
             if session is None:
                 time.sleep(POLL_INTERVAL)
                 continue
-            run_session(session["id"], api)
+            # Bind session_id so every line in the autoresearch loop is
+            # tagged for cross-service correlation.
+            _tokens = _bind_log_ctx(session_id=session["id"])
+            try:
+                run_session(session["id"], api)
+            finally:
+                _reset_log_ctx(_tokens)
         except KeyboardInterrupt:
             log.info("Stopping (KeyboardInterrupt).")
             return 0

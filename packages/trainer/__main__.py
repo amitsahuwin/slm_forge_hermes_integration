@@ -18,6 +18,8 @@ import time
 
 import httpx
 
+from packages._log_context import bind as _bind_log_ctx
+from packages._log_context import reset as _reset_log_ctx
 from packages._logging import setup_worker_logging
 from packages.ratchet.heartbeat import start_heartbeat
 from packages.trainer.runner import run_training_job
@@ -72,7 +74,14 @@ def main() -> int:
 
             log.info("Picked up run #%s (dataset=%s, model=%s, method=%s)",
                      run["id"], run["dataset"], run["base_model"], run["method"])
-            run_training_job(run, api_url=API_URL)
+            # Bind run_id into log context so every line emitted by
+            # run_training_job (and anything it transitively logs) carries
+            # the correlation ID when JSON logging is on.
+            _tokens = _bind_log_ctx(run_id=run["id"])
+            try:
+                run_training_job(run, api_url=API_URL)
+            finally:
+                _reset_log_ctx(_tokens)
 
         except KeyboardInterrupt:
             log.info("Stopping (KeyboardInterrupt).")

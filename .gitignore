@@ -51,3 +51,6 @@ data/.ingest_staging/*
 
 # Phase 4: llama.cpp source clone (~150 MB; re-cloned by patch_llamacpp_fullclone.sh)
 scripts/llama_cpp_src/
+
+
+commit_message.md

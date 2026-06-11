@@ -271,6 +271,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
             request.state.user = _synthetic_admin(settings)
             return await call_next(request)
 
+        # CORS preflight: OPTIONS requests carry no Authorization header by
+        # design (the spec forbids it), so they'd always fail our bearer
+        # check. Skip the middleware entirely — CORSMiddleware downstream
+        # handles preflight correctly.
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
         # Public endpoints (health, docs, /auth/config bootstrap) skip JWT.
         if _is_public_path(request.url.path):
             request.state.user = _synthetic_admin(settings)

@@ -59,23 +59,39 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
 
 app = FastAPI(title="SLM-Forge API", version="0.6.0", lifespan=lifespan)
 
+# Middleware order is **load-bearing**.
+#
+# Starlette wraps middleware in REVERSE-of-add order: the LAST one added is
+# OUTERMOST on the request flow. So we add inner ones first and CORS last.
+#
+# Why CORS must be OUTERMOST:
+#   If AuthMiddleware returns 401/403/503 early (e.g. missing token, OPA
+#   denial, JWKS unreachable), the response must still carry
+#   `Access-Control-Allow-Origin`. Otherwise the browser swallows the
+#   response and the page sees an opaque "Failed to fetch" instead of a
+#   readable 401 with detail. CORSMiddleware only adds headers to responses
+#   that flow THROUGH it — so it must be the outermost layer.
+#
+# Why CORS also handles OPTIONS preflight first:
+#   Browsers send an OPTIONS preflight with no Authorization header before
+#   any request that uses Bearer tokens. If AuthMiddleware ran outer, it
+#   would 401 every preflight. With CORS outermost, CORS short-circuits
+#   preflight responses without consulting inner middleware.
+#
+# Order at runtime (request → response): CORS → Prometheus → RequestContext
+# → AuthMiddleware → routes → AuthMiddleware → RequestContext → Prometheus
+# → CORS.
+app.add_middleware(AuthMiddleware)
+app.add_middleware(RequestContextMiddleware)
+app.add_middleware(PrometheusMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID"],
 )
-# Observability — order matters: request-context binds IDs *before* the
-# metrics middleware records its timing, so future correlation labels (if
-# we ever want to count by user) work without re-plumbing.
-# Phase M: AuthMiddleware runs AFTER RequestContextMiddleware so the user
-# context is available for downstream log correlation. (Starlette executes
-# middleware in reverse-of-add order on the request path, so add the auth
-# layer AFTER request-context here to keep request-context outermost.)
-app.add_middleware(PrometheusMiddleware)
-app.add_middleware(AuthMiddleware)
-app.add_middleware(RequestContextMiddleware)
 
 app.include_router(runs.router, prefix="/api/v1/runs", tags=["runs"])
 app.include_router(sessions.router, prefix="/api/v1/sessions", tags=["sessions"])

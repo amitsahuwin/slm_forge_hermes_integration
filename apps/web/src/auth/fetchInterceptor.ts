@@ -13,6 +13,22 @@
  */
 import { auth } from './keycloak';
 
+// Lightweight toast bridge — the interceptor runs before any UI module so
+// we can't import the toast system directly without creating a circular
+// import. Instead we late-bind: the toast system calls `setForbiddenToastSink`
+// once it's mounted, and we route 403 detail strings there. If nothing is
+// bound yet, we fall back to console.warn.
+let forbiddenToastSink: (msg: string) => void = (msg) => {
+  // eslint-disable-next-line no-console
+  console.warn('[auth] 403:', msg);
+};
+export function setForbiddenToastSink(fn: (msg: string) => void): void {
+  forbiddenToastSink = fn;
+}
+function showForbiddenToast(msg: string): void {
+  forbiddenToastSink(msg);
+}
+
 // Same default the rest of the app uses. We can't import API_URL from
 // `lib/api.ts` because that module pulls in the toast system + other state;
 // we want the interceptor to be standalone so it loads before anything else.
@@ -47,19 +63,28 @@ export function installFetchInterceptor(): void {
 
     const res = await originalFetch(input, init);
 
-    // 401 from the API while auth is enabled → token expired / missing.
-    // Redirect to Keycloak to re-authenticate, preserving the current path.
-    if (
-      isApiCall &&
-      res.status === 401 &&
-      !auth.disabled &&
-      // Don't loop on /auth/* endpoints — those are part of the flow.
-      !url.includes('/api/v1/auth/')
-    ) {
-      // eslint-disable-next-line no-console
-      console.warn('[auth] API returned 401; redirecting to login:', url);
-      // Fire-and-forget; the navigation supersedes any pending work.
-      void auth.login(window.location.pathname + window.location.search);
+    if (isApiCall && !auth.disabled && !url.includes('/api/v1/auth/')) {
+      // 401 → not signed in / session expired. Redirect to Keycloak.
+      if (res.status === 401) {
+        // eslint-disable-next-line no-console
+        console.warn('[auth] API returned 401; redirecting to login:', url);
+        void auth.login(window.location.pathname + window.location.search);
+      }
+      // 403 → forbidden by OPA policy. Surface the human-readable reason as
+      // a toast so the user understands which role would be sufficient.
+      // We clone the response so the caller can still read the body.
+      if (res.status === 403) {
+        try {
+          const j = (await res.clone().json()) as {
+            detail?: string;
+            code?: string;
+          };
+          const detail = j.detail || 'You don\'t have permission to do this.';
+          void showForbiddenToast(detail);
+        } catch {
+          /* non-JSON 403 — silent */
+        }
+      }
     }
 
     return res;

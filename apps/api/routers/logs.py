@@ -53,13 +53,71 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
 
 
+def _render_json_log_line(raw: str) -> str:
+    """Render a structured JSON log line as a readable plain-text row.
+
+    Falls back to the raw line if it isn't valid JSON. Workers emit JSON
+    when SLM_FORGE_LOG_FORMAT=json (the default in our Makefile); the
+    dashboard's <LogPane> displays plain text, so we reconstruct a
+    ``HH:MM:SS  LEVEL    logger  msg`` format here.
+    """
+    raw = raw.rstrip("\n")
+    if not raw or not raw.startswith("{"):
+        return raw
+    try:
+        obj = json.loads(raw)
+    except json.JSONDecodeError:
+        return raw
+    ts = obj.get("ts", "")
+    # Shorten ISO timestamp → HH:MM:SS for compactness.
+    if "T" in ts:
+        ts = ts.split("T", 1)[1].split(".", 1)[0].split("+", 1)[0]
+    level = obj.get("level", "INFO").ljust(7)[:7]
+    logger = obj.get("logger", "")
+    msg = obj.get("msg", "")
+    # Trailing correlation IDs in a compact form so they're still useful.
+    tail_bits: list[str] = []
+    for k in ("run_id", "session_id", "request_id"):
+        v = obj.get(k)
+        if v not in (None, ""):
+            tail_bits.append(f"{k}={v}")
+    tail = (" [" + " ".join(tail_bits) + "]") if tail_bits else ""
+    return f"{ts}  {level}  {logger}  {msg}{tail}"
+
+
+def _resolve_worker_log_path(worker: str) -> Path:
+    """Return whichever of ``_<worker>.log.json`` / ``_<worker>.log`` exists.
+
+    Workers write to ``.log.json`` when SLM_FORGE_LOG_FORMAT=json (the
+    Makefile default) and ``.log`` otherwise. The API container's own env
+    may not match, so we probe both and prefer the more-recently-modified
+    file. Falls back to the JSON path even if neither exists, because
+    that's the default expectation in the current configuration.
+    """
+    base = worker_log_path(worker, json_format=False).with_suffix("")
+    json_path = base.with_suffix(".log.json")
+    text_path = base.with_suffix(".log")
+    candidates = [p for p in (json_path, text_path) if p.exists()]
+    if not candidates:
+        return json_path  # default expectation, caller handles "missing"
+    # If both exist, pick the newest one.
+    return max(candidates, key=lambda p: p.stat().st_mtime)
+
+
 def _tail_lines(path: Path, n: int) -> list[str]:
-    """Return last ``n`` lines from ``path``. Empty list if missing."""
+    """Return last ``n`` lines from ``path``. Empty list if missing.
+
+    If ``path`` ends in ``.log.json``, each line is rendered as
+    ``HH:MM:SS LEVEL logger msg`` for human display.
+    """
     if not path.exists():
         return []
-    # Simple + correct: deque over the file. Worker logs are bounded by rotation.
+    is_json = path.suffix == ".json"
     with path.open("r", encoding="utf-8", errors="replace") as f:
-        return [ln.rstrip("\n") for ln in deque(f, maxlen=n)]
+        raw_lines = [ln.rstrip("\n") for ln in deque(f, maxlen=n)]
+    if is_json:
+        return [_render_json_log_line(ln) for ln in raw_lines]
+    return raw_lines
 
 
 def _validate_worker(worker: str) -> Path:
@@ -68,7 +126,7 @@ def _validate_worker(worker: str) -> Path:
             404,
             f"Unknown worker {worker!r}. Valid: {sorted(VALID_WORKERS)}",
         )
-    return worker_log_path(worker)
+    return _resolve_worker_log_path(worker)
 
 
 # ─── Run-specific endpoints ───────────────────────────────────────────────
@@ -123,6 +181,7 @@ async def _tail_file_sse(
         await asyncio.sleep(_POLL_INTERVAL)
         waited += _POLL_INTERVAL
 
+    is_json = path.suffix == ".json"
     emitted = 0
     leftover = ""
     try:
@@ -139,9 +198,10 @@ async def _tail_file_sse(
                 parts = buf.split("\n")
                 leftover = parts.pop()
                 for line in parts:
+                    rendered = _render_json_log_line(line) if is_json else line
                     yield {
                         "event": "log",
-                        "data": json.dumps({"line": line, "ts": _now_iso()}),
+                        "data": json.dumps({"line": rendered, "ts": _now_iso()}),
                     }
                     emitted += 1
                     if emitted >= _MAX_LINES_PER_STREAM:
@@ -156,17 +216,19 @@ async def _tail_file_sse(
                     parts = buf.split("\n")
                     leftover = parts.pop()
                     for line in parts:
+                        rendered = _render_json_log_line(line) if is_json else line
                         yield {
                             "event": "log",
-                            "data": json.dumps({"line": line, "ts": _now_iso()}),
+                            "data": json.dumps({"line": rendered, "ts": _now_iso()}),
                         }
                         emitted += 1
                         if emitted >= _MAX_LINES_PER_STREAM:
                             break
                 if leftover:
+                    rendered = _render_json_log_line(leftover) if is_json else leftover
                     yield {
                         "event": "log",
-                        "data": json.dumps({"line": leftover, "ts": _now_iso()}),
+                        "data": json.dumps({"line": rendered, "ts": _now_iso()}),
                     }
                     leftover = ""
                 yield {"event": "done", "data": json.dumps({"reason": "terminal"})}
@@ -240,5 +302,5 @@ async def stream_worker_log(worker: str) -> EventSourceResponse:
 async def stream_ratchet_log_legacy() -> EventSourceResponse:
     """Back-compat alias for ``/logs/ratchet/stream``."""
     return EventSourceResponse(
-        _tail_file_sse(worker_log_path("ratchet"), is_run_terminal=None, wait_for_file=False)
+        _tail_file_sse(_resolve_worker_log_path("ratchet"), is_run_terminal=None, wait_for_file=False)
     )

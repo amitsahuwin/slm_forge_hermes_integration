@@ -312,11 +312,21 @@ class AuthMiddleware(BaseHTTPMiddleware):
             if qp:
                 token = qp
         if not token:
-            return _json_401("Missing bearer token")
+            return _json_401(
+                "You need to sign in to access this resource.",
+                code="not_signed_in",
+            )
         try:
             user = verify_jwt(token, settings=settings)
         except HTTPException as e:
-            return _json_response(e.status_code, str(e.detail))
+            # Re-map the generic "Invalid bearer token" into a user-friendlier
+            # message — the typical cause is an expired token.
+            friendly = str(e.detail)
+            code = "invalid_token"
+            if "invalid" in friendly.lower() or "expired" in friendly.lower():
+                friendly = "Your session has expired. Please sign in again."
+                code = "session_expired"
+            return _json_response(e.status_code, friendly, code=code)
 
         request.state.user = user
         return await call_next(request)
@@ -332,15 +342,23 @@ def _is_public_path(path: str) -> bool:
     )
 
 
-def _json_401(detail: str) -> Response:
-    return _json_response(401, detail)
+def _json_401(detail: str, code: str = "not_signed_in") -> Response:
+    return _json_response(401, detail, code=code)
 
 
-def _json_response(status: int, detail: str) -> Response:
-    """Tiny JSON-error helper so the middleware doesn't need fastapi imports."""
+def _json_response(status: int, detail: str, code: str | None = None) -> Response:
+    """Tiny JSON-error helper so the middleware doesn't need fastapi imports.
+
+    Includes a machine-readable ``code`` alongside ``detail`` so the SPA can
+    distinguish "not signed in" from "session expired" from "invalid token"
+    without parsing the human-facing text.
+    """
     import json as _json
 
-    body = _json.dumps({"detail": detail}).encode("utf-8")
+    payload: dict[str, str] = {"detail": detail}
+    if code:
+        payload["code"] = code
+    body = _json.dumps(payload).encode("utf-8")
     return Response(content=body, status_code=status, media_type="application/json")
 
 

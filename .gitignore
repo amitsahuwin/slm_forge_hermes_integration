@@ -41,6 +41,7 @@ exports/*/
 
 # Logs
 *.log
+*.log.json
 
 # uv.lock IS committed (intentional)
 # package-lock.json IS committed (intentional)

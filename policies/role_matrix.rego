@@ -12,9 +12,10 @@
 
 package slm_forge.matrix
 
-# admin → CRUD on every resource. Encoded as the wildcard "*" entry that
-# the main policy expands when it sees it.
-matrix["admin"] = {
+import rego.v1
+
+# admin → CRUD on every resource.
+matrix["admin"] := {
 	"dataset":    {"read", "create", "update", "delete"},
 	"experiment": {"read", "create", "update", "delete"},
 	"run":        {"read", "create", "update", "delete", "execute", "export"},
@@ -28,7 +29,7 @@ matrix["admin"] = {
 # data_engineer → datasets:CRUD, experiments:CRUD, runs:R+cancel,
 # exports:execute, logs:R, research:R, chat:RW.
 # "cancel" maps onto `update` (the runs API uses PATCH to flip status).
-matrix["data_engineer"] = {
+matrix["data_engineer"] := {
 	"dataset":    {"read", "create", "update", "delete"},
 	"experiment": {"read", "create", "update", "delete"},
 	"run":        {"read", "update"},
@@ -40,10 +41,7 @@ matrix["data_engineer"] = {
 
 # domain_expert → datasets:R+update_readme, experiments:R, runs:R,
 # exports:R, research:RW, chat:RW.
-# "update_readme" rolls into `update` at the policy layer — the matrix is
-# coarse-grained and the rego rule decides which `update` calls are
-# allowed (see slm_forge.rego if we ever need finer cuts).
-matrix["domain_expert"] = {
+matrix["domain_expert"] := {
 	"dataset":    {"read", "update"},
 	"experiment": {"read"},
 	"run":        {"read"},
@@ -53,7 +51,7 @@ matrix["domain_expert"] = {
 }
 
 # devops → runs:R, logs:RW, settings:RW, research:R, chat:R.
-matrix["devops"] = {
+matrix["devops"] := {
 	"run":      {"read"},
 	"log":      {"read", "create", "update", "delete"},
 	"setting":  {"read", "create", "update", "delete"},
@@ -63,7 +61,7 @@ matrix["devops"] = {
 
 # operations → datasets:R, experiments:R, runs:R, exports:execute,
 # logs:R, research:R, chat:R.
-matrix["operations"] = {
+matrix["operations"] := {
 	"dataset":    {"read"},
 	"experiment": {"read"},
 	"run":        {"read"},
@@ -74,7 +72,7 @@ matrix["operations"] = {
 }
 
 # support → everything:R.
-matrix["support"] = {
+matrix["support"] := {
 	"dataset":    {"read"},
 	"experiment": {"read"},
 	"run":        {"read"},

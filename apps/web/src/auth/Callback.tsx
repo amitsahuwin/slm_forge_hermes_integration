@@ -5,7 +5,7 @@
  * authorization-code exchange via `auth.handleCallback()` and then
  * navigate to the `returnTo` path encoded in the OIDC state.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { auth } from './keycloak';
 import { useAuth } from './AuthContext';
@@ -14,21 +14,30 @@ export default function Callback() {
   const navigate = useNavigate();
   const { refreshUser } = useAuth();
   const [error, setError] = useState<string | null>(null);
+  // Guard against React 18 StrictMode double-mount.
+  //
+  // signinRedirectCallback() consumes the one-time `code` query param at
+  // Keycloak's /token endpoint. If useEffect runs twice (which StrictMode
+  // does on purpose in dev), the second invocation re-sends the same code
+  // → Keycloak rejects it with "Code already used" → we never store a
+  // token → every subsequent API request 401s. A useRef survives the
+  // intentional unmount/remount StrictMode performs, so the second pass
+  // is a no-op.
+  const handledRef = useRef(false);
 
   useEffect(() => {
-    let cancelled = false;
+    if (handledRef.current) return;
+    handledRef.current = true;
+
     (async () => {
       try {
         const dest = await auth.handleCallback();
         await refreshUser();
-        if (!cancelled) navigate(dest, { replace: true });
+        navigate(dest, { replace: true });
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+        setError(e instanceof Error ? e.message : String(e));
       }
     })();
-    return () => {
-      cancelled = true;
-    };
     // refreshUser identity is stable (closure over setUser); intentional one-shot.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

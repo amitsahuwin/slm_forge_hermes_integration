@@ -30,7 +30,16 @@ services:
       # Flip SLM_FORGE_AUTH_ENABLED to "true" (and bring up the `auth`
       # profile services) to enforce JWT + OPA decisions.
       - SLM_FORGE_AUTH_ENABLED=${SLM_FORGE_AUTH_ENABLED:-false}
+      # Shared secret for host workers — must match the value the workers
+      # see in .env. Empty string disables the bypass entirely (then
+      # workers would need real JWTs, which they don't have).
+      - SLM_FORGE_SERVICE_TOKEN=${SLM_FORGE_SERVICE_TOKEN:-}
+      # KEYCLOAK_URL is for the API CONTAINER (Docker DNS).
+      # KEYCLOAK_PUBLIC_URL is what /auth/config returns to the BROWSER
+      # so it can redirect to login; the browser is on the host, so
+      # `keycloak:8080` would never resolve there.
       - KEYCLOAK_URL=${KEYCLOAK_URL:-http://keycloak:8080}
+      - KEYCLOAK_PUBLIC_URL=${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}
       - KEYCLOAK_REALM=${KEYCLOAK_REALM:-slm-forge}
       - OPA_URL=${OPA_URL:-http://opa:8181}
     # `host-gateway` makes host.docker.internal resolve even on Linux hosts
@@ -70,22 +79,65 @@ services:
     image: quay.io/keycloak/keycloak:25.0
     container_name: slm-forge-keycloak
     profiles: ["auth"]
+    # The Keycloak image ENTRYPOINT is /opt/keycloak/bin/kc.sh, so we can't
+    # inject shell here — anything we pass as `command` is parsed as kc.sh
+    # arguments. The master-realm sslRequired tweak runs in the sidecar
+    # `keycloak-init` service below.
     command: ["start-dev", "--import-realm"]
     environment:
       - KEYCLOAK_ADMIN=admin
       - KEYCLOAK_ADMIN_PASSWORD=admin
       - KC_HEALTH_ENABLED=true
       - KC_METRICS_ENABLED=true
+      # Force HTTP-only listener and disable hostname strictness so the
+      # admin console works without a TLS reverse proxy.
+      - KC_HTTP_ENABLED=true
+      - KC_HOSTNAME_STRICT=false
+      - KC_HOSTNAME_STRICT_HTTPS=false
+      - KC_PROXY=edge
     ports:
       - "8080:8080"
     volumes:
       - ./keycloak:/opt/keycloak/data/import:ro
     restart: unless-stopped
 
+  # One-shot bootstrap: once Keycloak is up, use kcadm.sh to flip the master
+  # realm's sslRequired flag to NONE. There's no env var or realm-export
+  # equivalent for the master realm — it's auto-created at first boot — so
+  # we have to talk to the admin API. Uses the same Keycloak image (kcadm.sh
+  # is built in) with a `/bin/bash` entrypoint override.
+  keycloak-init:
+    image: quay.io/keycloak/keycloak:25.0
+    container_name: slm-forge-keycloak-init
+    profiles: ["auth"]
+    depends_on:
+      - keycloak
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        echo "[keycloak-init] waiting for keycloak to come up…"
+        for i in $$(seq 1 60); do
+          if /opt/keycloak/bin/kcadm.sh config credentials \
+               --server http://keycloak:8080 \
+               --realm master --user admin --password admin >/dev/null 2>&1; then
+            echo "[keycloak-init] connected on attempt $$i"
+            break
+          fi
+          sleep 3
+        done
+        echo "[keycloak-init] disabling HTTPS requirement on master realm"
+        /opt/keycloak/bin/kcadm.sh update realms/master -s sslRequired=NONE \
+          && echo "[keycloak-init] ok — master sslRequired=NONE" \
+          || echo "[keycloak-init] WARNING: could not update master realm"
+    restart: "no"
+
   # Phase M — Open Policy Agent for authorization decisions. Hot-reloads
   # the rego files via --watch so policy edits land without a restart.
+  # `latest` is the non-rootless OPA 1.x image that supports `import rego.v1`.
+  # The `-rootless` flavor was deprecated and its older snapshots couldn't
+  # parse the v1 keywords, so we explicitly use `latest`.
   opa:
-    image: openpolicyagent/opa:1.0.0-rootless
+    image: openpolicyagent/opa:latest
     container_name: slm-forge-opa
     profiles: ["auth"]
     command:

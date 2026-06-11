@@ -18,30 +18,27 @@
 
 package slm_forge
 
+# Opt into the OPA 1.0+ strict / future-keyword syntax. Lets us use
+# `if`, `in`, `contains`, etc. without per-line imports.
+import rego.v1
+
 import data.slm_forge.matrix
 
-default allow = false
+default allow := false
 
 # Admins bypass the matrix entirely.
-allow {
-	is_admin
-}
+allow if is_admin
 
-is_admin {
-	some r
-	r := input.user.roles[_]
-	r == "admin"
-}
+is_admin if "admin" in input.user.roles
 
 # Otherwise: any role the user has must permit the (action, resource) pair.
-allow {
-	some role
-	role := input.user.roles[_]
+allow if {
+	some role in input.user.roles
 	permitted(role, input.action, input.resource)
 }
 
 # Helper: role `role` has permission for `action` on `resource`?
-permitted(role, action, resource) {
+permitted(role, action, resource) if {
 	allowed_actions := matrix.matrix[role][resource]
 	allowed_actions[action]
 }
@@ -51,31 +48,29 @@ permitted(role, action, resource) {
 # The FastAPI side surfaces this string as the 403 detail. We compute three
 # possible reasons in priority order:
 #   1. No roles at all → "no roles assigned".
-#   2. Unknown role(s) → list them.
-#   3. Default       → "role(s) X lack <action> on <resource>".
+#   2. All roles unknown → list them.
+#   3. Default → "role(s) X lack <action> on <resource>".
 
-default reason = ""
+default reason := ""
 
-reason = msg {
+reason := msg if {
 	not allow
 	count(input.user.roles) == 0
 	msg := "no roles assigned"
 }
 
-reason = msg {
+reason := msg if {
 	not allow
 	count(input.user.roles) > 0
-	# All roles unknown to the matrix → tell the user.
-	unknown := [r | r := input.user.roles[_]; not matrix.matrix[r]]
+	unknown := [r | some r in input.user.roles; not matrix.matrix[r]]
 	count(unknown) == count(input.user.roles)
 	msg := sprintf("unknown role(s): %v", [unknown])
 }
 
-reason = msg {
+reason := msg if {
 	not allow
 	count(input.user.roles) > 0
-	# At least one role is known but none permit the requested action.
-	known := [r | r := input.user.roles[_]; matrix.matrix[r]]
+	known := [r | some r in input.user.roles; matrix.matrix[r]]
 	count(known) > 0
 	msg := sprintf(
 		"role(s) %v lack '%v' on '%v'",

@@ -46,7 +46,10 @@ def config() -> dict[str, Any]:
     cfg = get_auth_settings()
     return {
         "auth_enabled": cfg.auth_enabled,
-        "keycloak_url": cfg.keycloak_url,
+        # IMPORTANT: return the BROWSER-facing URL, not the container-internal
+        # one. The SPA runs on the user's machine and can't resolve Docker DNS
+        # names like `keycloak:8080`. See KEYCLOAK_PUBLIC_URL in .env.
+        "keycloak_url": cfg.keycloak_public_url,
         "realm": cfg.keycloak_realm,
         "web_client_id": cfg.keycloak_web_client_id,
     }

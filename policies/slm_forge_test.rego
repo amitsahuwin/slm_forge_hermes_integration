@@ -2,15 +2,16 @@
 #
 # Run with:
 #   opa test policies/
-#
-# Covers the role matrix (M.3) plus the negative-path cases that bit us
-# during planning: empty roles, unknown roles, admin override.
+# or:
+#   make opa-test
 
 package slm_forge
 
+import rego.v1
+
 # ─── Admin override ─────────────────────────────────────────────────────────
 
-test_admin_can_delete_dataset {
+test_admin_can_delete_dataset if {
 	allow with input as {
 		"user":     {"id": "alice", "roles": ["admin"], "groups": []},
 		"action":   "delete",
@@ -18,7 +19,7 @@ test_admin_can_delete_dataset {
 	}
 }
 
-test_admin_can_execute_export {
+test_admin_can_execute_export if {
 	allow with input as {
 		"user":     {"id": "alice", "roles": ["admin"], "groups": []},
 		"action":   "execute",
@@ -28,7 +29,7 @@ test_admin_can_execute_export {
 
 # ─── data_engineer happy paths ──────────────────────────────────────────────
 
-test_data_engineer_can_create_dataset {
+test_data_engineer_can_create_dataset if {
 	allow with input as {
 		"user":     {"id": "bob", "roles": ["data_engineer"], "groups": []},
 		"action":   "create",
@@ -36,7 +37,7 @@ test_data_engineer_can_create_dataset {
 	}
 }
 
-test_data_engineer_can_execute_export {
+test_data_engineer_can_execute_export if {
 	allow with input as {
 		"user":     {"id": "bob", "roles": ["data_engineer"], "groups": []},
 		"action":   "execute",
@@ -46,7 +47,7 @@ test_data_engineer_can_execute_export {
 
 # ─── data_engineer denials ──────────────────────────────────────────────────
 
-test_data_engineer_cannot_delete_export {
+test_data_engineer_cannot_delete_export if {
 	not allow with input as {
 		"user":     {"id": "bob", "roles": ["data_engineer"], "groups": []},
 		"action":   "delete",
@@ -54,7 +55,7 @@ test_data_engineer_cannot_delete_export {
 	}
 }
 
-test_data_engineer_cannot_update_settings {
+test_data_engineer_cannot_update_settings if {
 	not allow with input as {
 		"user":     {"id": "bob", "roles": ["data_engineer"], "groups": []},
 		"action":   "update",
@@ -64,7 +65,7 @@ test_data_engineer_cannot_update_settings {
 
 # ─── domain_expert: read-mostly with research RW ────────────────────────────
 
-test_domain_expert_can_create_research {
+test_domain_expert_can_create_research if {
 	allow with input as {
 		"user":     {"id": "carol", "roles": ["domain_expert"], "groups": []},
 		"action":   "create",
@@ -72,7 +73,7 @@ test_domain_expert_can_create_research {
 	}
 }
 
-test_domain_expert_cannot_create_run {
+test_domain_expert_cannot_create_run if {
 	not allow with input as {
 		"user":     {"id": "carol", "roles": ["domain_expert"], "groups": []},
 		"action":   "create",
@@ -82,7 +83,7 @@ test_domain_expert_cannot_create_run {
 
 # ─── devops: settings RW, no datasets ───────────────────────────────────────
 
-test_devops_can_update_setting {
+test_devops_can_update_setting if {
 	allow with input as {
 		"user":     {"id": "dave", "roles": ["devops"], "groups": []},
 		"action":   "update",
@@ -90,7 +91,7 @@ test_devops_can_update_setting {
 	}
 }
 
-test_devops_cannot_read_dataset {
+test_devops_cannot_read_dataset if {
 	not allow with input as {
 		"user":     {"id": "dave", "roles": ["devops"], "groups": []},
 		"action":   "read",
@@ -100,7 +101,7 @@ test_devops_cannot_read_dataset {
 
 # ─── operations: execute exports ────────────────────────────────────────────
 
-test_operations_can_execute_export {
+test_operations_can_execute_export if {
 	allow with input as {
 		"user":     {"id": "eve", "roles": ["operations"], "groups": []},
 		"action":   "execute",
@@ -108,7 +109,7 @@ test_operations_can_execute_export {
 	}
 }
 
-test_operations_cannot_create_dataset {
+test_operations_cannot_create_dataset if {
 	not allow with input as {
 		"user":     {"id": "eve", "roles": ["operations"], "groups": []},
 		"action":   "create",
@@ -118,7 +119,7 @@ test_operations_cannot_create_dataset {
 
 # ─── support: read-only ─────────────────────────────────────────────────────
 
-test_support_can_read_dataset {
+test_support_can_read_dataset if {
 	allow with input as {
 		"user":     {"id": "frank", "roles": ["support"], "groups": []},
 		"action":   "read",
@@ -126,7 +127,7 @@ test_support_can_read_dataset {
 	}
 }
 
-test_support_cannot_create_anything {
+test_support_cannot_create_anything if {
 	not allow with input as {
 		"user":     {"id": "frank", "roles": ["support"], "groups": []},
 		"action":   "create",
@@ -134,7 +135,7 @@ test_support_cannot_create_anything {
 	}
 }
 
-test_support_cannot_delete_run {
+test_support_cannot_delete_run if {
 	not allow with input as {
 		"user":     {"id": "frank", "roles": ["support"], "groups": []},
 		"action":   "delete",
@@ -144,7 +145,7 @@ test_support_cannot_delete_run {
 
 # ─── Edge cases: unknown / empty roles ──────────────────────────────────────
 
-test_unknown_role_denied {
+test_unknown_role_denied if {
 	not allow with input as {
 		"user":     {"id": "mallory", "roles": ["intern"], "groups": []},
 		"action":   "read",
@@ -152,7 +153,7 @@ test_unknown_role_denied {
 	}
 }
 
-test_empty_roles_denied {
+test_empty_roles_denied if {
 	not allow with input as {
 		"user":     {"id": "ghost", "roles": [], "groups": []},
 		"action":   "read",
@@ -163,7 +164,7 @@ test_empty_roles_denied {
 # ─── Multi-role union ───────────────────────────────────────────────────────
 # A user with multiple roles gets the union of their permissions.
 
-test_multi_role_union_allows {
+test_multi_role_union_allows if {
 	allow with input as {
 		"user":     {"id": "multi", "roles": ["support", "data_engineer"], "groups": []},
 		"action":   "create",

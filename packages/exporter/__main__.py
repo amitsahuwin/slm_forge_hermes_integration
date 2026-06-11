@@ -15,11 +15,15 @@ try:
 except ImportError:
     pass
 
+from packages._api_client import install as install_service_auth
 from packages._log_context import bind as _bind_log_ctx
 from packages._log_context import reset as _reset_log_ctx
 from packages._logging import setup_worker_logging
 from packages.exporter.pipeline import _check_tools, run_export_job
 from packages.ratchet.heartbeat import start_heartbeat
+
+# Patch httpx so every request from this process carries X-Service-Token.
+install_service_auth()
 
 LOG_FMT = "%(asctime)s  %(levelname)-7s  %(name)s  %(message)s"
 logging.basicConfig(level=logging.INFO, format=LOG_FMT, datefmt="%H:%M:%S")

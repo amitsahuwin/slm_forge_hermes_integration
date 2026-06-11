@@ -39,7 +39,13 @@ class AuthSettings(BaseModel):
     auth_enabled: bool = False
 
     # Keycloak coordinates — defaults match the docker-compose service names.
+    # `keycloak_url` is the **container-internal** URL used by the API to
+    # fetch JWKS + verify tokens. `keycloak_public_url` is what we return to
+    # the browser via /api/v1/auth/config — the browser is on the host so
+    # `keycloak:8080` (Docker DNS) won't resolve. Defaults to localhost:8080
+    # which works for `docker compose --profile auth up` on a Mac.
     keycloak_url: str = "http://keycloak:8080"
+    keycloak_public_url: str = "http://localhost:8080"
     keycloak_realm: str = "slm-forge"
     keycloak_web_client_id: str = "slm-forge-web"
     keycloak_api_client_id: str = "slm-forge-api"
@@ -51,6 +57,12 @@ class AuthSettings(BaseModel):
 
     # Used when auth is disabled — keeps log lines consistent.
     default_user: str = "anonymous"
+
+    # Service-account shared secret. Host workers (trainer/ratchet/exporter)
+    # send this in `X-Service-Token` so they don't need a JWT. Empty string
+    # disables the bypass entirely. Must match SLM_FORGE_SERVICE_TOKEN in
+    # the workers' environment.
+    service_token: str = ""
 
     # Optional Keycloak admin credentials for the /auth/users endpoint. When
     # unset, the endpoint returns 501 instead of trying to fake a listing.
@@ -77,6 +89,9 @@ def get_auth_settings() -> AuthSettings:
     return AuthSettings(
         auth_enabled=_env_bool("SLM_FORGE_AUTH_ENABLED", default=False),
         keycloak_url=os.environ.get("KEYCLOAK_URL", "http://keycloak:8080"),
+        keycloak_public_url=os.environ.get(
+            "KEYCLOAK_PUBLIC_URL", "http://localhost:8080"
+        ),
         keycloak_realm=os.environ.get("KEYCLOAK_REALM", "slm-forge"),
         keycloak_web_client_id=os.environ.get(
             "KEYCLOAK_WEB_CLIENT_ID", "slm-forge-web"
@@ -90,6 +105,7 @@ def get_auth_settings() -> AuthSettings:
         ),
         opa_timeout_seconds=float(os.environ.get("OPA_TIMEOUT_SECONDS", "0.2")),
         default_user=os.environ.get("SLM_FORGE_DEFAULT_USER", "anonymous"),
+        service_token=os.environ.get("SLM_FORGE_SERVICE_TOKEN", ""),
         keycloak_admin_user=os.environ.get("KEYCLOAK_ADMIN_USER") or None,
         keycloak_admin_password=os.environ.get("KEYCLOAK_ADMIN_PASSWORD") or None,
     )

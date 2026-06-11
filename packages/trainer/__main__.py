@@ -18,11 +18,16 @@ import time
 
 import httpx
 
+from packages._api_client import install as install_service_auth
 from packages._log_context import bind as _bind_log_ctx
 from packages._log_context import reset as _reset_log_ctx
 from packages._logging import setup_worker_logging
 from packages.ratchet.heartbeat import start_heartbeat
 from packages.trainer.runner import run_training_job
+
+# Patch httpx so every request from this process carries X-Service-Token.
+# Must run before any httpx call elsewhere in the package.
+install_service_auth()
 
 LOG_FMT = "%(asctime)s  %(levelname)-7s  %(name)s  %(message)s"
 logging.basicConfig(level=logging.INFO, format=LOG_FMT, datefmt="%H:%M:%S")

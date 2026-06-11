@@ -27,8 +27,9 @@
   "defaultSignatureAlgorithm": "RS256",
   "revokeRefreshToken": false,
   "refreshTokenMaxReuse": 0,
-  "requiredCredentials": ["password"],
-  "passwordPolicy": "length(8)",
+  "requiredCredentials": [
+    "password"
+  ],
   "otpPolicyType": "totp",
   "otpPolicyAlgorithm": "HmacSHA1",
   "otpPolicyDigits": 6,
@@ -73,11 +74,13 @@
       "credentials": [
         {
           "type": "password",
-          "value": "admin",
+          "value": "admin1234",
           "temporary": false
         }
       ],
-      "realmRoles": ["admin"]
+      "realmRoles": [
+        "admin"
+      ]
     },
     {
       "username": "engineer@local",
@@ -93,7 +96,9 @@
           "temporary": false
         }
       ],
-      "realmRoles": ["data_engineer"]
+      "realmRoles": [
+        "data_engineer"
+      ]
     }
   ],
   "clients": [
@@ -112,7 +117,9 @@
         "http://localhost:5173/*",
         "http://127.0.0.1:5173/*"
       ],
-      "webOrigins": ["+"],
+      "webOrigins": [
+        "+"
+      ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
         "post.logout.redirect.uris": "http://localhost:5173/*##http://127.0.0.1:5173/*"
@@ -162,5 +169,6 @@
   "smtpServer": {},
   "internationalizationEnabled": false,
   "supportedLocales": [],
-  "defaultLocale": ""
+  "defaultLocale": "",
+  "sslRequired": "none"
 }

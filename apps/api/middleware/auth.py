@@ -276,6 +276,23 @@ class AuthMiddleware(BaseHTTPMiddleware):
             request.state.user = _synthetic_admin(settings)
             return await call_next(request)
 
+        # Service-account bypass — host workers (trainer/ratchet/exporter)
+        # send a shared X-Service-Token instead of a JWT. Constant-time
+        # comparison so we don't leak the token via timing. An empty
+        # server-side token disables the bypass entirely.
+        svc_token = request.headers.get("x-service-token", "")
+        if settings.service_token and svc_token:
+            import hmac as _hmac
+
+            if _hmac.compare_digest(svc_token, settings.service_token):
+                request.state.user = User(
+                    id="service",
+                    email="service@local",
+                    roles=["admin", "service"],
+                    groups=[],
+                )
+                return await call_next(request)
+
         auth_header = request.headers.get("authorization", "")
         if not auth_header.lower().startswith("bearer "):
             return _json_401("Missing bearer token")

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { withAuth } from '../auth/fetchInterceptor';
 import { API_URL } from '../lib/api';
 
 export type Depth = 'quick' | 'standard' | 'deep';
@@ -130,7 +131,7 @@ export default function ResearchModal({ open, onClose, onDone }: ResearchModalPr
   }
 
   function attachStream(jobId: string) {
-    const es = new EventSource(`${API_URL}/api/v1/research/jobs/${jobId}/stream`);
+    const es = new EventSource(withAuth(`${API_URL}/api/v1/research/jobs/${jobId}/stream`));
     esRef.current = es;
 
     es.addEventListener('progress', (ev) => {

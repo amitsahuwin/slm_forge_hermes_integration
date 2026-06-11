@@ -71,16 +71,31 @@ class AuthSettings(BaseModel):
 
     @property
     def realm_base_url(self) -> str:
-        """Convenience: ``<keycloak>/realms/<realm>``."""
+        """Convenience: ``<keycloak_url>/realms/<realm>`` (container-internal).
+
+        Used for server-to-server traffic from inside the API container —
+        most importantly JWKS fetching, which has to work from Docker's
+        internal DNS.
+        """
         return f"{self.keycloak_url.rstrip('/')}/realms/{self.keycloak_realm}"
 
     @property
+    def public_realm_base_url(self) -> str:
+        """``<keycloak_public_url>/realms/<realm>`` — browser-facing URL."""
+        return f"{self.keycloak_public_url.rstrip('/')}/realms/{self.keycloak_realm}"
+
+    @property
     def jwks_url(self) -> str:
+        # Always fetched from inside the container → use the internal URL.
         return f"{self.realm_base_url}/protocol/openid-connect/certs"
 
     @property
     def issuer(self) -> str:
-        return self.realm_base_url
+        # The `iss` claim of every token Keycloak issues echoes the URL the
+        # SPA hit, which is the PUBLIC URL (browser uses localhost:8080).
+        # Validating against the internal URL produces a hard-to-debug 401
+        # mismatch — so we explicitly use the public form here.
+        return self.public_realm_base_url
 
 
 @lru_cache(maxsize=1)

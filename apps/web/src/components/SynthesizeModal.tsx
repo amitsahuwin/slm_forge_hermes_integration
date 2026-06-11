@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import HermesSkillButton, { type SkillResponse } from './HermesSkillButton';
+import { withAuth } from '../auth/fetchInterceptor';
 import { API_URL } from '../lib/api';
 
 type SynthesizeModalProps = {
@@ -162,7 +163,7 @@ export default function SynthesizeModal({
   }
 
   function attachStream(jobId: string) {
-    const es = new EventSource(`${API_URL}/api/v1/synth/jobs/${jobId}/stream`);
+    const es = new EventSource(withAuth(`${API_URL}/api/v1/synth/jobs/${jobId}/stream`));
     esRef.current = es;
 
     es.addEventListener('progress', (ev) => {

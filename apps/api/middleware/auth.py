@@ -293,10 +293,19 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 )
                 return await call_next(request)
 
+        # Resolve the bearer token from either the Authorization header
+        # (preferred) OR an `access_token` query param. EventSource can't
+        # carry custom headers, so SSE callers attach the token to the URL.
         auth_header = request.headers.get("authorization", "")
-        if not auth_header.lower().startswith("bearer "):
+        token: str | None = None
+        if auth_header.lower().startswith("bearer "):
+            token = auth_header.split(" ", 1)[1].strip()
+        else:
+            qp = request.query_params.get("access_token", "").strip()
+            if qp:
+                token = qp
+        if not token:
             return _json_401("Missing bearer token")
-        token = auth_header.split(" ", 1)[1].strip()
         try:
             user = verify_jwt(token, settings=settings)
         except HTTPException as e:

@@ -8,6 +8,7 @@ import {
   YAxis,
 } from 'recharts';
 import ChatTemplates from '../components/ChatTemplates';
+import { withAuth } from '../auth/fetchInterceptor';
 import { API_URL } from '../lib/api';
 
 // ─── Types ────────────────────────────────────────────────────────
@@ -202,7 +203,7 @@ export default function Chat() {
     setMessages((m) => [...m, placeholder]);
 
     const es = new EventSource(
-      `${API_URL}/api/v1/chat/conversations/${cid}/stream`,
+      withAuth(`${API_URL}/api/v1/chat/conversations/${cid}/stream`),
     );
     esRef.current = es;
 

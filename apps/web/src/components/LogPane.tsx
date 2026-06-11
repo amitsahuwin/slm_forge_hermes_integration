@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { withAuth } from '../auth/fetchInterceptor';
 import { API_URL } from '../lib/api';
 
 type LogLine = {
@@ -87,7 +88,7 @@ export default function LogPane({ runId, worker, ratchet, height = '24rem' }: Lo
   // 2. Live SSE stream.
   useEffect(() => {
     if (!streamUrl) return;
-    const es = new EventSource(streamUrl);
+    const es = new EventSource(withAuth(streamUrl));
     esRef.current = es;
 
     es.addEventListener('log', (ev) => {

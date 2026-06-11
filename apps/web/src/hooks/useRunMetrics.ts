@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { withAuth } from '../auth/fetchInterceptor';
 import { API_URL, type Metric, type RunStatus, api } from '../lib/api';
 
 export type MetricsState = {
@@ -34,7 +35,7 @@ export function useRunMetrics(runId: number | undefined) {
       });
 
     // 2. subscribe to live updates
-    const es = new EventSource(`${API_URL}/api/v1/runs/${runId}/stream`);
+    const es = new EventSource(withAuth(`${API_URL}/api/v1/runs/${runId}/stream`));
     esRef.current = es;
 
     es.addEventListener('metric', (ev) => {

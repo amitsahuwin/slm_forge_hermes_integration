@@ -62,7 +62,7 @@ Built for M3 Max with 36 GB unified memory. Smaller Apple Silicon Macs work with
 │                                                                             │
 │   ┌──────────────────────────────────────────────────────────┐              │
 │   │ MCP server (8765) ── stdio + HTTP/SSE                    │              │
-│   │   34 tools: datasets, runs, exports, hermes, agents…     │──────────────┼──► Claude Desktop / Cursor /
+│   │   39 tools: datasets, runs, exports, hermes, agents…     │──────────────┼──► Claude Desktop / Cursor /
 │   └──────────────────────────────────────────────────────────┘              │    Claude Code CLI
 │                                                                             │
 └────────────────────────────┬────────────────────────────────────────────────┘
@@ -303,7 +303,7 @@ Detailed setup: [`docs/OBSERVABILITY_SETUP.md`](docs/OBSERVABILITY_SETUP.md).
 make mcp-up                   # start the HTTP-transport container on :8765
 ```
 
-Then add SLM-Forge to your MCP client config (Claude Desktop / Cursor / Claude Code CLI). 34 tools are exposed: datasets, runs, experiments, exports, hermes skills, multi-step agents, R&D research.
+Then add SLM-Forge to your MCP client config (Claude Desktop / Cursor / Claude Code CLI). 39 tools are exposed: datasets, runs (incl. `start_run` with mlx/cuda backend routing), the model catalog, experiments, exports, hermes skills, multi-step agents, R&D research.
 
 Detailed setup: [`docs/MCP_SETUP.md`](docs/MCP_SETUP.md).
 

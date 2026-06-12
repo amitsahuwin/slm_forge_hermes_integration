@@ -205,7 +205,7 @@ Hermes-backed tools (`diagnose_run`, `post_mortem`, the agents) can take
 | Group | Tools |
 |-------|-------|
 | Datasets | `list_datasets`, `get_dataset`, `preview_dataset_rows`, `synthesize_dataset`, `get_synthesis_status`, `ingest_dataset_from_url`, `ingest_dataset_from_file` |
-| Runs & Experiments | `list_runs`, `get_run`, `get_run_metrics`, `list_experiments`, `start_experiment` |
+| Runs & Experiments | `list_runs`, `get_run`, `get_run_metrics`, `list_models`, `start_run`, `list_experiments`, `start_experiment` |
 | Exports | `list_exports`, `start_export` |
 | Hermes skills | `select_method`, `diagnose_run`, `analyze_drift`, `data_quality_review`, `propose_canary_set`, `save_canary_set`, `synth_style`, `explain_anomaly`, `recommend_quants`, `model_selection`, `post_mortem`, `auto_label` |
 | Multi-step agents | `run_experiment_recommender`, `run_optimization_coach`, `run_evaluation_designer`, `run_incident_responder` |

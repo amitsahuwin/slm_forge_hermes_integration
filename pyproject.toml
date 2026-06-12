@@ -36,8 +36,10 @@ dev = [
 
 [project.optional-dependencies]
 trainer = [
-    "mlx>=0.20",
-    "mlx-lm>=0.30",
+    # Phase P floor: gemma3 / gemma3n / gemma4 / mistral3 model architectures
+    # ship in these releases (verified against mlx-lm 0.31.3, latest 2026-06).
+    "mlx>=0.31.2",
+    "mlx-lm>=0.31.3",
     "transformers>=4.46",
     "datasets>=3.1",
     "huggingface-hub>=0.26",

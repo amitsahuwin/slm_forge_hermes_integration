@@ -32,6 +32,7 @@ OBS_FILES    := -f docker-compose.yml -f docker-compose.observability.yml
         admin-panel grafana keycloak-ui prometheus loki-explore \
         seed-data download-base-model synth-list research-list \
         opa-test check-llamacpp ensure-lock ensure-trainer-installed \
+        smoke-model \
         clean nuke
 
 # ─── Help ──────────────────────────────────────────────────────────────────
@@ -106,6 +107,10 @@ ensure-lock:
 trainer: ensure-trainer-installed ## Run the host trainer worker (T1)
 	@echo "→ Trainer worker — JSON logs to runs/_trainer.log.json"
 	SLM_FORGE_LOG_FORMAT=json uv run python -m packages.trainer
+
+smoke-model: ensure-trainer-installed ## Smoke-test a catalog model (MODEL=<key>, e.g. gemma-4-e4b-it)
+	@test -n "$(MODEL)" || { echo "usage: make smoke-model MODEL=<catalog-key>"; exit 1; }
+	uv run bash scripts/smoke_model.sh "$(MODEL)" $(or $(ITERS),30)
 
 ratchet: ## Run the autoresearch ratchet worker (T2)
 	@if ! curl -sf http://localhost:11434/api/version >/dev/null 2>&1; then \

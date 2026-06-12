@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import os
+import socket
 import sys
 import time
 
@@ -38,16 +39,25 @@ log.info("Logging to %s", _log_path)
 
 API_URL = os.environ.get("SLM_FORGE_API_URL", "http://localhost:8000")
 POLL_INTERVAL = float(os.environ.get("SLM_FORGE_POLL_INTERVAL", "2.0"))
+WORKER_ID = f"{socket.gethostname()}:{os.getpid()}"
 
 
-def fetch_next_queued() -> dict | None:
+def claim_next_run(backend_name: str) -> dict | None:
+    """Phase R — atomic, backend-aware claim (replaces the GET+PATCH pickup).
+
+    The server transitions the run queued→running with a compare-and-swap,
+    so multiple workers (Mac + A100 boxes) can poll the same API safely.
+    """
     try:
-        r = httpx.get(f"{API_URL}/api/v1/runs", params={"status": "queued", "limit": 1}, timeout=5)
+        r = httpx.post(
+            f"{API_URL}/api/v1/runs/claim",
+            json={"backend": backend_name, "worker_id": WORKER_ID},
+            timeout=10,
+        )
         r.raise_for_status()
-        runs = r.json()
-        return runs[-1] if runs else None  # oldest queued
+        return r.json()  # a Run dict, or None when the queue is empty
     except Exception as e:
-        log.warning("API poll failed: %s", e)
+        log.warning("Claim request failed: %s", e)
         return None
 
 
@@ -84,13 +94,13 @@ def main() -> int:
 
     while True:
         try:
-            run = fetch_next_queued()
+            run = claim_next_run(backend.name)
             if run is None:
                 time.sleep(POLL_INTERVAL)
                 continue
 
-            log.info("Picked up run #%s (dataset=%s, model=%s, method=%s)",
-                     run["id"], run["dataset"], run["base_model"], run["method"])
+            log.info("Claimed run #%s as %s (dataset=%s, model=%s, method=%s)",
+                     run["id"], WORKER_ID, run["dataset"], run["base_model"], run["method"])
             # Bind run_id into log context so every line emitted by
             # run_training_job (and anything it transitively logs) carries
             # the correlation ID when JSON logging is on.

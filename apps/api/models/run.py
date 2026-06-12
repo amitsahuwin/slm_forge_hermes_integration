@@ -46,6 +46,9 @@ class Run(SQLModel, table=True):
     trainer_backend: str = "mlx"
 
     status: RunStatus = RunStatus.QUEUED
+    # Phase R — atomic claiming + lease (set by POST /runs/claim).
+    claimed_by: str | None = None
+    claimed_at: datetime | None = None
     error_message: str | None = None
     adapter_path: str | None = None
     final_train_loss: float | None = None

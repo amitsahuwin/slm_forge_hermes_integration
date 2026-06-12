@@ -22,6 +22,7 @@ from typing import Any
 
 import httpx
 
+from packages.trainer import transfer
 from packages.trainer.backends import TrainerBackend, get_backend
 
 log = logging.getLogger("trainer.runner")
@@ -65,13 +66,24 @@ def run_training_job(
     dataset_dir = DATA_ROOT / run["dataset"]
 
     if not (dataset_dir / "train.jsonl").exists():
-        msg = (
-            f"Dataset '{run['dataset']}' is missing train.jsonl in {dataset_dir}. "
-            "Did you run 'make seed-data'?"
-        )
-        log.error(msg)
-        _patch_run(api_url, run_id, status="failed", error_message=msg)
-        return
+        # Phase R — remote workers fetch the dataset from the API instead of
+        # assuming a shared filesystem.
+        if transfer.remote_mode():
+            try:
+                dataset_dir = transfer.ensure_dataset_local(run["dataset"], api_url)
+            except transfer.TransferError as e:
+                msg = f"Dataset '{run['dataset']}' could not be fetched: {e}"
+                log.error(msg)
+                _patch_run(api_url, run_id, status="failed", error_message=msg[:500])
+                return
+        else:
+            msg = (
+                f"Dataset '{run['dataset']}' is missing train.jsonl in {dataset_dir}. "
+                "Did you run 'make seed-data'?"
+            )
+            log.error(msg)
+            _patch_run(api_url, run_id, status="failed", error_message=msg)
+            return
 
     run_dir = RUNS_ROOT / str(run_id)
     adapter_dir = run_dir / "adapter"
@@ -140,6 +152,15 @@ def run_training_job(
             )
         except Exception as e:
             log.warning("Run #%s: canary eval crashed: %s", run_id, e)
+
+        # Phase R — remote workers ship the adapter back to the API host.
+        if transfer.remote_mode() and not transfer.upload_adapter(
+            run_id, adapter_dir, api_url
+        ):
+            log.warning(
+                "Run #%s: adapter upload failed — adapter remains only on "
+                "this worker at %s", run_id, adapter_dir,
+            )
 
         patch_fields: dict[str, Any] = {
             "status": "completed",

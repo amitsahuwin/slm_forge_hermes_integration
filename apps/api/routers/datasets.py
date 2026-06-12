@@ -1,14 +1,20 @@
-"""Dataset discovery."""
+"""Dataset discovery + archive download (Phase R)."""
 from __future__ import annotations
 
+import io
+import re
+import tarfile
 from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel
 
 router = APIRouter()
 
 DATA_ROOT = Path("/app/data/datasets")
+
+# Dataset names are single path segments: alnum start, then alnum/._- only.
+_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 class DatasetInfo(BaseModel):
@@ -55,3 +61,26 @@ def list_datasets() -> list[DatasetInfo]:
             )
         )
     return out
+
+
+@router.get("/{name}/archive")
+def download_dataset_archive(name: str) -> Response:
+    """Phase R — stream a dataset dir as tar.gz for remote workers.
+
+    Members are rooted at ``<name>/`` so extraction recreates the standard
+    ``data/datasets/<name>/`` layout on the worker.
+    """
+    if not _NAME_RE.match(name) or ".." in name:
+        raise HTTPException(422, f"Invalid dataset name: {name!r}")
+    ds_dir = DATA_ROOT / name
+    if not ds_dir.is_dir():
+        raise HTTPException(404, f"Dataset '{name}' not found")
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+        tf.add(ds_dir, arcname=name)
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/gzip",
+        headers={"Content-Disposition": f'attachment; filename="{name}.tar.gz"'},
+    )

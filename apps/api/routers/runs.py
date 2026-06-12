@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import json
+import tarfile
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel
 from sqlmodel import Session, desc, select
 from sse_starlette.sse import EventSourceResponse
@@ -15,10 +18,15 @@ from sse_starlette.sse import EventSourceResponse
 from apps.api.middleware.auth import requires
 from apps.api.models.metric import Metric
 from apps.api.models.run import Run, RunMethod, RunStatus
+from apps.api.services.claims import claim_next_run
 from apps.api.services.db import get_session
 from apps.api.services.model_catalog import validate_run_request
 
 router = APIRouter()
+
+# Where run artifacts live on the API host (bind-mounted in Docker).
+# Phase R: remote workers upload adapters here via POST /{run_id}/artifacts.
+ARTIFACTS_ROOT = Path("/app/runs")
 
 
 class RunCreate(BaseModel):
@@ -75,10 +83,28 @@ def create_run(payload: RunCreate, session: SessionDep) -> Run:
     return run
 
 
+class RunClaim(BaseModel):
+    """Phase R — worker claim request. The claim IS the queued→running CAS."""
+
+    backend: str = "mlx"
+    worker_id: str
+
+
+@router.post("/claim", response_model=Run | None)
+def claim_run(payload: RunClaim, session: SessionDep) -> Run | None:
+    """Atomically claim the oldest queued run for this worker's backend.
+
+    Returns JSON null when no matching run is queued. Also sweeps expired
+    claim leases (abandoned remote runs) back to queued.
+    """
+    return claim_next_run(session, backend=payload.backend, worker_id=payload.worker_id)
+
+
 @router.get("", response_model=list[Run])
 def list_runs(
     session: SessionDep,
     status: RunStatus | None = Query(default=None),
+    backend: str | None = Query(default=None),
     limit: int = Query(default=50, le=200),
 ) -> list[Run]:
     stmt = select(Run).order_by(desc(Run.created_at)).limit(limit)
@@ -89,6 +115,8 @@ def list_runs(
             .order_by(desc(Run.created_at))
             .limit(limit)
         )
+    if backend is not None:
+        stmt = stmt.where(Run.trainer_backend == backend)
     return list(session.exec(stmt).all())
 
 
@@ -135,6 +163,47 @@ def post_metric(run_id: int, payload: MetricCreate, session: SessionDep) -> Metr
     session.commit()
     session.refresh(m)
     return m
+
+
+@router.post("/{run_id}/artifacts")
+def upload_run_artifacts(
+    run_id: int,
+    archive: UploadFile = File(...),  # noqa: B008
+    session: Session = Depends(get_session),  # noqa: B008
+) -> dict:
+    """Phase R — remote workers upload their adapter as a tar.gz.
+
+    The archive is validated wholesale before anything touches disk:
+    absolute paths, ``..`` segments, and links are rejected with 400.
+    Members extract under ``ARTIFACTS_ROOT/<run_id>/`` (the same layout a
+    local worker writes directly).
+    """
+    if not session.get(Run, run_id):
+        raise HTTPException(404, "Run not found")
+
+    data = archive.file.read()
+    try:
+        with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tf:
+            members = tf.getmembers()
+            for m in members:
+                parts = Path(m.name).parts
+                if (
+                    m.name.startswith("/")
+                    or ".." in parts
+                    or m.issym()
+                    or m.islnk()
+                    or m.isdev()
+                ):
+                    raise HTTPException(400, f"Unsafe archive member: {m.name!r}")
+
+            dest = ARTIFACTS_ROOT / str(run_id)
+            dest.mkdir(parents=True, exist_ok=True)
+            tf.extractall(dest, members=members)
+            n_files = sum(1 for m in members if m.isfile())
+    except tarfile.TarError as e:
+        raise HTTPException(400, f"Invalid tar.gz archive: {e}") from e
+
+    return {"files": n_files, "adapter_path": str(dest / "adapter")}
 
 
 @router.get("/{run_id}/stream")

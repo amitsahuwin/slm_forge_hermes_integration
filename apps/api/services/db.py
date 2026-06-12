@@ -30,6 +30,9 @@ _RUN_MIGRATIONS: list[tuple[str, str]] = [
     ("canary_loss", "REAL"),
     # Phase O — trainer backend abstraction
     ("trainer_backend", "TEXT DEFAULT 'mlx'"),
+    # Phase R — atomic claiming + lease
+    ("claimed_by", "TEXT"),
+    ("claimed_at", "TIMESTAMP"),
 ]
 
 # Phase 4 — exports table is created by SQLModel; no ALTER needed unless schema changes

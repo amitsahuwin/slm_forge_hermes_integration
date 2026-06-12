@@ -52,36 +52,24 @@ class HealthResponse(BaseModel):
 
 
 def _recover_stranded_runs_and_sessions() -> None:
-    """Re-queue runs / sessions that were ``running`` when the API died.
+    """Re-queue runs / sessions stranded by a server crash — lease-aware.
 
-    If the API container is killed mid-training, the DB row stays at
-    ``status=running`` forever — the trainer subprocess on the host also
-    dies (or its writes never land), so nothing ever flips the row to
-    completed/failed. On the next startup, scan for those orphaned rows
-    and transition them back to ``queued`` so the trainer picks them up
-    again. An error_message records the reason so users see what happened.
+    Phase R: an API restart must NOT re-queue a run that a (possibly
+    remote) worker is still actively training. ``release_expired_claims``
+    only re-queues runs whose claim lease has expired (no metric activity
+    within ``SLM_FORGE_CLAIM_TIMEOUT_MIN``) plus legacy rows that were
+    ``running`` without any claim record. Actively-reporting claimed runs
+    survive the restart untouched.
     """
     from sqlmodel import Session, select
 
-    from apps.api.models.run import Run, RunStatus
     from apps.api.models.session import SessionStatus, TrainingSession
+    from apps.api.services.claims import release_expired_claims
     from apps.api.services.db import engine
 
     try:
         with Session(engine) as db:
-            running_runs = db.exec(
-                select(Run).where(Run.status == RunStatus.RUNNING)
-            ).all()
-            for r in running_runs:
-                r.status = RunStatus.QUEUED
-                r.error_message = (
-                    "Re-queued by API startup recovery — the previous server "
-                    "process exited while this run was in progress."
-                )
-                # Clear partial timing so the next attempt records cleanly.
-                r.started_at = None
-                r.completed_at = None
-                db.add(r)
+            released = release_expired_claims(db, include_legacy=True)
 
             running_sessions = db.exec(
                 select(TrainingSession).where(
@@ -97,13 +85,13 @@ def _recover_stranded_runs_and_sessions() -> None:
                 db.add(s)
             db.commit()
 
-            if running_runs or running_sessions:
+            if released or running_sessions:
                 import logging as _logging
                 _logging.getLogger("api.startup").warning(
                     "startup recovery: re-queued %d run(s) and %d session(s)",
-                    len(running_runs), len(running_sessions),
+                    released, len(running_sessions),
                 )
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         # Don't fail startup over this. Log and move on.
         import logging as _logging
         _logging.getLogger("api.startup").warning(
@@ -112,7 +100,7 @@ def _recover_stranded_runs_and_sessions() -> None:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):  # noqa: ARG001
+async def lifespan(app: FastAPI):
     setup_worker_logging("api")
     init_db()
     _recover_stranded_runs_and_sessions()
@@ -222,7 +210,7 @@ def _capabilities() -> dict[str, bool]:
                     hb is not None
                     and (now - _aware(hb.last_seen)) < WORKER_STALE_AFTER
                 )
-    except Exception:  # noqa: BLE001
+    except Exception:
         # Fall back to all-false on DB hiccup rather than crashing /health.
         caps.setdefault("trainer", False)
         caps.setdefault("export_gguf", False)
@@ -241,7 +229,7 @@ def _capabilities() -> dict[str, bool]:
 
         r = httpx.get(f"{OLLAMA_URL}/api/version", timeout=2)
         caps["hermes_bridge"] = r.status_code == 200
-    except Exception:  # noqa: BLE001
+    except Exception:
         caps["hermes_bridge"] = False
 
     # Chat LLM is the same probe — labeled separately for clarity.

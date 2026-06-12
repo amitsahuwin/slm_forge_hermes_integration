@@ -3,19 +3,20 @@
 # Build:
 #   docker build -f Dockerfile.trainer-cuda -t slm-forge-trainer-cuda .
 #
-# Run (worker polls the API; all file movement assumes a shared volume
-# until Phase R adds transfer endpoints):
+# Run (worker claims runs from the API; with SLM_FORGE_REMOTE_WORKER=true
+# datasets download and adapters upload over HTTP — no shared volumes needed):
 #   docker run --gpus all \
 #     -e SLM_FORGE_API_URL=http://<api-host>:8000 \
 #     -e SLM_FORGE_SERVICE_TOKEN=<token> \
+#     -e SLM_FORGE_REMOTE_WORKER=true \
 #     -e HF_TOKEN=<hf token>            # never bake into the image \
-#     -v $(pwd)/data:/app/data -v $(pwd)/runs:/app/runs \
 #     slm-forge-trainer-cuda
 FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     SLM_FORGE_TRAINER_BACKEND=cuda \
+    SLM_FORGE_REMOTE_WORKER=true \
     SLM_FORGE_LOG_FORMAT=json
 
 RUN apt-get update && apt-get install -y --no-install-recommends \

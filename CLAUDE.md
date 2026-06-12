@@ -38,6 +38,23 @@ Match the structure of the existing `COMMIT_MESSAGE.md` in the repo — that's t
 Always lead the response that accompanies the commit with a one-sentence summary
 of what shipped, then present the file via `mcp__cowork__present_files`.
 
+### Spec-driven development — non-negotiable
+
+**Always follow spec-driven development, strictly sequential (no parallel
+phases):**
+
+1. **Spec first.** Before writing any code for a phase, write the full
+   spec to `docs/specs/<PHASE>_SPEC.md` (requirements, interfaces,
+   acceptance criteria).
+2. **Tests second.** Write the test cases for that spec before the
+   implementation.
+3. **Code third.** Implement against the spec.
+4. **Gate on green.** Only proceed past a phase when its test cases pass
+   (plus the pre-existing suite — no regressions).
+5. **Commit gate.** When a phase completes: rewrite `commit_message.md`
+   (per the rule above), then `git add` → `git commit` → `git push`.
+   Only after the push move to the next phase.
+
 ### Explanations
 
 Always give a proper explanation alongside the commit. Crisp, technical, no fluff;

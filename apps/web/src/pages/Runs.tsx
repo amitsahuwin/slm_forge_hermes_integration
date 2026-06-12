@@ -83,6 +83,15 @@ export default function Runs() {
                   <td className="px-4 py-2.5">{r.dataset}</td>
                   <td className="px-4 py-2.5 text-xs text-zinc-500">
                     {r.base_model.replace(/^mlx-community\//, '')}
+                    <span
+                      className={`ml-1.5 rounded px-1 py-0.5 text-[10px] font-medium uppercase ${
+                        r.trainer_backend === 'cuda'
+                          ? 'bg-violet-950/60 text-violet-400'
+                          : 'bg-zinc-800 text-zinc-400'
+                      }`}
+                    >
+                      {r.trainer_backend ?? 'mlx'}
+                    </span>
                   </td>
                   <td className="px-4 py-2.5">{r.method}</td>
                   <td className="px-4 py-2.5 text-right">{r.iters}</td>

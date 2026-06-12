@@ -46,6 +46,7 @@ export async function authFetch(input: string, init: RequestInit = {}): Promise<
 
 export type RunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 export type RunMethod = 'lora' | 'dora' | 'full';
+export type TrainerBackendName = 'mlx' | 'cuda';
 
 export type Run = {
   id: number;
@@ -59,6 +60,10 @@ export type Run = {
   max_seq_length: number;
   grad_checkpoint: boolean;
   seed: number;
+  // Phase O/R — backend routing + claim metadata
+  trainer_backend: TrainerBackendName;
+  claimed_by: string | null;
+  claimed_at: string | null;
   status: RunStatus;
   error_message: string | null;
   adapter_path: string | null;
@@ -129,6 +134,27 @@ export type BaseModelInfo = {
   notes: string;
 };
 
+// ─── Phase S — backend-aware catalog v2 (/api/v1/models/v2) ───
+
+export type CatalogVariantStatus = 'stable' | 'untested' | 'broken';
+
+export type CatalogBackendVariant = {
+  model_id: string;
+  min_memory_gb: number;
+  quant: string | null;
+  status: CatalogVariantStatus;
+  notes: string;
+};
+
+export type CatalogModelV2 = {
+  key: string;
+  label: string;
+  family: string;
+  size_params: string;
+  recommended_method: string;
+  backends: Partial<Record<TrainerBackendName, CatalogBackendVariant>>;
+};
+
 async function jget<T>(path: string): Promise<T> {
   const r = await authFetch(`${API_URL}${path}`);
   if (!r.ok) throw new Error(`GET ${path} → HTTP ${r.status}`);
@@ -160,6 +186,7 @@ export const api = {
   // Datasets & models
   listDatasets: () => jget<DatasetInfo[]>('/api/v1/datasets'),
   listModels: () => jget<BaseModelInfo[]>('/api/v1/models'),
+  listModelsV2: () => jget<CatalogModelV2[]>('/api/v1/models/v2'),
 };
 
 // ─── Phase 3 ingestion ────────────────────────────────────────

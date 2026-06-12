@@ -421,7 +421,10 @@ function Num({
   value,
   onChange,
   ...rest
-}: { value: number; onChange: (n: number) => void } & React.InputHTMLAttributes<HTMLInputElement>) {
+}: { value: number; onChange: (n: number) => void } & Omit<
+  React.InputHTMLAttributes<HTMLInputElement>,
+  'value' | 'onChange'
+>) {
   return (
     <input
       type="number"

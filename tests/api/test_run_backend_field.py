@@ -28,6 +28,17 @@ def test_run_create_schema_defaults_and_passthrough() -> None:
     assert run.trainer_backend == "cuda"
 
 
+def test_run_serializes_backend_and_claim_fields() -> None:
+    """Phase S — the frontend types rely on these keys in Run responses."""
+    from apps.api.models.run import Run
+
+    payload = Run(dataset="demo", base_model="any/model").model_dump()
+    for key in ("trainer_backend", "claimed_by", "claimed_at"):
+        assert key in payload, f"Run response contract missing '{key}'"
+    assert payload["trainer_backend"] == "mlx"
+    assert payload["claimed_by"] is None
+
+
 def test_migration_list_contains_trainer_backend() -> None:
     from apps.api.services import db
 

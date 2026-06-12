@@ -28,6 +28,8 @@ _RUN_MIGRATIONS: list[tuple[str, str]] = [
     ("was_accepted", "INTEGER"),
     ("mutation_reasoning", "TEXT"),
     ("canary_loss", "REAL"),
+    # Phase O — trainer backend abstraction
+    ("trainer_backend", "TEXT DEFAULT 'mlx'"),
 ]
 
 # Phase 4 — exports table is created by SQLModel; no ALTER needed unless schema changes

@@ -31,6 +31,8 @@ class RunCreate(BaseModel):
     max_seq_length: int = 2048
     grad_checkpoint: bool = False
     seed: int = 0
+    # Phase O — backend selector; immutable after creation (not in RunPatch).
+    trainer_backend: str = "mlx"
 
 
 class RunPatch(BaseModel):
@@ -134,8 +136,9 @@ async def stream_run(run_id: int) -> EventSourceResponse:
         last_metric_id = 0
         last_status: str | None = None
         terminal = {RunStatus.COMPLETED.value, RunStatus.FAILED.value, RunStatus.CANCELLED.value}
-        from apps.api.services.db import engine
         from sqlmodel import Session as _Session
+
+        from apps.api.services.db import engine
 
         while True:
             with _Session(engine) as s:
@@ -177,9 +180,10 @@ async def stream_run(run_id: int) -> EventSourceResponse:
 @requires("delete", "run")
 def delete_run(run_id: int, request: Request, session: SessionDep) -> None:
     """Delete a run and its metrics. Blocks if the run has exports."""
-    from apps.api.models.export import Export
     import shutil
     from pathlib import Path
+
+    from apps.api.models.export import Export
 
     run = session.get(Run, run_id)
     if not run:

@@ -40,6 +40,11 @@ class Run(SQLModel, table=True):
     grad_checkpoint: bool = False
     seed: int = 0
 
+    # Phase O — which training backend executes this run ("mlx" | "cuda" | ...).
+    # Plain str (not enum): the API must accept runs for backends this
+    # deployment's workers may not implement yet.
+    trainer_backend: str = "mlx"
+
     status: RunStatus = RunStatus.QUEUED
     error_message: str | None = None
     adapter_path: str | None = None

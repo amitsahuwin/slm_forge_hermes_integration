@@ -23,6 +23,7 @@ from packages._log_context import bind as _bind_log_ctx
 from packages._log_context import reset as _reset_log_ctx
 from packages._logging import setup_worker_logging
 from packages.ratchet.heartbeat import start_heartbeat
+from packages.trainer.backends import get_backend
 from packages.trainer.runner import run_training_job
 
 # Patch httpx so every request from this process carries X-Service-Token.
@@ -45,13 +46,24 @@ def fetch_next_queued() -> dict | None:
         r.raise_for_status()
         runs = r.json()
         return runs[-1] if runs else None  # oldest queued
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         log.warning("API poll failed: %s", e)
         return None
 
 
 def main() -> int:
-    log.info("Trainer worker starting (API=%s, poll=%.1fs)", API_URL, POLL_INTERVAL)
+    # Phase O — resolve the training backend once at startup (fail fast on
+    # an unknown SLM_FORGE_TRAINER_BACKEND value).
+    try:
+        backend = get_backend()
+    except ValueError as e:
+        log.error("%s", e)
+        return 1
+
+    log.info(
+        "Trainer worker starting (API=%s, poll=%.1fs, backend=%s)",
+        API_URL, POLL_INTERVAL, backend.name,
+    )
 
     # Health check: wait for API to be reachable
     for attempt in range(30):
@@ -60,7 +72,7 @@ def main() -> int:
             log.info("API is up.")
             start_heartbeat(API_URL, worker="trainer")
             break
-        except Exception:  # noqa: BLE001
+        except Exception:
             if attempt == 0:
                 log.info("Waiting for API at %s...", API_URL)
             time.sleep(2)
@@ -84,14 +96,14 @@ def main() -> int:
             # the correlation ID when JSON logging is on.
             _tokens = _bind_log_ctx(run_id=run["id"])
             try:
-                run_training_job(run, api_url=API_URL)
+                run_training_job(run, api_url=API_URL, backend=backend)
             finally:
                 _reset_log_ctx(_tokens)
 
         except KeyboardInterrupt:
             log.info("Stopping (KeyboardInterrupt).")
             return 0
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             log.exception("Unexpected error in worker loop: %s", e)
             time.sleep(POLL_INTERVAL)
 

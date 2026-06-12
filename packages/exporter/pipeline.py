@@ -47,6 +47,20 @@ DB_FIELD_BYTES = {
 }
 
 
+def detect_adapter_format(adapter_dir: Path) -> str:
+    """Return ``"peft"`` or ``"mlx"`` based on the adapter's file layout.
+
+    Both formats write an ``adapter_config.json``, so file *names* are the
+    discriminator (verified against real run dirs):
+      - PEFT ``save_pretrained``: ``adapter_model.safetensors``
+      - MLX-LM:                   ``adapters.safetensors``
+    Defaults to ``"mlx"`` (the historical format) when ambiguous.
+    """
+    if (adapter_dir / "adapter_model.safetensors").exists():
+        return "peft"
+    return "mlx"
+
+
 def _find_llama_quantize() -> str | None:
     for c in [
         "llama-quantize",
@@ -168,32 +182,52 @@ def run_export_job(export_row: dict, api_url: str) -> None:
     # Build env (no scripts_dir prepend — we use absolute paths everywhere)
     env = os.environ.copy()
 
-    # ── Stage 1: mlx_lm fuse ─────────────────────────────────────────
-    log.info("Stage 1/3: mlx_lm fuse --dequantize")
-    _patch_export(api_url, xid, status="fusing",
-                  progress_text="Fusing LoRA into base model (dequantize)…")
+    # ── Stage 1: merge adapter into base (backend-dependent) ─────────
+    # Phase Q: the adapter's on-disk format tells us which trainer made it.
+    adapter_format = detect_adapter_format(adapter_dir)
 
-    # Detect subcommand vs direct-module form
-    probe = subprocess.run(
-        [str(VENV_PYTHON), "-m", "mlx_lm", "fuse", "--help"],
-        capture_output=True, text=True, timeout=15,
-    )
-    fuse_base = [str(VENV_PYTHON), "-m", "mlx_lm", "fuse"] if probe.returncode == 0 \
-                else [str(VENV_PYTHON), "-m", "mlx_lm.fuse"]
+    if adapter_format == "peft":
+        log.info("Stage 1/3: PEFT merge_and_unload (CUDA-trained adapter)")
+        _patch_export(api_url, xid, status="fusing",
+                      progress_text="Merging PEFT adapter into base model…")
+        fuse_cmd = [
+            str(VENV_PYTHON), "-m", "packages.exporter.peft_merge",
+            "--base", base_model,
+            "--adapter", str(adapter_dir),
+            "--out", str(fused_dir),
+        ]
+        rc = _run_subprocess(fuse_cmd, log_path, env=env, cwd=str(PROJECT_ROOT))
+        if rc != 0:
+            msg = f"peft_merge exited {rc}. See {log_path}"
+            log.error(msg)
+            _patch_export(api_url, xid, status="failed", error_message=msg)
+            return
+    else:
+        log.info("Stage 1/3: mlx_lm fuse --dequantize")
+        _patch_export(api_url, xid, status="fusing",
+                      progress_text="Fusing LoRA into base model (dequantize)…")
 
-    fuse_cmd = fuse_base + [
-        "--model", base_model,
-        "--adapter-path", str(adapter_dir),
-        "--save-path", str(fused_dir),
-        "--dequantize",
-    ]
+        # Detect subcommand vs direct-module form
+        probe = subprocess.run(
+            [str(VENV_PYTHON), "-m", "mlx_lm", "fuse", "--help"],
+            capture_output=True, text=True, timeout=15,
+        )
+        fuse_base = [str(VENV_PYTHON), "-m", "mlx_lm", "fuse"] if probe.returncode == 0 \
+                    else [str(VENV_PYTHON), "-m", "mlx_lm.fuse"]
 
-    rc = _run_subprocess(fuse_cmd, log_path, env=env)
-    if rc != 0:
-        msg = f"mlx_lm fuse exited {rc}. See {log_path}"
-        log.error(msg)
-        _patch_export(api_url, xid, status="failed", error_message=msg)
-        return
+        fuse_cmd = fuse_base + [
+            "--model", base_model,
+            "--adapter-path", str(adapter_dir),
+            "--save-path", str(fused_dir),
+            "--dequantize",
+        ]
+
+        rc = _run_subprocess(fuse_cmd, log_path, env=env)
+        if rc != 0:
+            msg = f"mlx_lm fuse exited {rc}. See {log_path}"
+            log.error(msg)
+            _patch_export(api_url, xid, status="failed", error_message=msg)
+            return
 
     _patch_export(api_url, xid, fused_path=str(fused_dir))
 

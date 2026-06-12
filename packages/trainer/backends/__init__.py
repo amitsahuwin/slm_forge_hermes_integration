@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 
 from packages.trainer.backends.base import TrainerBackend, TrainEvent
+from packages.trainer.backends.cuda import CudaBackend
 from packages.trainer.backends.mlx import MlxBackend
 
 __all__ = [
@@ -25,6 +26,7 @@ ENV_VAR = "SLM_FORGE_TRAINER_BACKEND"
 
 _REGISTRY: dict[str, type[TrainerBackend]] = {
     MlxBackend.name: MlxBackend,
+    CudaBackend.name: CudaBackend,
 }
 
 

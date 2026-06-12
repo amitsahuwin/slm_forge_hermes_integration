@@ -16,13 +16,16 @@ from apps.api.middleware.auth import requires
 from apps.api.models.metric import Metric
 from apps.api.models.run import Run, RunMethod, RunStatus
 from apps.api.services.db import get_session
+from apps.api.services.model_catalog import validate_run_request
 
 router = APIRouter()
 
 
 class RunCreate(BaseModel):
     dataset: str
-    base_model: str = "mlx-community/gemma-3n-E2B-it-bf16"
+    # Phase P — default switched off the broken gemma-3n bf16 checkpoint
+    # to the catalog default (kept in sync by tests/api/test_run_validation.py).
+    base_model: str = "mlx-community/Qwen2.5-3B-Instruct-4bit"
     method: RunMethod = RunMethod.LORA
     iters: int = 200
     batch_size: int = 4
@@ -61,6 +64,10 @@ SessionDep = Annotated[Session, Depends(get_session)]
 
 @router.post("", response_model=Run)
 def create_run(payload: RunCreate, session: SessionDep) -> Run:
+    # Phase P — catalog enforcement (disable via SLM_FORGE_ENFORCE_CATALOG=false).
+    error = validate_run_request(payload.base_model, payload.trainer_backend)
+    if error is not None:
+        raise HTTPException(422, error)
     run = Run(**payload.model_dump())
     session.add(run)
     session.commit()

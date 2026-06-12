@@ -1,8 +1,20 @@
-"""Base model catalogue."""
+"""Base model catalogue — views over apps.api.services.model_catalog.
+
+Phase P: the catalog itself lives in ``services/model_catalog.py``
+(backend-aware v2). This router exposes two views:
+
+- ``GET /api/v1/models``    — legacy flat shape, frozen for the existing
+  React NewRun/NewExperiment pages (``hf_id``/``label``/``notes``...).
+  Derived from each model's **mlx** variant.
+- ``GET /api/v1/models/v2`` — full backend-aware entries (memory hints,
+  per-backend checkpoint ids, status). Phase S's UI consumes this.
+"""
 from __future__ import annotations
 
 from fastapi import APIRouter
 from pydantic import BaseModel
+
+from apps.api.services.model_catalog import CATALOG_V2, CatalogModel, default_model_id
 
 router = APIRouter()
 
@@ -16,42 +28,36 @@ class BaseModelInfo(BaseModel):
     notes: str
 
 
-CATALOG: list[BaseModelInfo] = [
-    BaseModelInfo(
-        hf_id="mlx-community/Qwen2.5-3B-Instruct-4bit",
-        label="Qwen 2.5 3B Instruct (4-bit)",
-        family="qwen",
-        size_params="3B",
-        recommended_method="lora",
-        notes="Default. Pre-quantized → QLoRA. Works cleanly on mlx-lm 0.31+.",
-    ),
-    BaseModelInfo(
-        hf_id="mlx-community/Llama-3.2-3B-Instruct-4bit",
-        label="Llama 3.2 3B Instruct (4-bit)",
-        family="llama",
-        size_params="3B",
-        recommended_method="lora",
-        notes="Strong general-purpose baseline.",
-    ),
-    BaseModelInfo(
-        hf_id="mlx-community/Qwen2.5-7B-Instruct-4bit",
-        label="Qwen 2.5 7B Instruct (4-bit)",
-        family="qwen",
-        size_params="7B",
-        recommended_method="lora",
-        notes="Larger, slower. Comfortable on 36GB M3 Max.",
-    ),
-    BaseModelInfo(
-        hf_id="mlx-community/gemma-3n-E2B-it-bf16",
-        label="Gemma 3n E2B (BROKEN on mlx-lm 0.31.3)",
-        family="gemma",
-        size_params="~2.3B effective",
-        recommended_method="lora",
-        notes="⚠ KeyError in sanitize() — wait for mlx-lm fix or use a different model.",
-    ),
-]
+def _legacy_view() -> list[BaseModelInfo]:
+    default_id = default_model_id("mlx")
+    out: list[BaseModelInfo] = []
+    for m in CATALOG_V2:
+        v = m.backends["mlx"]
+        label = m.label
+        if v.quant:
+            label += f" ({v.quant})"
+        if v.status == "broken":
+            label += " — ⚠ BROKEN"
+        out.append(
+            BaseModelInfo(
+                hf_id=v.model_id,
+                label=label,
+                family=m.family,
+                size_params=m.size_params,
+                recommended_method=m.recommended_method,
+                notes=v.notes,
+            )
+        )
+    # Default model first — the UI preselects the first option.
+    out.sort(key=lambda b: b.hf_id != default_id)
+    return out
 
 
 @router.get("", response_model=list[BaseModelInfo])
 def list_models() -> list[BaseModelInfo]:
-    return CATALOG
+    return _legacy_view()
+
+
+@router.get("/v2", response_model=list[CatalogModel])
+def list_models_v2() -> list[CatalogModel]:
+    return CATALOG_V2

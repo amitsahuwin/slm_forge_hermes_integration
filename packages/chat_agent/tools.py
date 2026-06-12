@@ -170,7 +170,7 @@ def get_export_status(run_id: int) -> dict[str, Any]:
 def start_experiment(
     name: str,
     dataset: str,
-    base_model: str = "mlx-community/gemma-3n-E2B-it-bf16",
+    base_model: str = "mlx-community/Qwen2.5-3B-Instruct-4bit",
     iters: int = 100,
     max_rounds: int = 8,
 ) -> dict[str, Any]:
@@ -259,7 +259,7 @@ def propose_hyperparams(dataset: str, history: list[dict[str, Any]]) -> dict[str
             },
             "proposal": proposal.model_dump(),
         }
-    except Exception as e:  # noqa: BLE001 — surface to UI
+    except Exception as e:
         log.exception("propose_hyperparams failed")
         return {"error": f"{type(e).__name__}: {e}"}
 

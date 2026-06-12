@@ -50,6 +50,17 @@ exporter = [
     "gguf>=0.6",
     "sentencepiece>=0.2",
 ]
+# Phase Q — CUDA training backend. Linux + NVIDIA only (bitsandbytes has no
+# Metal support; never install this group on macOS).
+trainer-cuda = [
+    "torch>=2.4",
+    "transformers>=4.46",
+    "peft>=0.13",
+    "trl>=0.12",
+    "bitsandbytes>=0.44",
+    "datasets>=3.1",
+    "accelerate>=1.0",
+]
 ingest = [
     "playwright>=1.48",
     "beautifulsoup4>=4.12",

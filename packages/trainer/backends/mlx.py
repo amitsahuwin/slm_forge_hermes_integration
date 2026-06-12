@@ -8,7 +8,6 @@ See ``docs/specs/PHASE_O_SPEC.md`` §4.3.
 """
 from __future__ import annotations
 
-import json
 import logging
 import os
 import re
@@ -22,8 +21,14 @@ from typing import Any, ClassVar
 import yaml
 
 from packages.trainer.backends.base import TrainerBackend, TrainEvent
+from packages.trainer.backends.dataset_utils import count_jsonl, detect_dataset_format
 
 log = logging.getLogger("trainer.backend.mlx")
+
+# Backwards-compatible aliases — the implementation moved to dataset_utils
+# in Phase Q so the CUDA backend shares it. Call sites below are unchanged.
+_count_jsonl = count_jsonl
+_detect_dataset_format = detect_dataset_format
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
@@ -38,14 +43,6 @@ _ITER_VAL = re.compile(r"Iter\s+(\d+):\s+Val loss\s+([\d.]+)")
 _TEST_LOSS = re.compile(r"Test loss\s+([\d.]+)")
 
 
-def _count_jsonl(path: Path) -> int:
-    """Count non-empty lines in a JSONL file."""
-    if not path.exists():
-        return 0
-    with path.open("r", encoding="utf-8") as f:
-        return sum(1 for line in f if line.strip())
-
-
 def _safe_val_batches(dataset_dir: Path, batch_size: int) -> int:
     """Return a val_batches value that can never trigger the 'not enough examples' error.
 
@@ -58,38 +55,6 @@ def _safe_val_batches(dataset_dir: Path, batch_size: int) -> int:
         return 0
     safe = max(1, n_valid // batch_size)
     return min(safe, 25)
-
-
-def _detect_dataset_format(dataset_dir: Path) -> str:
-    """Inspect train.jsonl's first non-empty row and return ``"chat"`` or ``"text"``.
-
-    MLX-LM supports both:
-      • chat:  ``{"messages": [{"role": ..., "content": ...}, ...]}``
-      • prompt+completion: ``{"prompt": "...", "completion": "..."}``  (also chat-like)
-      • text:  ``{"text": "..."}``
-
-    ``mask_prompt: True`` only works for chat/completion formats. If the dataset
-    is plain text (the format of all 6 seed datasets) we must set it to False
-    or MLX-LM raises ``ValueError("Prompt masking not supported for text dataset.")``.
-    """
-    train_path = dataset_dir / "train.jsonl"
-    if not train_path.exists():
-        return "text"  # caller will fail later with a clearer error
-    try:
-        with train_path.open("r", encoding="utf-8") as f:
-            for line in f:
-                s = line.strip()
-                if not s:
-                    continue
-                obj = json.loads(s)
-                if not isinstance(obj, dict):
-                    return "text"
-                if "messages" in obj or ("prompt" in obj and "completion" in obj):
-                    return "chat"
-                return "text"
-    except (OSError, json.JSONDecodeError) as e:
-        log.warning("Could not detect dataset format (%s) — defaulting to text", e)
-    return "text"
 
 
 class MlxBackend(TrainerBackend):

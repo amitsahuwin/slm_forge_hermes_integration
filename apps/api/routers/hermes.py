@@ -60,14 +60,14 @@ def _project_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
 
-def _list_skills() -> tuple[list[str], str]:
-    """Return (skill_basenames, skills_dir_label).
+def _list_skill_paths() -> tuple[dict[str, Path], list[str]]:
+    """Return (skill_name → resolved markdown path, dir_label_parts).
 
-    Looks in two places and dedupes:
-      1. SKILLS_DIR (defaults to ~/.hermes/skills) — what the bridge actually loads
-      2. Repo-level .hermes-skills/  — the source of truth in the repo
+    Looks in two places and dedupes (later dirs win on conflict):
+      1. Repo-level .hermes-skills/  — the source of truth in the repo
+      2. SKILLS_DIR (defaults to ~/.hermes/skills) — what the bridge actually loads
     """
-    found: set[str] = set()
+    found: dict[str, Path] = {}
     label_parts: list[str] = []
 
     repo_skills = _project_root() / ".hermes-skills"
@@ -76,14 +76,24 @@ def _list_skills() -> tuple[list[str], str]:
         for p in repo_skills.glob("*.md"):
             if p.name.lower() == "readme.md":
                 continue
-            found.add(p.stem)
+            found[p.stem] = p
 
     if SKILLS_DIR.exists() and SKILLS_DIR != repo_skills:
         label_parts.append(str(SKILLS_DIR))
         for p in SKILLS_DIR.glob("*.md"):
             if p.name.lower() == "readme.md":
                 continue
-            found.add(p.stem)
+            found[p.stem] = p
+
+    return found, label_parts
+
+
+def _list_skills() -> tuple[list[str], str]:
+    """Backward-compat shim — preserves the (names, dir_label) signature
+    used by ``hermes_status``."""
+    found, label_parts = _list_skill_paths()
+    label = " | ".join(label_parts) if label_parts else str(SKILLS_DIR)
+    return sorted(found.keys()), label
 
     label = " | ".join(label_parts) if label_parts else str(SKILLS_DIR)
     return sorted(found), label
@@ -195,6 +205,79 @@ def list_heartbeats(db: SessionDep) -> dict[str, dict[str, str | bool]]:
             "running": (now - last_seen) < WORKER_STALE_AFTER,
         }
     return out
+
+
+# ─── Skills inspection — name + content for the Dashboard viewer ─────────────
+
+
+class SkillSummary(BaseModel):
+    name: str
+    title: str           # first H1 from the markdown, or filename
+    bytes: int
+    path: str
+
+
+class SkillContent(BaseModel):
+    name: str
+    title: str
+    path: str
+    content: str         # raw markdown
+
+
+@router.get("/skills", response_model=list[SkillSummary])
+def list_hermes_skills() -> list[SkillSummary]:
+    """Enumerate every installed Hermes skill, with title + size.
+
+    Used by the Dashboard's "13 installed" badge — clickable → opens a
+    modal that fetches each skill's full content via ``/skills/{name}``.
+    """
+    paths, _ = _list_skill_paths()
+    out: list[SkillSummary] = []
+    for name in sorted(paths):
+        p = paths[name]
+        try:
+            text = p.read_text(encoding="utf-8")
+        except OSError:
+            text = ""
+        title = name
+        for line in text.splitlines():
+            s = line.strip()
+            if s.startswith("# "):
+                title = s.lstrip("# ").strip() or name
+                break
+        out.append(
+            SkillSummary(
+                name=name,
+                title=title,
+                bytes=len(text.encode("utf-8")),
+                path=str(p),
+            )
+        )
+    return out
+
+
+@router.get("/skills/{name}", response_model=SkillContent)
+def get_hermes_skill(name: str) -> SkillContent:
+    """Return one skill's full markdown body."""
+    import re as _re
+
+    if not _re.fullmatch(r"[A-Za-z0-9_\-]+", name):
+        raise HTTPException(400, "Invalid skill name.")
+    paths, _ = _list_skill_paths()
+    if name not in paths:
+        raise HTTPException(404, f"Skill {name!r} not installed.")
+    p = paths[name]
+    try:
+        content = p.read_text(encoding="utf-8")
+    except OSError as e:
+        raise HTTPException(500, f"Could not read skill: {e}") from e
+    title = name
+    for line in content.splitlines():
+        s = line.strip()
+        if s.startswith("# "):
+            title = s.lstrip("# ").strip() or name
+            break
+    return SkillContent(name=name, title=title, path=str(p), content=content)
 
 
 # ─── Skill invocations (Phase N.1) ───────────────────────────────────────────

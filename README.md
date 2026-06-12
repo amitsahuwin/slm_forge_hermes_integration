@@ -184,10 +184,16 @@ This brings up two containers behind the `auth` Compose profile:
 
 The realm `slm-forge` is auto-imported on first start with six roles (`admin`, `data_engineer`, `domain_expert`, `devops`, `operations`, `support`) and two seed users:
 
-| Username | Password | Role |
-|---|---|---|
-| `admin@local` | `admin1234` | `admin` (full access) |
-| `engineer@local` | `engineer` | `data_engineer` |
+One seed user per role — log in as whichever you want to see role-based UI gating in action (tabs and buttons the role can't use are hidden):
+
+| Username | Password | Role | What they can do |
+|---|---|---|---|
+| `admin@local` | `admin1234` | `admin` | Everything. |
+| `engineer@local` | `engineer` | `data_engineer` | Datasets CRUD · experiments CRUD · runs read+cancel · execute exports · chat RW. No Maintenance. |
+| `expert@local` | `expert123` | `domain_expert` | Read most things · update dataset READMEs · research CRUD · chat RW. Cannot create runs/exports. |
+| `devops@local` | `devops123` | `devops` | Logs RW · settings RW · runs read. No datasets/experiments tabs. |
+| `ops@local` | `ops12345` | `operations` | Read most things + execute exports. Cannot create. |
+| `support@local` | `support1` | `support` | Read-only across the board. |
 
 ### Step 2 — Sign in to the SLM-Forge UI
 

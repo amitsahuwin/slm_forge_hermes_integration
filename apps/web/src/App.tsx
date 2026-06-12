@@ -1,11 +1,13 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import Nav from './components/Nav';
+import RequireRole from './components/RequireRole';
 import Agents from './pages/Agents';
 import Chat from './pages/Chat';
 import Dashboard from './pages/Dashboard';
 import DatasetDetail from './pages/DatasetDetail';
 import Datasets from './pages/Datasets';
 import Research from './pages/Research';
+import Traces from './pages/Traces';
 import ExperimentDetail from './pages/ExperimentDetail';
 import Experiments from './pages/Experiments';
 import Exports from './pages/Exports';
@@ -52,6 +54,14 @@ export default function App() {
               <Route path="/chat/:cid" element={<Chat />} />
               <Route path="/research" element={<Research />} />
               <Route path="/agents" element={<Agents />} />
+            <Route
+              path="/traces"
+              element={
+                <RequireRole role="admin">
+                  <Traces />
+                </RequireRole>
+              }
+            />
               <Route path="/auth/callback" element={<Callback />} />
               <Route path="/admin/users" element={<AdminUsers />} />
               <Route path="*" element={<Navigate to="/" replace />} />

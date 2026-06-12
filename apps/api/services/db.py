@@ -47,6 +47,7 @@ def init_db() -> None:
     from apps.api.models import chat as _chat  # noqa: F401
     from apps.api.models import export as _export  # noqa: F401
     from apps.api.models import heartbeat as _heartbeat  # noqa: F401
+    from apps.api.models import hermes_trace as _hermes_trace  # noqa: F401
     from apps.api.models import metric as _metric  # noqa: F401
     from apps.api.models import run as _run  # noqa: F401
     from apps.api.models import session as _session  # noqa: F401

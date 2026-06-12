@@ -100,11 +100,17 @@ def _refresh_gauges_from_db() -> None:
 
     try:
         with Session(engine) as db:
-            # Active runs
+            # Active runs. `db.exec(text(...)).one()` returns a Row (not a
+            # tuple, not an int), but Row supports both `[0]` indexing and
+            # `_mapping.values()`. Pull the single column robustly.
             row = db.exec(
                 text("SELECT COUNT(*) FROM runs WHERE status = 'running'")
             ).one()
-            ACTIVE_RUNS.set(int(row[0] if isinstance(row, tuple) else row))
+            try:
+                count = row[0]  # tuple / Row / sqlmodel Row
+            except (TypeError, KeyError, IndexError):
+                count = row     # raw scalar (very old SQLAlchemy / dialect quirk)
+            ACTIVE_RUNS.set(int(count))
 
             # Heartbeat ages — one Gauge sample per worker row.
             now = datetime.now(UTC)

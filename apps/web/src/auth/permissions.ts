@@ -119,6 +119,7 @@ export type NavKey =
   | 'chat'
   | 'research'
   | 'agents'
+  | 'traces'
   | 'admin';
 
 const NAV_TO_PERM: Record<NavKey, { action: Action; resource: Resource } | 'always' | 'admin_only'> = {
@@ -131,6 +132,8 @@ const NAV_TO_PERM: Record<NavKey, { action: Action; resource: Resource } | 'alwa
   chat: { action: 'read', resource: 'chat' },
   research: { action: 'read', resource: 'research' },
   agents: { action: 'read', resource: 'chat' },
+  // The Hermes traces tab exposes raw prompt + response bodies; admin only.
+  traces: 'admin_only',
   admin: 'admin_only',
 };
 

@@ -8,11 +8,18 @@ Amit; respect them in every response unless overridden.
 
 ## Preferences
 
-### Commit messages
+### Commit messages — non-negotiable
 
-For any non-trivial change set, deliver a **proper commit message as a
-Markdown file** (typically `COMMIT_MESSAGE.md` at the project root, or
-`docs/commits/<short-slug>.md` for smaller PRs).
+**At the end of every task that touched code, ALWAYS rewrite
+`COMMIT_MESSAGE.md` with a beautifully-formatted GitHub release-style
+markdown summary.** This is a hard requirement — not "if you have time".
+The user often amends with this file (`git commit --amend -F
+COMMIT_MESSAGE.md`), so the file must reflect the latest change set, not
+a stale older one.
+
+For any non-trivial change set, the commit message file goes at
+`COMMIT_MESSAGE.md` at the project root (or `docs/commits/<short-slug>.md`
+for smaller PRs).
 
 It must read like a GitHub release page when rendered on the commit page:
 

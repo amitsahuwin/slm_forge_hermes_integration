@@ -99,6 +99,82 @@
       "realmRoles": [
         "data_engineer"
       ]
+    },
+    {
+      "username": "expert@local",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "expert@local",
+      "firstName": "Domain Expert",
+      "lastName": "Local",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "expert123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "domain_expert"
+      ],
+      "requiredActions": []
+    },
+    {
+      "username": "devops@local",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "devops@local",
+      "firstName": "Devops",
+      "lastName": "Local",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "devops123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "devops"
+      ],
+      "requiredActions": []
+    },
+    {
+      "username": "ops@local",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "ops@local",
+      "firstName": "Operations",
+      "lastName": "Local",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "ops12345",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "operations"
+      ],
+      "requiredActions": []
+    },
+    {
+      "username": "support@local",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "support@local",
+      "firstName": "Support",
+      "lastName": "Local",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "support1",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "support"
+      ],
+      "requiredActions": []
     }
   ],
   "clients": [

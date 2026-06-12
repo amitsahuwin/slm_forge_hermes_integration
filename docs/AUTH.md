@@ -152,10 +152,14 @@ curl -fsS -X POST http://localhost:8181/v1/data/slm_forge/reason \
 
 ## Seed users (from `keycloak/realm-export.json`)
 
-| Username         | Password     | Roles           |
-|------------------|--------------|-----------------|
-| `admin@local`    | `admin1234`  | `admin`         |
-| `engineer@local` | `engineer`   | `data_engineer` |
+| Username         | Password     | Role             |
+|------------------|--------------|------------------|
+| `admin@local`    | `admin1234`  | `admin`          |
+| `engineer@local` | `engineer`   | `data_engineer`  |
+| `expert@local`   | `expert123`  | `domain_expert`  |
+| `devops@local`   | `devops123`  | `devops`         |
+| `ops@local`      | `ops12345`   | `operations`     |
+| `support@local`  | `support1`   | `support`        |
 
 These are baked into the realm export for dev convenience — **rotate or
 delete them before pointing this at anything resembling production.**

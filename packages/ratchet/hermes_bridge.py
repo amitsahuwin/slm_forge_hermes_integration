@@ -60,7 +60,13 @@ def load_skill(name: str) -> str | None:
     return None
 
 
-def _call_ollama(system: str, user: str, *, expect_json: bool = True) -> str:
+def _call_ollama(
+    system: str,
+    user: str,
+    *,
+    expect_json: bool = True,
+    trace_source: str = "unknown",
+) -> str:
     payload: dict[str, Any] = {
         "model": HERMES_MODEL,
         "messages": [
@@ -73,14 +79,77 @@ def _call_ollama(system: str, user: str, *, expect_json: bool = True) -> str:
     if expect_json:
         payload["format"] = "json"
 
+    import time as _time
+
+    start = _time.monotonic()
+    response_text = ""
+    error_msg: str | None = None
     try:
         r = httpx.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=300)
         r.raise_for_status()
+        response_text = r.text
     except httpx.HTTPError as e:
+        error_msg = f"{type(e).__name__}: {e}"
         log.error("Ollama call failed: %s", e)
+        _record_trace(
+            source=trace_source,
+            request_body=payload,
+            response_text="",
+            error=error_msg,
+            duration_ms=int((_time.monotonic() - start) * 1000),
+        )
         raise
 
+    duration_ms = int((_time.monotonic() - start) * 1000)
+    _record_trace(
+        source=trace_source,
+        request_body=payload,
+        response_text=response_text,
+        error=None,
+        duration_ms=duration_ms,
+    )
     return r.json()["message"]["content"]
+
+
+def _record_trace(
+    *,
+    source: str,
+    request_body: dict[str, Any],
+    response_text: str,
+    error: str | None,
+    duration_ms: int,
+) -> None:
+    """Best-effort persistence of a single Ollama call.
+
+    Runs inside the API container (sqlmodel + DB available) AND inside the
+    workers (no DB session — they don't import sqlmodel). The import is
+    lazy + wrapped so worker callers don't crash when the trace table isn't
+    reachable.
+    """
+    try:
+        import json as _json
+
+        from sqlmodel import Session as _Session
+
+        from apps.api.models.hermes_trace import HermesTrace
+        from apps.api.services.db import engine
+
+        with _Session(engine) as db:
+            db.add(
+                HermesTrace(
+                    source=source,
+                    model=HERMES_MODEL,
+                    request_body=_json.dumps(request_body, ensure_ascii=False),
+                    response_body=response_text or "",
+                    error=error,
+                    duration_ms=duration_ms,
+                )
+            )
+            db.commit()
+    except Exception as e:  # noqa: BLE001
+        # Workers call _call_ollama without DB access — that's expected.
+        # Don't let trace persistence affect functional behavior.
+        log.debug("trace record skipped (%s)", e)
 
 
 def propose_mutation(

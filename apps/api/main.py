@@ -32,6 +32,7 @@ from apps.api.routers import (
     runs,
     sessions,
     synth,
+    traces,
 )
 from apps.api.services.db import init_db
 from packages._logging import setup_worker_logging
@@ -50,10 +51,71 @@ class HealthResponse(BaseModel):
     capabilities: dict[str, bool]
 
 
+def _recover_stranded_runs_and_sessions() -> None:
+    """Re-queue runs / sessions that were ``running`` when the API died.
+
+    If the API container is killed mid-training, the DB row stays at
+    ``status=running`` forever — the trainer subprocess on the host also
+    dies (or its writes never land), so nothing ever flips the row to
+    completed/failed. On the next startup, scan for those orphaned rows
+    and transition them back to ``queued`` so the trainer picks them up
+    again. An error_message records the reason so users see what happened.
+    """
+    from sqlmodel import Session, select
+
+    from apps.api.models.run import Run, RunStatus
+    from apps.api.models.session import SessionStatus, TrainingSession
+    from apps.api.services.db import engine
+
+    try:
+        with Session(engine) as db:
+            running_runs = db.exec(
+                select(Run).where(Run.status == RunStatus.RUNNING)
+            ).all()
+            for r in running_runs:
+                r.status = RunStatus.QUEUED
+                r.error_message = (
+                    "Re-queued by API startup recovery — the previous server "
+                    "process exited while this run was in progress."
+                )
+                # Clear partial timing so the next attempt records cleanly.
+                r.started_at = None
+                r.completed_at = None
+                db.add(r)
+
+            running_sessions = db.exec(
+                select(TrainingSession).where(
+                    TrainingSession.status == SessionStatus.RUNNING
+                )
+            ).all()
+            for s in running_sessions:
+                s.status = SessionStatus.QUEUED
+                s.error_message = (
+                    "Re-queued by API startup recovery — the previous server "
+                    "process exited while this experiment was in progress."
+                )
+                db.add(s)
+            db.commit()
+
+            if running_runs or running_sessions:
+                import logging as _logging
+                _logging.getLogger("api.startup").warning(
+                    "startup recovery: re-queued %d run(s) and %d session(s)",
+                    len(running_runs), len(running_sessions),
+                )
+    except Exception as e:  # noqa: BLE001
+        # Don't fail startup over this. Log and move on.
+        import logging as _logging
+        _logging.getLogger("api.startup").warning(
+            "startup recovery: skipped (%s)", e, exc_info=True,
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):  # noqa: ARG001
     setup_worker_logging("api")
     init_db()
+    _recover_stranded_runs_and_sessions()
     yield
 
 
@@ -115,6 +177,8 @@ app.include_router(ingest_v2.router, prefix="/api/v1/ingest", tags=["ingest"])
 app.include_router(research.router, prefix="/api/v1/research", tags=["research"])
 # Phase N.3 — Multi-step Hermes agents
 app.include_router(agents.router, prefix="/api/v1/agents", tags=["agents"])
+# Admin-only Hermes/Ollama request-response trace inspector.
+app.include_router(traces.router, prefix="/api/v1/hermes/traces", tags=["hermes-traces"])
 # Phase L — Prometheus metrics scrape endpoint (root /metrics, no prefix).
 app.include_router(metrics.router, tags=["observability"])
 # Phase M — auth (Keycloak + OPA). The endpoints work in both enforcement

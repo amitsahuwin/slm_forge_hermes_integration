@@ -272,8 +272,16 @@ export const exportsApi = {
   get: (id: number) => jget<ExportRow>(`/api/v1/exports/${id}`),
   create: (body: { run_id: number; quant_levels?: string[] }) =>
     jpost<ExportRow>('/api/v1/exports', body),
-  downloadUrl: (id: number, variant: 'f16' | 'q4' | 'q5' | 'q8') =>
-    `${API_URL}/api/v1/exports/${id}/download/${variant}`,
+  // Anchor / window.location downloads don't go through `fetch`, so the
+  // global interceptor can't inject the Bearer header. Use the same SSE
+  // workaround — attach the token as a query param. The auth middleware
+  // accepts ?access_token=... as an Authorization equivalent.
+  downloadUrl: (id: number, variant: 'f16' | 'q4' | 'q5' | 'q8') => {
+    const base = `${API_URL}/api/v1/exports/${id}/download/${variant}`;
+    if (auth.disabled) return base;
+    const token = auth.getAccessToken();
+    return token ? `${base}?access_token=${encodeURIComponent(token)}` : base;
+  },
 };
 
 // ─── Phase 5B admin / maintenance ────────────────────────────

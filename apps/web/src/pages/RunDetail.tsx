@@ -438,6 +438,8 @@ export default function RunDetail() {
         </h3>
         <dl className="grid grid-cols-2 gap-x-6 gap-y-1 font-mono text-xs md:grid-cols-3">
           <Row label="base_model" value={run.base_model} />
+          <Row label="trainer_backend" value={run.trainer_backend ?? 'mlx'} />
+          {run.claimed_by && <Row label="claimed_by" value={run.claimed_by} />}
           <Row label="method" value={run.method} />
           <Row label="iters" value={String(run.iters)} />
           <Row label="batch_size" value={String(run.batch_size)} />

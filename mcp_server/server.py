@@ -285,11 +285,17 @@ def list_runs(
             )
         ),
     ] = None,
+    backend: Annotated[
+        str | None,
+        Field(description="Filter by training backend: 'mlx' or 'cuda'. Omit for all."),
+    ] = None,
     limit: Annotated[int, Field(ge=1, le=200, description="Max rows to return.")] = 20,
 ) -> list[dict[str, Any]]:
     params: dict[str, Any] = {"limit": limit}
     if status:
         params["status"] = status
+    if backend:
+        params["backend"] = backend
     return _get("/api/v1/runs", params=params)
 
 
@@ -318,6 +324,63 @@ def get_run_metrics(
 
 
 @mcp.tool(
+    name="list_models",
+    description=(
+        "List the backend-aware base-model catalog. Each entry has a logical "
+        "key (e.g. 'gemma-4-e4b-it') and per-backend variants under "
+        "backends.mlx / backends.cuda with: model_id (the value to pass as "
+        "base_model), min_memory_gb, quant, and status "
+        "(stable/untested/broken — broken ids are rejected at run creation). "
+        "Call this before start_run or start_experiment to pick a valid model."
+    ),
+)
+def list_models() -> list[dict[str, Any]]:
+    return _get("/api/v1/models/v2")
+
+
+@mcp.tool(
+    name="start_run",
+    description=(
+        "Create one fine-tuning run. trainer_backend picks where it executes: "
+        "'mlx' (Apple Silicon worker, default) or 'cuda' (NVIDIA GPU worker — "
+        "the run queues until such a worker claims it). base_model must be the "
+        "matching backend's model_id from list_models, or the API returns 422. "
+        "Returns the created run record (includes id)."
+    ),
+)
+def start_run(
+    dataset: Annotated[str, Field(description="Dataset name under data/datasets/.")],
+    base_model: Annotated[
+        str,
+        Field(description="Catalog model_id for the chosen backend (see list_models)."),
+    ] = "mlx-community/Qwen2.5-3B-Instruct-4bit",
+    trainer_backend: Annotated[
+        str, Field(description="Training backend: 'mlx' (default) or 'cuda'.")
+    ] = "mlx",
+    method: Annotated[
+        str, Field(description="Fine-tune method: 'lora', 'dora', or 'full'.")
+    ] = "lora",
+    iters: Annotated[int, Field(ge=1, description="Training iterations.")] = 200,
+    batch_size: Annotated[int, Field(ge=1, le=32, description="Batch size.")] = 4,
+    learning_rate: Annotated[
+        float, Field(gt=0, description="Learning rate.")
+    ] = 1.0e-4,
+) -> dict[str, Any]:
+    return _post(
+        "/api/v1/runs",
+        json={
+            "dataset": dataset,
+            "base_model": base_model,
+            "trainer_backend": trainer_backend,
+            "method": method,
+            "iters": iters,
+            "batch_size": batch_size,
+            "learning_rate": learning_rate,
+        },
+    )
+
+
+@mcp.tool(
     name="list_experiments",
     description=(
         "List autoresearch experiments (sessions). Each session orchestrates "
@@ -343,8 +406,13 @@ def start_experiment(
     ],
     base_model: Annotated[
         str,
-        Field(description="HF / mlx-community base model id."),
-    ] = "mlx-community/gemma-3n-E2B-it-bf16",
+        Field(
+            description=(
+                "HF / mlx-community base model id. Must be in the model "
+                "catalog — call list_models to see valid ids."
+            )
+        ),
+    ] = "mlx-community/Qwen2.5-3B-Instruct-4bit",
     method: Annotated[
         str, Field(description="Fine-tune method: 'lora', 'dora', or 'full'.")
     ] = "lora",
@@ -863,4 +931,4 @@ def run_http(port: int = 8765, host: str = "0.0.0.0") -> None:
     mcp.run(transport="sse")
 
 
-__all__ = ["mcp", "run_stdio", "run_http", "API_URL", "TIMEOUT_SECONDS"]
+__all__ = ["API_URL", "TIMEOUT_SECONDS", "mcp", "run_http", "run_stdio"]

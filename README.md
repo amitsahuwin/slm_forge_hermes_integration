@@ -10,7 +10,9 @@
 
 ## What this is
 
-A complete pipeline for fine-tuning small language models (Qwen 2.5 3B, Llama 3.2 3B, Gemma 3n) on your MacBook Pro, with a Hermes-agent-driven autoresearch loop that automatically explores hyperparameters, a one-click GGUF export so you can run your fine-tuned model on your iPhone offline, **plus** everything you need to run it like a real product: structured logs, Prometheus metrics, Loki + Grafana dashboards, Keycloak SSO, OPA fine-grained policy, and an MCP server that exposes the whole lab to Claude Desktop / Cursor / Claude Code.
+A complete pipeline for fine-tuning small language models (Qwen 2.5, Llama 3.2, Gemma 3 / Gemma 4, Mistral 7B) on your MacBook Pro, with a Hermes-agent-driven autoresearch loop that automatically explores hyperparameters, a one-click GGUF export so you can run your fine-tuned model on your iPhone offline, **plus** everything you need to run it like a real product: structured logs, Prometheus metrics, Loki + Grafana dashboards, Keycloak SSO, OPA fine-grained policy, and an MCP server that exposes the whole lab to Claude Desktop / Cursor / Claude Code.
+
+Training is **multi-backend**: MLX on Apple Silicon (default) or PEFT + TRL on NVIDIA CUDA machines — remote GPU workers claim jobs from the same queue over HTTP, no shared filesystem needed.
 
 Built for M3 Max with 36 GB unified memory. Smaller Apple Silicon Macs work with reduced model sizes.
 
@@ -18,7 +20,9 @@ Built for M3 Max with 36 GB unified memory. Smaller Apple Silicon Macs work with
 
 | Capability | Status |
 |---|---|
-| LoRA / DoRA / full SFT on Apple Silicon via MLX-LM | ✓ |
+| LoRA / DoRA / full SFT — MLX (Apple Silicon) or PEFT + TRL (NVIDIA CUDA) | ✓ |
+| Backend-aware model catalog (Qwen 2.5 · Llama 3.2 · Gemma 3 / 4 · Mistral 7B) with memory hints + validation | ✓ |
+| Remote GPU workers: atomic run claiming, lease recovery, HTTP dataset/adapter transfer | ✓ |
 | Autoresearch ratchet (Hermes-driven hyperparameter sweeps) | ✓ |
 | Live training metrics + ratchet timeline graphs + canary drift chart | ✓ |
 | 4-source dataset ingest (file / URL / web scrape / S3) + Ollama auto-convert | ✓ |
@@ -120,6 +124,32 @@ open http://localhost:5173
 
 The `/chat` page exposes a categorized template library covering every step above; the `/research` page runs Ollama-driven market-research reports grounded in DuckDuckGo / SerpAPI / Tavily search.
 
+## Multi-backend training (MLX + CUDA)
+
+Every run targets a **training backend**, picked on the New Run form. `mlx` (default) trains on this Mac; `cuda` trains on any NVIDIA GPU machine pointed at the same API.
+
+```bash
+# Mac (default) — nothing new, same as always
+make trainer
+
+# Smoke-test a new model on this Mac (30-iter LoRA, reports peak memory)
+make smoke-model MODEL=gemma-4-e4b-it
+
+# Remote CUDA worker (Linux + NVIDIA), no shared filesystem required
+docker build -f Dockerfile.trainer-cuda -t slm-forge-trainer-cuda .
+docker run --gpus all \
+  -e SLM_FORGE_API_URL=http://<your-mac>:8000 \
+  -e SLM_FORGE_SERVICE_TOKEN=<token from .env> \
+  -e HF_TOKEN=<your HF token> \
+  slm-forge-trainer-cuda
+```
+
+How it works: workers **claim** runs atomically (`POST /runs/claim`) filtered by their backend, datasets download and adapters upload over HTTP, and abandoned runs are re-queued automatically after a lease timeout. The model catalog (`/api/v1/models/v2`) maps each model to its MLX 4-bit and full-precision CUDA checkpoints with memory requirements; invalid model/backend combos are rejected at run creation.
+
+Gated models (Gemma / Llama / Mistral) need a one-time `huggingface-cli login` on the Mac, or `HF_TOKEN` on CUDA workers.
+
+Full design + hardware feasibility tables: [`docs/MULTI_PLATFORM_TRAINING.md`](docs/MULTI_PLATFORM_TRAINING.md).
+
 ## Make targets reference
 
 ```bash
@@ -128,7 +158,9 @@ make help                     # full list with descriptions
 # Core
 make dev                      # UI + API foreground
 make dev-d                    # UI + API detached
-make trainer                  # host trainer worker (JSON logs)
+make trainer                  # host trainer worker, MLX backend (JSON logs)
+make trainer-cuda             # trainer worker, CUDA backend (Linux + NVIDIA only)
+make smoke-model MODEL=<key>  # 30-iter smoke test of a catalog model on this Mac
 make ratchet                  # host autoresearch worker
 make exporter                 # host GGUF exporter worker
 
@@ -282,6 +314,7 @@ Once a GGUF is exported you can do tool / function calling against it via Ollama
 ## Documentation map
 
 - [`docs/PLAN.md`](docs/PLAN.md) — master plan, every phase A–N + L + M tracked.
+- [`docs/MULTI_PLATFORM_TRAINING.md`](docs/MULTI_PLATFORM_TRAINING.md) — multi-backend training design (MLX + CUDA), feasibility tables, phases O–S (specs in `docs/specs/`).
 - [`docs/MARKET_ANALYSIS.md`](docs/MARKET_ANALYSIS.md) — 3,000-word competitor study.
 - [`docs/AUTH.md`](docs/AUTH.md) — Keycloak + OPA operator runbook.
 - [`docs/OBSERVABILITY_SETUP.md`](docs/OBSERVABILITY_SETUP.md) — Prometheus / Grafana / Loki / Promtail setup.
@@ -295,7 +328,7 @@ Once a GGUF is exported you can do tool / function calling against it via Ollama
 ## What's intentionally NOT here
 
 - ❌ Kubernetes / ArgoCD — single-machine tool, no cluster. Auth + observability are container-native so a future K8s lift is straightforward.
-- ❌ Multi-GPU — Apple Silicon unified memory only.
+- ❌ Multi-GPU training — one GPU per worker (Apple Silicon unified memory, or a single CUDA GPU per remote worker).
 - ❌ RLHF PPO — DPO works, full PPO needs a cluster.
 
 ## License

@@ -49,6 +49,7 @@ help: ## Show this help
 	@echo "  make auth ENABLED=true    Bring up Keycloak+OPA AND turn enforcement ON."
 	@echo "  make auth ENABLED=false   Bring up Keycloak+OPA, enforcement OFF (default)."
 	@echo "  make auth-down            Tear down Keycloak+OPA."
+	@echo "  make smoke-model MODEL=gemma-4-e4b-it   Smoke-test a catalog model on this Mac."
 
 # ─── One-time setup ────────────────────────────────────────────────────────
 

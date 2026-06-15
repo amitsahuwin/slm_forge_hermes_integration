@@ -4,7 +4,8 @@ Pipeline:
   1. mlx_lm fuse --dequantize     — merge LoRA + produce fp16 safetensors
   2. convert_hf_to_gguf.py        — HF safetensors → F16 GGUF
      (from a full llama.cpp source clone in scripts/llama_cpp_src/)
-  3. llama-quantize (Homebrew)    — F16 GGUF → Q4_K_M / Q5_K_M / Q8_0
+  3. llama-quantize              — F16 GGUF → Q4_K_M / Q5_K_M / Q8_0
+     (found on PATH / Homebrew / a local llama.cpp source build)
 """
 from __future__ import annotations
 
@@ -28,6 +29,9 @@ EXPORTS_ROOT   = PROJECT_ROOT / "exports"
 # here so all its sibling imports (conversion, gguf-py) resolve naturally.
 LLAMA_SRC       = PROJECT_ROOT / "scripts" / "llama_cpp_src"
 CONVERT_SCRIPT  = LLAMA_SRC / "convert_hf_to_gguf.py"
+# llama-quantize produced by a local source build (Linux/CUDA hosts that
+# build llama.cpp from the bundled clone with `cmake -B build`).
+LOCAL_QUANTIZE  = LLAMA_SRC / "build" / "bin" / "llama-quantize"
 # Use the raw venv Python — never `uv run`, which gets confused by gguf-py
 VENV_PYTHON     = PROJECT_ROOT / ".venv" / "bin" / "python"
 
@@ -62,14 +66,25 @@ def detect_adapter_format(adapter_dir: Path) -> str:
 
 
 def _find_llama_quantize() -> str | None:
-    for c in [
-        "llama-quantize",
-        "/opt/homebrew/bin/llama-quantize",
-        "/usr/local/bin/llama-quantize",
-    ]:
-        found = shutil.which(c) if "/" not in c else (c if os.access(c, os.X_OK) else None)
-        if found:
-            return found
+    """Locate ``llama-quantize`` across macOS (Homebrew) and Linux (source build).
+
+    Search order: ``PATH`` → local llama.cpp source build
+    (``scripts/llama_cpp_src/build/bin/``) → common system prefixes.
+    """
+    # 1. Anything resolvable on PATH (Homebrew, apt, conda, manual install).
+    found = shutil.which("llama-quantize")
+    if found:
+        return found
+    # 2. Local source build + common absolute prefixes.
+    for c in (
+        LOCAL_QUANTIZE,
+        Path("/opt/homebrew/bin/llama-quantize"),  # macOS arm64 Homebrew
+        Path("/usr/local/bin/llama-quantize"),     # macOS Intel / manual
+        Path("/usr/bin/llama-quantize"),           # Linux distro packages
+    ):
+        p = str(c)
+        if os.path.isfile(p) and os.access(p, os.X_OK):
+            return p
     return None
 
 
@@ -77,7 +92,15 @@ def _check_tools() -> tuple[str, str]:
     """Returns (quantize_bin, convert_script_path). Raises on missing prerequisites."""
     q = _find_llama_quantize()
     if not q:
-        raise RuntimeError("llama-quantize not found. Run: brew install llama.cpp")
+        if sys.platform == "darwin":
+            hint = "Run: brew install llama.cpp"
+        else:
+            hint = (
+                "Install llama.cpp (apt/conda) or build the bundled clone: "
+                "cmake -S scripts/llama_cpp_src -B scripts/llama_cpp_src/build "
+                "&& cmake --build scripts/llama_cpp_src/build -j --target llama-quantize"
+            )
+        raise RuntimeError(f"llama-quantize not found. {hint}")
 
     if not CONVERT_SCRIPT.exists():
         raise RuntimeError(

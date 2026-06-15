@@ -38,8 +38,11 @@ dev = [
 trainer = [
     # Phase P floor: gemma3 / gemma3n / gemma4 / mistral3 model architectures
     # ship in these releases (verified against mlx-lm 0.31.3, latest 2026-06).
-    "mlx>=0.31.2",
-    "mlx-lm>=0.31.3",
+    # Phase T: MLX ships no Linux/Windows wheels, so it is marker-gated to
+    # Apple Silicon. `uv sync --all-extras` then resolves cleanly on Linux
+    # (MLX simply skipped) while Macs still get the full MLX stack.
+    "mlx>=0.31.2; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "mlx-lm>=0.31.3; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "transformers>=4.46",
     "datasets>=3.1",
     "huggingface-hub>=0.26",
@@ -51,13 +54,15 @@ exporter = [
     "sentencepiece>=0.2",
 ]
 # Phase Q — CUDA training backend. Linux + NVIDIA only (bitsandbytes has no
-# Metal support; never install this group on macOS).
+# Metal support). Phase T: bitsandbytes is marker-gated to Linux so the group
+# is safe under `uv sync --all-extras` on macOS (bitsandbytes is skipped; the
+# remaining packages are harmless and the cuda backend stays inert on a Mac).
 trainer-cuda = [
     "torch>=2.4",
     "transformers>=4.46",
     "peft>=0.13",
     "trl>=0.12",
-    "bitsandbytes>=0.44",
+    "bitsandbytes>=0.44; sys_platform == 'linux'",
     "datasets>=3.1",
     "accelerate>=1.0",
 ]

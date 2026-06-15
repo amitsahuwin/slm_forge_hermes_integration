@@ -1,6 +1,12 @@
-# Setup — Phase 1
+# Setup — Phase 1 (cross-platform as of Phase T)
+
+> The `make` targets auto-detect the host. On macOS they use the MLX backend;
+> on Linux with an NVIDIA GPU they use the CUDA (PEFT/TRL) backend. Run
+> `make platform-info` to see what was detected.
 
 ## Prerequisites
+
+### macOS (Apple Silicon → MLX)
 
 | Tool | Why | Install |
 |---|---|---|
@@ -8,7 +14,30 @@
 | **Node 22+** | React build | `brew install node` |
 | **Docker Desktop** | UI + API containers | https://www.docker.com/products/docker-desktop |
 | **Homebrew** | macOS package manager | https://brew.sh |
-| **Python 3.12+** | uv will install if missing | (auto) |
+| **llama.cpp** | GGUF export tooling | `brew install llama.cpp` |
+| **Python 3.12+** | uv installs a managed 3.12 if missing | (auto) |
+
+### Linux (NVIDIA → CUDA, e.g. Ubuntu 22.04 + Tesla T4 / A100)
+
+| Tool | Why | Install |
+|---|---|---|
+| **NVIDIA driver + CUDA** | GPU training | vendor / distro packages (`nvidia-smi` should work) |
+| **uv** | Fast Python dep manager | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
+| **Node 20+ / npm** | React build | `sudo apt-get install -y nodejs npm` |
+| **Docker Engine** | UI + API containers | https://docs.docker.com/engine/install/ |
+| **llama.cpp** | GGUF export tooling | apt/conda, or build the bundled clone (below) |
+| **Python 3.12+** | uv installs a managed 3.12 (system 3.10 is fine; uv provisions its own) | (auto) |
+
+Note: the system `pip` is not required — `uv` manages the virtualenv. If you
+still want it: `sudo apt-get install -y python3-pip`.
+
+Build `llama-quantize` from the bundled llama.cpp clone if it isn't packaged:
+
+```bash
+cmake -S scripts/llama_cpp_src -B scripts/llama_cpp_src/build
+cmake --build scripts/llama_cpp_src/build -j --target llama-quantize
+# (add -DGGML_CUDA=on to the configure step for a CUDA-accelerated build)
+```
 
 ## First run (one-time)
 
@@ -28,11 +57,13 @@ make download-base-model  # ~1.5 GB Gemma 3n E2B → ~/.cache/huggingface
 # Terminal 1: UI + API (Docker, with live reload)
 make dev
 
-# Terminal 2: host trainer worker (needs Metal/MPS access)
+# Terminal 2: host trainer worker
+#   macOS → MLX (Metal/MPS);  Linux → CUDA (NVIDIA GPU) — auto-detected.
 make trainer
+#   Force one explicitly:  make trainer TRAINER_BACKEND=mlx|cuda
 ```
 
-Open http://localhost:5173.
+Open http://localhost:5173 (`xdg-open http://localhost:5173` on Linux).
 
 ## Running your first training
 

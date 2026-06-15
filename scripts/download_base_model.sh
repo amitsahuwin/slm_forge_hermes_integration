@@ -8,7 +8,11 @@ MODEL="${1:-mlx-community/Qwen2.5-3B-Instruct-4bit}"
 echo "→ Downloading $MODEL to ~/.cache/huggingface ..."
 
 if ! command -v uv &>/dev/null; then
-    echo "✗ uv not found. Install: brew install uv"
+    if [ "$(uname -s)" = "Darwin" ]; then
+        echo "✗ uv not found. Install: brew install uv"
+    else
+        echo "✗ uv not found. Install: curl -LsSf https://astral.sh/uv/install.sh | sh"
+    fi
     exit 1
 fi
 
@@ -19,4 +23,6 @@ print(f"✓ Cached at: {path}")
 PYEOF
 
 echo ""
-echo "Done. mlx-lm will resolve '$MODEL' from this cache."
+echo "Done. The trainer (mlx-lm or transformers/PEFT) will resolve '$MODEL' from this cache."
+echo "Tip: for the CUDA backend pass a full-precision HF id, e.g."
+echo "     scripts/download_base_model.sh Qwen/Qwen2.5-3B-Instruct"

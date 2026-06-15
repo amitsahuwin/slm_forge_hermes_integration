@@ -22,6 +22,26 @@ export SLM_FORGE_SERVICE_TOKEN ?= dev-service-token-change-me-in-prod
 COMPOSE      := docker compose
 OBS_FILES    := -f docker-compose.yml -f docker-compose.observability.yml
 
+# ─── Host detection (Phase T — cross-platform) ─────────────────────────────
+# The same targets work on macOS (Apple Silicon → MLX) and Linux (NVIDIA →
+# CUDA). Detection happens once, at parse time. Override any of these on the
+# command line, e.g. `make trainer TRAINER_BACKEND=mlx`.
+UNAME_S      := $(shell uname -s)
+UNAME_M      := $(shell uname -m)
+HAS_NVIDIA   := $(shell command -v nvidia-smi >/dev/null 2>&1 && echo 1 || echo 0)
+
+ifeq ($(UNAME_S),Darwin)
+  PLATFORM          := mac
+  TRAINER_BACKEND   ?= mlx
+  UV_INSTALL_HINT   := brew install uv
+  NODE_INSTALL_HINT := brew install node
+else
+  PLATFORM          := linux
+  TRAINER_BACKEND   ?= cuda
+  UV_INSTALL_HINT   := curl -LsSf https://astral.sh/uv/install.sh | sh
+  NODE_INSTALL_HINT := sudo apt-get install -y nodejs npm   (or https://nodejs.org)
+endif
+
 .PHONY: help \
         setup install-hermes hermes-install-skills \
         dev rebuild down build logs ps \
@@ -32,7 +52,7 @@ OBS_FILES    := -f docker-compose.yml -f docker-compose.observability.yml
         admin-panel grafana keycloak-ui prometheus loki-explore \
         seed-data download-base-model synth-list research-list \
         opa-test check-llamacpp ensure-lock ensure-trainer-installed \
-        smoke-model trainer-cuda \
+        smoke-model trainer-cuda trainer-mlx platform-info \
         clean nuke
 
 # ─── Help ──────────────────────────────────────────────────────────────────
@@ -49,16 +69,36 @@ help: ## Show this help
 	@echo "  make auth ENABLED=true    Bring up Keycloak+OPA AND turn enforcement ON."
 	@echo "  make auth ENABLED=false   Bring up Keycloak+OPA, enforcement OFF (default)."
 	@echo "  make auth-down            Tear down Keycloak+OPA."
-	@echo "  make smoke-model MODEL=gemma-4-e4b-it   Smoke-test a catalog model on this Mac."
+	@echo "  make smoke-model MODEL=gemma-4-e4b-it   Smoke-test a catalog model on this host."
+	@echo ""
+	@echo "Detected host: $(PLATFORM) ($(UNAME_S)/$(UNAME_M)) · GPU=$(if $(filter 1,$(HAS_NVIDIA)),NVIDIA,none) · backend=$(TRAINER_BACKEND)"
+
+platform-info: ## Print the detected platform + chosen trainer backend
+	@echo "OS:              $(UNAME_S)"
+	@echo "Arch:            $(UNAME_M)"
+	@echo "Platform:        $(PLATFORM)"
+	@echo "NVIDIA GPU:      $(if $(filter 1,$(HAS_NVIDIA)),yes,no)"
+	@echo "Trainer backend: $(TRAINER_BACKEND)  (override: make trainer TRAINER_BACKEND=mlx|cuda)"
 
 # ─── One-time setup ────────────────────────────────────────────────────────
 
-setup: ## Install all deps (Python via uv, Node via npm)
-	@command -v uv >/dev/null 2>&1 || { echo "✗ uv not found. Install: brew install uv"; exit 1; }
-	@command -v node >/dev/null 2>&1 || { echo "✗ node not found. Install: brew install node"; exit 1; }
+setup: ## Install all deps (Python via uv, Node via npm) — auto-detects platform
+	@command -v uv >/dev/null 2>&1 || { echo "✗ uv not found. Install: $(UV_INSTALL_HINT)"; exit 1; }
+	@command -v node >/dev/null 2>&1 || { echo "✗ node not found. Install: $(NODE_INSTALL_HINT)"; exit 1; }
+	@echo "→ Host: $(PLATFORM) ($(UNAME_S)/$(UNAME_M)) · backend=$(TRAINER_BACKEND)"
+	@echo "→ Ensuring a managed Python 3.12 (project floor; system Python may be older)…"
+	uv python install 3.12 || echo "  ⚠ 'uv python install 3.12' failed; uv sync will still try to resolve a 3.12."
 	uv sync --all-extras
 	cd apps/web && npm install
-	@if uv run python -c "import mlx_lm" 2>/dev/null; then echo "✓ mlx-lm installed."; else echo "✗ mlx-lm did NOT install."; fi
+	@# Platform markers (pyproject) skip MLX off Apple Silicon and bitsandbytes off Linux,
+	@# so we verify the toolchain that actually matters for THIS host's backend.
+	@if [ "$(TRAINER_BACKEND)" = "mlx" ]; then \
+	  if uv run python -c "import mlx_lm" 2>/dev/null; then echo "✓ mlx-lm installed (mlx backend ready)."; \
+	  else echo "✗ mlx-lm did NOT install (expected on Apple Silicon)."; fi; \
+	else \
+	  if uv run python -c "import torch, peft" 2>/dev/null; then echo "✓ torch + peft installed (cuda backend ready)."; \
+	  else echo "✗ torch/peft did NOT install. Run: uv sync --extra trainer-cuda"; fi; \
+	fi
 
 install-hermes: ## Install Ollama + Hermes Agent + qwen3:30b-a3b
 	bash scripts/install_hermes.sh
@@ -73,20 +113,38 @@ download-base-model: ## Download the default base model from HF
 	bash scripts/download_base_model.sh
 
 ensure-trainer-installed:
-	@if ! uv run python -c "import mlx_lm" 2>/dev/null; then \
-		echo "✗ mlx-lm not installed. Run: uv sync --all-extras"; exit 1; \
-	fi
-	@if ! uv run python -m mlx_lm lora --help >/dev/null 2>&1; then \
-		if ! uv run python -m mlx_lm.lora --help >/dev/null 2>&1; then \
-			echo "✗ mlx-lm installed but module form fails. Run: uv sync --all-extras --refresh"; exit 1; \
+	@# Backend-aware toolchain check (Phase T): probe MLX on Apple Silicon,
+	@# torch+peft on CUDA hosts.
+	@if [ "$(TRAINER_BACKEND)" = "mlx" ]; then \
+		if ! uv run python -c "import mlx_lm" 2>/dev/null; then \
+			echo "✗ mlx-lm not installed. Run: uv sync --all-extras"; exit 1; \
+		fi; \
+		if ! uv run python -m mlx_lm lora --help >/dev/null 2>&1; then \
+			if ! uv run python -m mlx_lm.lora --help >/dev/null 2>&1; then \
+				echo "✗ mlx-lm installed but module form fails. Run: uv sync --all-extras --refresh"; exit 1; \
+			fi; \
+		fi; \
+	else \
+		if ! uv run python -c "import torch, peft, trl" 2>/dev/null; then \
+			echo "✗ CUDA trainer deps missing. Run: uv sync --extra trainer-cuda"; exit 1; \
 		fi; \
 	fi
 
 check-llamacpp: ## Verify llama.cpp + convert_hf_to_gguf.py are available
-	@if ! command -v llama-quantize >/dev/null 2>&1 && ! [ -x /opt/homebrew/bin/llama-quantize ]; then \
+	@if command -v llama-quantize >/dev/null 2>&1 \
+	   || [ -x scripts/llama_cpp_src/build/bin/llama-quantize ] \
+	   || [ -x /opt/homebrew/bin/llama-quantize ] \
+	   || [ -x /usr/local/bin/llama-quantize ] \
+	   || [ -x /usr/bin/llama-quantize ]; then \
+		echo "✓ llama-quantize found"; \
+	elif [ "$(PLATFORM)" = "mac" ]; then \
 		echo "✗ llama-quantize not found. Install: brew install llama.cpp"; exit 1; \
+	else \
+		echo "✗ llama-quantize not found. Install via apt/conda, or build the bundled clone:"; \
+		echo "    cmake -S scripts/llama_cpp_src -B scripts/llama_cpp_src/build"; \
+		echo "    cmake --build scripts/llama_cpp_src/build -j --target llama-quantize"; \
+		exit 1; \
 	fi
-	@echo "✓ llama-quantize found"
 	@if [ -f scripts/llama_cpp/convert_hf_to_gguf.py ]; then \
 		echo "✓ convert_hf_to_gguf.py found (scripts/llama_cpp/)"; \
 	elif find /opt/homebrew -name convert_hf_to_gguf.py 2>/dev/null | grep -q .; then \
@@ -105,11 +163,15 @@ ensure-lock:
 # ─── Workers (run on host, in three separate terminals) ────────────────────
 # Each worker exports SLM_FORGE_LOG_FORMAT=json so Promtail can parse fields.
 
-trainer: ensure-trainer-installed ## Run the host trainer worker (T1)
-	@echo "→ Trainer worker — JSON logs to runs/_trainer.log.json"
-	SLM_FORGE_LOG_FORMAT=json uv run python -m packages.trainer
+trainer: ensure-trainer-installed ## Run the host trainer worker (auto-detects backend)
+	@echo "→ Trainer worker [$(TRAINER_BACKEND)] — JSON logs to runs/_trainer.log.json"
+	SLM_FORGE_TRAINER_BACKEND=$(TRAINER_BACKEND) SLM_FORGE_LOG_FORMAT=json uv run python -m packages.trainer
 
-trainer-cuda: ## Run the trainer worker with the CUDA backend (Linux + NVIDIA only)
+trainer-mlx: ## Force the MLX trainer worker (Apple Silicon)
+	@echo "→ MLX trainer worker — JSON logs to runs/_trainer.log.json"
+	SLM_FORGE_TRAINER_BACKEND=mlx SLM_FORGE_LOG_FORMAT=json uv run python -m packages.trainer
+
+trainer-cuda: ## Force the CUDA trainer worker (Linux + NVIDIA only)
 	@echo "→ CUDA trainer worker — requires .[trainer-cuda] extras + HF_TOKEN for gated models"
 	SLM_FORGE_TRAINER_BACKEND=cuda SLM_FORGE_LOG_FORMAT=json uv run python -m packages.trainer
 

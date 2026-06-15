@@ -78,34 +78,47 @@ See `docs/PLAN.md` for the full phase-by-phase build log.
 
 ## Requirements
 
-- macOS on Apple Silicon (M1 / M2 / M3 — M3 Max with 36 GB unified memory is the development target)
-- Python 3.12 or 3.13
-- Node.js 20+
-- Homebrew (`brew install uv node llama.cpp`)
-- Docker Desktop for Mac
-- ~30 GB free disk for models + exports
+SLM-Forge runs on two host families — the **same `make` targets auto-detect
+the platform** and select the right training backend (Phase T):
+
+| | macOS (Apple Silicon → MLX) | Linux (NVIDIA → CUDA) |
+|---|---|---|
+| Hardware | M1 / M2 / M3 (M3 Max 36 GB is the dev target) | x86_64 + NVIDIA GPU (Tesla T4 / A100 …) |
+| Python | 3.12+ — `uv` provisions a managed 3.12 even if system Python is older | same (`uv python install 3.12`) |
+| Node.js | 20+ (`brew install node`) | 20+ (`apt-get install nodejs npm`) |
+| GGUF tooling | `brew install llama.cpp` | build the bundled clone or install via apt/conda |
+| `uv` | `brew install uv` | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
+| Docker | Docker Desktop | Docker Engine + (for GPU) NVIDIA Container Toolkit |
+| Disk | ~30 GB for models + exports | ~30 GB |
+
+`make platform-info` prints what was detected and which backend it will use.
 
 ## Quick start
 
 ```bash
-# 1. Clone + one-time setup
+# 1. Clone + one-time setup (auto-detects macOS/MLX vs Linux/CUDA)
 git clone git@github.com:<you>/slm_forge_hermes_integration.git
 cd slm_forge_hermes_integration
-make setup                    # uv + Python + Node deps
-make install-hermes           # Ollama + qwen3:30b-a3b
-brew install llama.cpp        # GGUF tooling
+make setup                    # uv (+ managed Python 3.12) + Node deps
+make install-hermes           # Ollama + qwen3:30b-a3b (brew on macOS, systemd on Linux)
+make check-llamacpp           # verify GGUF tooling (brew install llama.cpp / source build)
 
 # 2. Start the core stack (UI on :5173, API on :8000)
 make dev                      # foreground; use `make dev-d` for detached
 
 # 3. Start the three host workers — each in its own terminal
-make trainer                  # T1
+make trainer                  # T1 — auto-selects mlx (Mac) or cuda (Linux/NVIDIA)
 make ratchet                  # T2
 make exporter                 # T3
 
 # 4. Open the UI
-open http://localhost:5173
+open http://localhost:5173    # or: xdg-open on Linux
 ```
+
+> Force a backend explicitly with `make trainer TRAINER_BACKEND=mlx|cuda` (or set
+> `SLM_FORGE_TRAINER_BACKEND`). On a Linux box without a detected NVIDIA GPU the
+> default is still `cuda`, which will report a missing toolchain until you
+> `uv sync --extra trainer-cuda` on a real GPU host.
 
 > Workers emit structured JSON logs (Phase L) by default — `runs/_<worker>.log.json` is ready for Loki to consume. Set `SLM_FORGE_LOG_FORMAT=text` in `.env` for human-readable terminal logs (at the cost of breaking the log labels in Grafana).
 

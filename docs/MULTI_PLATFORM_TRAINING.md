@@ -281,6 +281,25 @@ Re-test the `gemma-3n-E2B` catalog entry after the upgrade; the
 - **Licensing** — Gemma models ship under the Gemma Terms of Use (gated HF
   repos; `huggingface-cli login` required once per machine).
 
+## Phase T — operator tooling is now cross-platform
+
+Phases O–S made the *application* backend-pluggable; **Phase T** closed the
+last gap so a clean checkout actually comes up on a Linux + NVIDIA host with
+the same commands as the Mac. See `docs/specs/PHASE_T_SPEC.md`. In short:
+
+- **`make` auto-detects** OS + arch + NVIDIA GPU and picks `mlx` (Apple
+  Silicon) or `cuda` (Linux/NVIDIA). `make platform-info` shows the verdict;
+  `make trainer TRAINER_BACKEND=…` (or `SLM_FORGE_TRAINER_BACKEND`) overrides.
+- **`uv sync --all-extras` is safe on every platform** — MLX is marker-gated
+  to `darwin/arm64` and bitsandbytes to `linux`, so neither breaks the resolve
+  on the other OS.
+- **`requires-python = ">=3.12"` is unchanged**; `make setup` runs
+  `uv python install 3.12`, so a box on system Python 3.10 still works (uv
+  provisions a managed 3.12).
+- **Ollama install, llama.cpp discovery, and the smoke test** all branch on
+  the host (Homebrew/launchctl on macOS; the official installer + systemd and
+  PATH/source-build discovery on Linux).
+
 ## References
 
 - [mlx-lm LoRA docs & supported models](https://github.com/ml-explore/mlx-lm)

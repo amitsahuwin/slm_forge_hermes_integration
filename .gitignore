@@ -55,3 +55,6 @@ scripts/llama_cpp_src/
 
 
 commit_message.md
+./data
+./runs
+./exports

@@ -1,0 +1,29 @@
+{
+  "mcpServers": {
+    "serena": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "serena-agent",
+        "serena",
+        "start-mcp-server",
+        "--project",
+        "/Users/amitsahu/Documents/projects/SLM_Forge/slm_forge_hermes_integration",
+        "--context",
+        "ide-assistant"
+      ]
+    },
+    "headroom": {
+      "command": "uvx",
+      "args": [
+        "--python",
+        "3.12",
+        "--from",
+        "headroom-ai[mcp]",
+        "headroom",
+        "mcp",
+        "serve"
+      ]
+    }
+  }
+}

@@ -1,4 +1,65 @@
-# CLAUDE.md — Engineering Guidelines
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+SLM-Forge is a local-first lab for fine-tuning small language models. A FastAPI + SQLite backend and a React UI run in Docker; the GPU-bound workers (trainer / ratchet / exporter) run on the **host**. Training is multi-backend: MLX on Apple Silicon, PEFT + TRL on NVIDIA CUDA. `README.md` is the canonical product entry point; `docs/specs/PHASE_*_SPEC.md` are the per-phase specs and `docs/PLAN.md` is the build log.
+
+## Commands
+
+Python is managed by **`uv`** (never call `pip`/`python` directly — use `uv run …`); the web app uses `npm`. `make help` lists every target; `make platform-info` shows the detected host + chosen trainer backend.
+
+```bash
+# Setup (auto-detects macOS/MLX vs Linux/CUDA; provisions managed Python 3.12)
+make setup
+make seed-data                       # copy bundled sample datasets into data/datasets/
+
+# Core stack — UI on :5173, API on :8000 (Docker)
+make dev                             # foreground (make dev-d for detached)
+
+# Host workers — each in its own terminal (NOT in Docker; need GPU/Metal)
+make trainer                         # auto backend; or make trainer-mlx / make trainer-cuda
+make ratchet                         # autoresearch loop (requires Ollama on :11434)
+make exporter                        # GGUF export (requires llama.cpp tooling)
+
+# Python tests / lint / types
+uv run pytest -q                                   # full suite (testpaths=tests, asyncio auto)
+uv run pytest tests/api/test_run_validation.py     # one file
+uv run pytest tests/api/test_run_validation.py::test_broken_model_is_422   # one test
+uv run ruff check --fix <paths>                    # line-length 100; lint only your changed
+                                                   # files — the repo has many pre-existing findings
+uv run mypy apps packages
+
+# Web app (apps/web)
+cd apps/web && npm run build         # tsc --noEmit && vite build  ← the type gate
+cd apps/web && npm run dev           # Vite dev server
+
+# Policy + auth
+make opa-test                        # Rego unit tests (policies/)
+make auth ENABLED=true|false         # Keycloak + OPA up, enforcement on/off
+make auth-token                      # mint a JWT for admin@local for curl testing
+```
+
+## Architecture
+
+**Layout.** `apps/api` (FastAPI + SQLModel + sse-starlette over SQLite), `apps/web` (React 19 + Vite + Tailwind + react-router 7), `packages/*` (host workers + Hermes agents, ingest, synth, research). `policies/` holds OPA Rego; `docs/` holds specs/runbooks.
+
+**Run vs. Session.** A `Run` (`apps/api/models/run.py`) is one fine-tuning job. A `TrainingSession` (`models/session.py`) is an autoresearch *experiment* — a sequence of Runs. The ratchet worker (`packages/ratchet/loop.py`) orchestrates a session: each round it asks Hermes for a hyperparameter mutation, `POST`s a child Run, waits for it, and accepts/rejects on val-loss. Session-level fields (e.g. `base_model`, `trainer_backend`) must be threaded onto each child Run in the loop's `run_payload`, or the runs inherit model defaults.
+
+**Backend-aware claim queue.** Both Runs and Sessions carry `trainer_backend` (`"mlx"` | `"cuda"`). Workers don't poll-and-pick; they `POST /api/v1/runs/claim` filtered by their backend (atomic compare-and-swap + lease recovery), so a Mac and a remote A100 can share one API with **no shared filesystem** — datasets download and adapters upload over HTTP. A run queued for a backend no worker is running stays `queued` forever; that's the usual cause of "nothing happens."
+
+**Pluggable trainer.** `packages/trainer/backends/` registers backends behind `TrainerBackend`: `mlx.py` shells out to `mlx_lm.lora`, `cuda.py` → `cuda_train.py` (PEFT + TRL + bitsandbytes). `runner.py` runs the subprocess, parses its stdout into normalized `TrainEvent`s, and POSTs them as metrics. Workers inherit `os.environ` into the subprocess, and the worker entrypoints load `.env` (e.g. `HF_TOKEN` for gated HF repos) via the guarded `load_dotenv` pattern.
+
+**Model catalog.** `apps/api/services/model_catalog.py` maps one logical model → per-backend physical checkpoints (MLX 4-bit vs full-precision CUDA) with memory/status/`gated` metadata. `validate_run_request(base_model, trainer_backend)` enforces it at Run *and* Session creation (422 on a bad/broken/mismatched combo); bypass with `SLM_FORGE_ENFORCE_CATALOG=false`. The frontend drives its model dropdowns from `/api/v1/models/v2` filtered by the selected backend.
+
+**Migrations.** SQLite schema is created by SQLModel `create_all`; additive forward-migrations live in `apps/api/services/db.py` (`_RUN_MIGRATIONS`, `_SESSION_MIGRATIONS` → `init_db()`). Add a column there with a default rather than hand-editing tables.
+
+**Hermes / Ollama.** `qwen3:30b-a3b` via Ollama powers the skill endpoints, ratchet mutation proposals, chat agents, and R&D research grounding. **Auth** is Keycloak (JWT/SSO) + OPA (Rego), with a service-token bypass for host workers; off by default. **Observability**: `SLM_FORGE_LOG_FORMAT=json` worker logs → Promtail → Loki → Grafana, plus Prometheus `/metrics` (`make obs-up`). An **MCP server** (`make mcp-up`, :8765) exposes the lab to Claude Desktop / Cursor / Claude Code.
+
+> Note on this repo's own conventions: specs live in `docs/specs/` (not `docs/spec/`), and the commit message is written to `commit_message.md` (gitignored).
+
+---
+
+## Engineering guidelines
 
 Rules for every task in this repo. Build like a **staff/principal engineer**: correct, secure, readable, no shortcuts. The **Definition of Done** is the gate every change must pass.
 

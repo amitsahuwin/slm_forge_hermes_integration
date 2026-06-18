@@ -42,6 +42,10 @@ services:
       - KEYCLOAK_PUBLIC_URL=${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}
       - KEYCLOAK_REALM=${KEYCLOAK_REALM:-slm-forge}
       - OPA_URL=${OPA_URL:-http://opa:8181}
+      # Phase T — Platform detection for UI defaults (exported by Makefile).
+      - SLM_FORGE_PLATFORM_OS=${SLM_FORGE_PLATFORM_OS:-}
+      - SLM_FORGE_PLATFORM_ARCH=${SLM_FORGE_PLATFORM_ARCH:-}
+      - SLM_FORGE_PLATFORM_HAS_NVIDIA=${SLM_FORGE_PLATFORM_HAS_NVIDIA:-false}
     # `host-gateway` makes host.docker.internal resolve even on Linux hosts
     # (Docker Desktop on Mac maps it automatically, but this is harmless +
     # portable).

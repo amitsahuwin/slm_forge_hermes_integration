@@ -1,100 +1,90 @@
-# SLM-Forge — project memory for Claude
+# CLAUDE.md — Engineering Guidelines
 
-This file captures per-project preferences that should apply to every
-session. Things added under `## Preferences` are sticky requests from
-Amit; respect them in every response unless overridden.
+Rules for every task in this repo. Build like a **staff/principal engineer**: correct, secure, readable, no shortcuts. The **Definition of Done** is the gate every change must pass.
+
+## Principles
+- Build for today's real requirements with clean seams; don't build speculatively. When "future-proof" clashes with YAGNI, YAGNI wins unless there's a concrete near-term need.
+- Correctness, security, and readability over cleverness.
+- Measure before optimizing; never add complexity (concurrency, caching) on a hunch.
+- Fail fast: validate inputs/config at startup, surface errors early.
+- Ask when the spec is ambiguous.
+- Always use the configured context tooling (Graphify; MCPs: Context7, Serena, Headroom) to load only relevant context and cut token cost.
+
+## Plan & Spec (spec-driven)
+1. Spec first, per phase, in `docs/spec/` — scope, I/O, data models, interfaces, constraints, non-goals. No code until the phase spec is clear.
+2. Phased plan in `docs/plans/` with a dated, descriptive filename. Spec = *what*; plan = *how/when*.
+3. **Architect to MAANG-scale standards**: the plan's architecture must be robust, well-integrated, low-latency, and future-proof — handling high load and scaling elastically up *and* down on demand (stateless services, horizontal scale, async/queues, caching, clear boundaries). Justify it against expected load and growth, not just the happy path.
+4. Red-team the plan as devil's advocate (flaws, coupling, scaling, security, failure modes); revise and repeat — ≥3 passes, continuing until one pass is clean, without manufacturing nitpicks.
+5. Define DoD + acceptance criteria before starting; "done" = criteria demonstrably met.
+6. On requirement change, update in order: spec → tests → code. Spec is the source of truth.
+
+## TDD & Test Quality
+7. Write failing tests first, then implement to green (red → green → refactor).
+8. Run the full suite yourself; fix root causes until green. Never ship unexecuted code.
+9. Tests are a contract: never delete or weaken them to pass — they change only when the spec changes, only to reflect correct behavior.
+10. Meaningful coverage ≥90% (a floor, not the goal): assert real behavior, edge cases, failure paths. Use unit/integration/e2e/contract as applicable.
+
+## Code & Architecture
+11. DRY + YAGNI: extract shared logic, but don't abstract before ~2–3 real call sites.
+12. SOLID; depend on abstractions; composition over inheritance.
+13. Use the right design pattern for the problem — no pattern soup.
+14. Types, lint, format, and type-check all on; treat lint/type errors as build failures.
+15. **No versioned code modules** (`*_v1`, `*_v2`): change in place to avoid scattered refactors. (Versioning MD files is fine.)
+16. Error handling & reliability: validate inputs, timeouts, retries w/ backoff+jitter, circuit breakers, idempotency, graceful degradation; never swallow errors; **no silent fallback defaults**. Contain and surface failures.
+
+## Performance & Concurrency
+17. Use async/threads/multiprocessing/parallelism only where profiling shows benefit; guard all shared state (races/deadlocks/ordering). CPU-bound Python → multiprocessing/native, not threads (GIL).
+18. Optimize with evidence: load-test and profile; add caching/batching/pooling/indexing against measured bottlenecks.
+
+## Security (AAA + beyond)
+19. AAA, no compromise — Authentication (MFA/secure sessions, short-lived tokens), Authorization (least-privilege, enforced server-side), Accounting (tamper-evident audit log).
+20. OWASP Top 10: validate/sanitize input, encode output, parameterized queries, CSRF/CORS, rate-limiting, encrypt in transit + at rest.
+21. CI scans: SCA, SAST, secret, and image scanning; fail the build on high-severity findings.
+
+## Config & Secrets
+22. Never hardcode secrets or env-specific values. `.env` for local dev only; production secrets in a managed store. Commit `.env.example` (no real values); keep `.env` gitignored.
+23. Validate config at startup and fail fast; no silent defaults for security/behavior-critical settings. Follow 12-Factor.
+
+## Data
+24. Per project, choose SQL vs NoSQL (or both, per use case) on consistency/scale/query fit — Postgres a strong default; MySQL/MariaDB are valid production DBs; avoid SQLite for high-concurrency/multi-tenant (fine for embedded/edge/test).
+25. **Never use local disk as the datastore — always a DB.** Large binaries → object storage (S3/blob) with references kept in the DB.
+26. Schema via versioned, reversible, backward-compatible migrations (expand → migrate → contract); never hand-edit prod schema or run destructive migrations without a verified backup.
+27. Connection pooling, query-driven indexing, backups with tested restores, DR/rollback plan.
+
+## Observability & Ops
+28. Structured (JSON) logs with correlation IDs; never log secrets/PII.
+29. Expose app/business metrics + distributed tracing.
+30. Health/readiness/liveness endpoints; graceful shutdown (drain in-flight work); deterministic startup.
+31. CI/CD: build → lint → type → test → scan → deploy; green to ship. Decouple deploy/release with feature flags.
+
+## Dependencies & Runtime
+32. Use **`uv`**, not pip.
+33. Recent but pinned via lockfile; "latest" isn't auto-safe — review changelogs, update deliberately.
+34. Harden containers: minimal/trusted images, non-root, pinned digests, scanned, small; manage infra as code.
+
+## Multi-Tenancy & Scale
+35. Thread a tenant boundary through data/queries/caches/logs from day one so multi-tenancy needs no rewrite; don't build per-tenant infra/billing/UI speculatively. **Data isolation is non-negotiable** — no cross-tenant access.
+36. Scale horizontally: stateless services, externalized state, load-balanced.
+
+## Git, Releases & Handover
+37. Write the commit message to `commit_message.md` first (Conventional Commits, *what* + *why*), then `git add .` → `git commit -F commit_message.md` → push. Gitignore `commit_message.md`; never force-push shared branches or commit secrets; push to the correct branch (feature branch + PR where review applies).
+38. Maintain `./release/` notes per release — Keep-a-Changelog + SemVer, with impact and migration steps.
+39. After shipping, give the user: a short change summary (*what changed*), the release-notes file link, and how to verify it — UI click steps and/or runnable `curl` examples.
+
+## Docs
+40. Keep `README.md` and `Makefile` current; expose `make` targets for setup/build/test/lint/run/migrate/deploy. Any architectural or script change updates the README.
+41. Record decisions as ADRs (`docs/adr/`); comment the *why*, not the *what*.
+
+## Definition of Done (gate)
+- [ ] Spec (`docs/spec/`) + plan (`docs/plans/`) with a robust, scalable, low-latency, elastic architecture; ≥3 clean red-team passes; acceptance criteria met.
+- [ ] Tests written first, all green, meaningful coverage ≥90%.
+- [ ] No hardcoded values/secrets; config env-driven and validated; no `*_v#` code modules.
+- [ ] AAA enforced; SCA/SAST/secret/image scans clean; errors handled; logs/metrics/health in place; no secrets/PII logged.
+- [ ] DRY/YAGNI; lint/format/type-check clean; data in a DB (not disk); migrations reversible + backed up; tenant isolation intact.
+- [ ] `README`/`Makefile`/ADRs/`./release/` updated; commit via `commit_message.md`.
+- [ ] Change summary + release link + UI/`curl` verification steps delivered to the user.
 
 ---
-
-## Preferences
-
-### Commit messages — non-negotiable
-
-**At the end of every task that touched code, ALWAYS rewrite
-`COMMIT_MESSAGE.md` with a beautifully-formatted GitHub release-style
-markdown summary.** This is a hard requirement — not "if you have time".
-The user often amends with this file (`git commit --amend -F
-COMMIT_MESSAGE.md`), so the file must reflect the latest change set, not
-a stale older one.
-
-For any non-trivial change set, the commit message file goes at
-`COMMIT_MESSAGE.md` at the project root (or `docs/commits/<short-slug>.md`
-for smaller PRs).
-
-It must read like a GitHub release page when rendered on the commit page:
-
-- Top-level `#` heading naming the change.
-- Block-quote summary directly under the heading.
-- `## Highlights` bullets.
-- A phase / change-set index table when multiple sub-areas are involved.
-- File-by-file "what's new" sections grouped by area (backend / frontend / ops / docs).
-- Bug-fixes-folded-in table (Bug · Root cause · Fix).
-- Compatibility & rollout notes, including any opt-in env vars and Docker compose profiles.
-- Testing checklist (what was run + the expected outputs).
-- Known follow-ups.
-
-Match the structure of the existing `COMMIT_MESSAGE.md` in the repo — that's the canonical template.
-
-Always lead the response that accompanies the commit with a one-sentence summary
-of what shipped, then present the file via `mcp__cowork__present_files`.
-
-### Spec-driven development — non-negotiable
-
-**Always follow spec-driven development, strictly sequential (no parallel
-phases):**
-
-1. **Spec first.** Before writing any code for a phase, write the full
-   spec to `docs/specs/<PHASE>_SPEC.md` (requirements, interfaces,
-   acceptance criteria).
-2. **Tests second.** Write the test cases for that spec before the
-   implementation.
-3. **Code third.** Implement against the spec.
-4. **Gate on green.** Only proceed past a phase when its test cases pass
-   (plus the pre-existing suite — no regressions).
-5. **Commit gate.** When a phase completes: rewrite `commit_message.md`
-   (per the rule above), then `git add` → `git commit` → `git push`.
-   Only after the push move to the next phase.
-
-### Explanations
-
-Always give a proper explanation alongside the commit. Crisp, technical, no fluff;
-prefer prose paragraphs over bulleted lists when the goal is exposition. Use
-tables only for things that are inherently tabular (matrices, comparisons,
-rollout matrices).
-
----
-
-## Stack quick-reference
-
-- **Backend**: FastAPI + sqlmodel + sse-starlette, Python 3.12.
-- **Frontend**: React 19 + Vite + Tailwind + react-router 7.
-- **Workers**: trainer / ratchet / exporter — host processes (Apple Silicon MLX).
-- **Auth**: Keycloak realm `slm-forge` + OPA Rego policies; service-token bypass for workers.
-- **Observability**: structured JSON logs + Prometheus + Loki + Promtail + Grafana.
-- **Inference**: Ollama (`qwen3:30b-a3b` for Hermes).
-
-## Make targets that matter
-
-```
-make dev / dev-d              # core stack
-make trainer / ratchet / exporter   # host workers (auto-export SLM_FORGE_LOG_FORMAT=json)
-make auth ENABLED=true|false  # Keycloak + OPA on/off
-make obs-up / obs-down        # observability overlay
-make mcp-up                   # MCP server for Claude Desktop / Cursor / Claude Code
-make opa-test                 # 18 Rego unit tests
-```
-
-## Documentation index
-
-See `README.md` for the canonical entry point. Key supporting docs:
-
-- `docs/PLAN.md` — phase-by-phase plan
-- `docs/AUTH.md` — Keycloak + OPA operator runbook
-- `docs/OBSERVABILITY_SETUP.md` — Prometheus / Grafana / Loki / Promtail setup
-- `docs/MCP_SETUP.md` — MCP client integration
-- `docs/TOOL_CALLING_GUIDE.md` — tool calling on fine-tuned GGUF models
-- `docs/MARKET_ANALYSIS.md` — competitor study
-- `COMMIT_MESSAGE.md` — the canonical commit-message template
 
 ## graphify
 
@@ -105,3 +95,5 @@ Rules:
 - If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
 - Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
 - After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+
+---

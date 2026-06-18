@@ -19,11 +19,19 @@ ENFORCE_ENV = "SLM_FORGE_ENFORCE_CATALOG"
 _FALSY = {"0", "false", "no", "off"}
 
 
+_GATED_NOTE = (
+    "Gated HF repo — accept the license once on the model page, then provide "
+    "HF_TOKEN (set in .env; the worker loads it at startup)."
+)
+
+
 class BackendVariant(BaseModel):
     model_id: str
     min_memory_gb: float
     quant: str | None = None
     status: str = "untested"  # "stable" | "untested" | "broken"
+    # Phase U — requires HF license acceptance + HF_TOKEN to download.
+    gated: bool = False
     notes: str = ""
 
 
@@ -70,8 +78,7 @@ CATALOG_V2: list[CatalogModel] = [
             ),
             "cuda": BackendVariant(
                 model_id="meta-llama/Llama-3.2-3B-Instruct",
-                min_memory_gb=8, quant="nf4",
-                notes="Gated HF repo — accept the Llama license once.",
+                min_memory_gb=8, quant="nf4", gated=True, notes=_GATED_NOTE,
             ),
         },
     ),
@@ -105,7 +112,7 @@ CATALOG_V2: list[CatalogModel] = [
             ),
             "cuda": BackendVariant(
                 model_id="google/gemma-3-4b-it",
-                min_memory_gb=10, quant="nf4",
+                min_memory_gb=10, quant="nf4", gated=True, notes=_GATED_NOTE,
             ),
         },
     ),
@@ -122,7 +129,7 @@ CATALOG_V2: list[CatalogModel] = [
             ),
             "cuda": BackendVariant(
                 model_id="google/gemma-3-12b-it",
-                min_memory_gb=18, quant="nf4",
+                min_memory_gb=18, quant="nf4", gated=True, notes=_GATED_NOTE,
             ),
         },
     ),
@@ -139,7 +146,7 @@ CATALOG_V2: list[CatalogModel] = [
             ),
             "cuda": BackendVariant(
                 model_id="google/gemma-4-E2B-it",
-                min_memory_gb=12, quant="nf4",
+                min_memory_gb=12, quant="nf4", gated=True, notes=_GATED_NOTE,
             ),
         },
     ),
@@ -156,7 +163,7 @@ CATALOG_V2: list[CatalogModel] = [
             ),
             "cuda": BackendVariant(
                 model_id="google/gemma-4-E4B-it",
-                min_memory_gb=17, quant="nf4",
+                min_memory_gb=17, quant="nf4", gated=True, notes=_GATED_NOTE,
             ),
         },
     ),
@@ -191,7 +198,7 @@ CATALOG_V2: list[CatalogModel] = [
             ),
             "cuda": BackendVariant(
                 model_id="google/gemma-3n-E2B-it",
-                min_memory_gb=12, quant="nf4",
+                min_memory_gb=12, quant="nf4", gated=True, notes=_GATED_NOTE,
             ),
         },
     ),

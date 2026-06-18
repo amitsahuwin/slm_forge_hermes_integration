@@ -96,6 +96,8 @@ export type TrainingSession = {
   name: string;
   dataset: string;
   base_model: string;
+  // Phase U — backend pinned for every iteration of this session.
+  trainer_backend: TrainerBackendName;
   method: RunMethod;
   iters: number;
   batch_size: number;
@@ -143,6 +145,8 @@ export type CatalogBackendVariant = {
   min_memory_gb: number;
   quant: string | null;
   status: CatalogVariantStatus;
+  // Phase U — requires HF license acceptance + HF_TOKEN to download.
+  gated?: boolean;
   notes: string;
 };
 
@@ -153,6 +157,15 @@ export type CatalogModelV2 = {
   size_params: string;
   recommended_method: string;
   backends: Partial<Record<TrainerBackendName, CatalogBackendVariant>>;
+};
+
+// Phase T — Platform detection for UI defaults
+export type PlatformInfo = {
+  os: string;
+  arch: string;
+  has_nvidia_gpu: boolean;
+  default_backend: TrainerBackendName;
+  platform_label: string;
 };
 
 async function jget<T>(path: string): Promise<T> {
@@ -187,6 +200,8 @@ export const api = {
   listDatasets: () => jget<DatasetInfo[]>('/api/v1/datasets'),
   listModels: () => jget<BaseModelInfo[]>('/api/v1/models'),
   listModelsV2: () => jget<CatalogModelV2[]>('/api/v1/models/v2'),
+  // Platform detection (Phase T)
+  getPlatformInfo: () => jget<PlatformInfo>('/api/v1/platform'),
 };
 
 // ─── Phase 3 ingestion ────────────────────────────────────────

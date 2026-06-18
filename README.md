@@ -95,6 +95,35 @@ the platform** and select the right training backend (Phase T):
 
 ## Quick start
 
+### First-time prerequisites
+
+If you're setting up on a fresh machine, install `uv` first — it manages the Python 3.12 venv for you:
+
+**macOS:**
+```bash
+brew install uv
+```
+
+**Linux (Ubuntu, RHEL, Debian, etc.):**
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+After installation, restart your shell or run:
+```bash
+source $HOME/.cargo/env  # Linux
+# or: source ~/.bashrc   # if the installer modified your bashrc
+```
+
+Verify:
+```bash
+uv --version  # should print uv 0.x.x or newer
+```
+
+> **Alternative:** If you prefer `uvx` for one-off commands, the same install script provides it. Both work.
+
+### Setup steps
+
 ```bash
 # 1. Clone + one-time setup (auto-detects macOS/MLX vs Linux/CUDA)
 git clone git@github.com:<you>/slm_forge_hermes_integration.git

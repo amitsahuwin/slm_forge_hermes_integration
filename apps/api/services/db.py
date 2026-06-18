@@ -35,17 +35,30 @@ _RUN_MIGRATIONS: list[tuple[str, str]] = [
     ("claimed_at", "TIMESTAMP"),
 ]
 
+# Phase U — sessions table forward-migrations (backend pinned per session)
+_SESSION_MIGRATIONS: list[tuple[str, str]] = [
+    ("trainer_backend", "TEXT DEFAULT 'mlx'"),
+]
+
 # Phase 4 — exports table is created by SQLModel; no ALTER needed unless schema changes
 
 
-def _migrate_runs() -> None:
+def _migrate_table(table: str, migrations: list[tuple[str, str]]) -> None:
     with engine.connect() as conn:
-        existing = {row[1] for row in conn.execute(text("PRAGMA table_info(runs)"))}
-        for col, sql_type in _RUN_MIGRATIONS:
+        existing = {row[1] for row in conn.execute(text(f"PRAGMA table_info({table})"))}
+        for col, sql_type in migrations:
             if col not in existing:
-                log.info("Migrating: ALTER TABLE runs ADD COLUMN %s %s", col, sql_type)
-                conn.execute(text(f"ALTER TABLE runs ADD COLUMN {col} {sql_type}"))
+                log.info("Migrating: ALTER TABLE %s ADD COLUMN %s %s", table, col, sql_type)
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {sql_type}"))
                 conn.commit()
+
+
+def _migrate_runs() -> None:
+    _migrate_table("runs", _RUN_MIGRATIONS)
+
+
+def _migrate_sessions() -> None:
+    _migrate_table("sessions", _SESSION_MIGRATIONS)
 
 
 def init_db() -> None:
@@ -59,6 +72,7 @@ def init_db() -> None:
 
     SQLModel.metadata.create_all(engine)
     _migrate_runs()
+    _migrate_sessions()
 
 
 def get_session() -> Generator[Session, None, None]:

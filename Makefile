@@ -30,6 +30,11 @@ UNAME_S      := $(shell uname -s)
 UNAME_M      := $(shell uname -m)
 HAS_NVIDIA   := $(shell command -v nvidia-smi >/dev/null 2>&1 && echo 1 || echo 0)
 
+# Export platform vars for docker-compose (so the API container knows the host platform)
+export SLM_FORGE_PLATFORM_OS := $(UNAME_S)
+export SLM_FORGE_PLATFORM_ARCH := $(UNAME_M)
+export SLM_FORGE_PLATFORM_HAS_NVIDIA := $(if $(filter 1,$(HAS_NVIDIA)),true,false)
+
 ifeq ($(UNAME_S),Darwin)
   PLATFORM          := mac
   TRAINER_BACKEND   ?= mlx
@@ -172,7 +177,7 @@ trainer-mlx: ## Force the MLX trainer worker (Apple Silicon)
 	SLM_FORGE_TRAINER_BACKEND=mlx SLM_FORGE_LOG_FORMAT=json uv run python -m packages.trainer
 
 trainer-cuda: ## Force the CUDA trainer worker (Linux + NVIDIA only)
-	@echo "→ CUDA trainer worker — requires .[trainer-cuda] extras + HF_TOKEN for gated models"
+	@echo "→ CUDA trainer worker — requires .[trainer-cuda] extras; HF_TOKEN is auto-loaded from .env for gated models (accept the license once on the HF model page)"
 	SLM_FORGE_TRAINER_BACKEND=cuda SLM_FORGE_LOG_FORMAT=json uv run python -m packages.trainer
 
 smoke-model: ensure-trainer-installed ## Smoke-test a catalog model (MODEL=<key>, e.g. gemma-4-e4b-it)

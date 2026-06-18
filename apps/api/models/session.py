@@ -33,6 +33,12 @@ class TrainingSession(SQLModel, table=True):
     base_model: str
     method: str = "lora"
 
+    # Phase U — which training backend runs every iteration of this session
+    # ("mlx" | "cuda" | ...). Plain str (not enum), mirroring Run: the API must
+    # accept backends this deployment's workers may not implement yet. Pinned
+    # for the whole session; the ratchet loop stamps it onto each child Run.
+    trainer_backend: str = "mlx"
+
     # Baseline hyperparams (iteration 0 uses these)
     iters: int = 100
     batch_size: int = 4

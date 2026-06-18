@@ -7,28 +7,7 @@ import {
   type TrainerBackendName,
   api,
 } from '../lib/api';
-
-const BACKEND_OPTIONS: { value: TrainerBackendName; label: string; tip: string }[] = [
-  {
-    value: 'mlx',
-    label: 'Apple Silicon (this Mac)',
-    tip: 'Runs via mlx-lm. Make sure `make trainer` is running in another terminal.',
-  },
-  {
-    value: 'cuda',
-    label: 'NVIDIA GPU worker',
-    tip: 'Runs via PEFT + TRL. The run stays queued until a CUDA worker (`make trainer-cuda` or the Docker image) claims it.',
-  },
-];
-
-/** First model whose variant for this backend exists and isn't broken. */
-function defaultModelId(models: CatalogModelV2[], backend: TrainerBackendName): string {
-  for (const m of models) {
-    const v = m.backends[backend];
-    if (v && v.status !== 'broken') return v.model_id;
-  }
-  return '';
-}
+import { BACKEND_OPTIONS, defaultModelId } from '../lib/backends';
 
 export default function NewRun() {
   const navigate = useNavigate();
@@ -39,7 +18,7 @@ export default function NewRun() {
   const [submitting, setSubmitting] = useState(false);
 
   const [dataset, setDataset] = useState('');
-  const [backend, setBackend] = useState<TrainerBackendName>('mlx');
+  const [backend, setBackend] = useState<TrainerBackendName | null>(null);
   const [baseModel, setBaseModel] = useState('');
   const [method, setMethod] = useState<RunMethod>('lora');
   const [iters, setIters] = useState(200);
@@ -48,23 +27,28 @@ export default function NewRun() {
   const [numLayers, setNumLayers] = useState(16);
 
   useEffect(() => {
-    Promise.all([api.listDatasets(), api.listModelsV2()])
-      .then(([ds, ms]) => {
+    // Phase T: Fetch platform info first to set smart defaults
+    Promise.all([api.getPlatformInfo(), api.listDatasets(), api.listModelsV2()])
+      .then(([plat, ds, ms]) => {
         setDatasets(ds);
         setModels(ms);
         if (ds.length > 0) setDataset(ds[0].name);
-        setBaseModel(defaultModelId(ms, 'mlx'));
+        // Use platform-detected default backend
+        const defaultBackend = plat.default_backend;
+        setBackend(defaultBackend);
+        setBaseModel(defaultModelId(ms, defaultBackend));
       })
       .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : String(e)));
   }, []);
 
   /** Models that have a variant for the selected backend. */
   const backendModels = useMemo(
-    () => models.filter((m) => m.backends[backend] !== undefined),
+    () => (backend ? models.filter((m) => m.backends[backend] !== undefined) : []),
     [models, backend],
   );
 
   const selected = useMemo(() => {
+    if (!backend) return null;
     for (const m of backendModels) {
       const v = m.backends[backend];
       if (v && v.model_id === baseModel) return { model: m, variant: v };
@@ -92,7 +76,7 @@ export default function NewRun() {
       const run = await api.createRun({
         dataset,
         base_model: baseModel,
-        trainer_backend: backend,
+        trainer_backend: backend ?? undefined,
         method,
         iters,
         batch_size: batchSize,
@@ -122,7 +106,7 @@ export default function NewRun() {
       <form onSubmit={onSubmit} className="space-y-5">
         <Field label="Training backend">
           <select
-            value={backend}
+            value={backend ?? ''}
             onChange={(e) => onBackendChange(e.target.value as TrainerBackendName)}
             className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm"
           >
@@ -159,11 +143,12 @@ export default function NewRun() {
             className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm"
           >
             {backendModels.map((m) => {
-              const v = m.backends[backend]!;
+              const v = m.backends[backend!]!;
               const broken = v.status === 'broken';
               return (
                 <option key={v.model_id} value={v.model_id} disabled={broken}>
-                  {m.label} ({m.size_params}){broken ? ' — ⚠ broken' : ''}
+                  {m.label} ({m.size_params}){v.gated ? ' — 🔒 gated' : ''}
+                  {broken ? ' — ⚠ broken' : ''}
                 </option>
               );
             })}
@@ -176,6 +161,11 @@ export default function NewRun() {
                 {selected.variant.min_memory_gb} GB
                 {' · '}
                 <StatusBadge status={selected.variant.status} />
+                {selected.variant.gated && (
+                  <span className="ml-1.5 rounded bg-amber-950/60 px-1.5 py-0.5 text-[10px] font-medium uppercase text-amber-400">
+                    🔒 gated
+                  </span>
+                )}
               </p>
               {selected.variant.notes && <p>{selected.variant.notes}</p>}
             </div>

@@ -19,13 +19,20 @@ import time
 
 import httpx
 
-from packages._api_client import install as install_service_auth
-from packages._log_context import bind as _bind_log_ctx
-from packages._log_context import reset as _reset_log_ctx
-from packages._logging import setup_worker_logging
-from packages.ratchet.heartbeat import start_heartbeat
-from packages.trainer.backends import get_backend
-from packages.trainer.runner import run_training_job
+from packages.trainer._env import load_project_env
+
+# Load .env before anything else so HF_TOKEN (and any other secrets) reach the
+# training subprocess, which inherits this process's os.environ. Gated HF repos
+# (Gemma, Llama) 401 without it.
+load_project_env()
+
+from packages._api_client import install as install_service_auth  # noqa: E402
+from packages._log_context import bind as _bind_log_ctx  # noqa: E402
+from packages._log_context import reset as _reset_log_ctx  # noqa: E402
+from packages._logging import setup_worker_logging  # noqa: E402
+from packages.ratchet.heartbeat import start_heartbeat  # noqa: E402
+from packages.trainer.backends import get_backend  # noqa: E402
+from packages.trainer.runner import run_training_job  # noqa: E402
 
 # Patch httpx so every request from this process carries X-Service-Token.
 # Must run before any httpx call elsewhere in the package.

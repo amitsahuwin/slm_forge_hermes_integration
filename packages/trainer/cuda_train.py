@@ -51,6 +51,23 @@ def emit_metric(step: int, name: str, value: float) -> None:
     emit({"event": "metric", "step": int(step), "name": name, "value": float(value)})
 
 
+def _is_gated_auth_error(exc: Exception) -> bool:
+    """True for a Hugging Face gated-repo / auth failure (401 / 403)."""
+    msg = str(exc).lower()
+    return "gated repo" in msg or "401 client error" in msg or "403 client error" in msg
+
+
+def gated_repo_help(model: str) -> str:
+    """Actionable guidance for a gated-repo download failure."""
+    return (
+        f"Hugging Face denied access to '{model}'. This is a gated repo. To use it:\n"
+        f"  1. Accept the license once at https://huggingface.co/{model}\n"
+        f"  2. Provide a token: set HF_TOKEN in .env (the trainer worker loads it "
+        f"at startup) or run `huggingface-cli login`.\n"
+        f"Or pick a non-gated model (e.g. Qwen/Qwen2.5-3B-Instruct)."
+    )
+
+
 def _load_dataset(data_dir: Path, fmt: str):  # pragma: no cover - exercised on GPU
     from datasets import load_dataset
 
@@ -94,16 +111,25 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - needs GPU 
             bnb_4bit_compute_dtype=torch.bfloat16,
         )
 
-    tokenizer = AutoTokenizer.from_pretrained(cfg["model"])
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(cfg["model"])
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
 
-    model = AutoModelForCausalLM.from_pretrained(
-        cfg["model"],
-        quantization_config=quant_cfg,
-        torch_dtype=torch.bfloat16 if quant_cfg is None else None,
-        device_map="auto",
-    )
+        model = AutoModelForCausalLM.from_pretrained(
+            cfg["model"],
+            quantization_config=quant_cfg,
+            torch_dtype=torch.bfloat16 if quant_cfg is None else None,
+            device_map="auto",
+        )
+    except Exception as exc:
+        # Turn the raw HF OSError/401 into something the user can act on; the
+        # worker copies our final stderr into the run's error_message.
+        if _is_gated_auth_error(exc):
+            help_text = gated_repo_help(cfg["model"])
+            emit({"event": "error", "message": help_text})
+            raise RuntimeError(help_text) from exc
+        raise
     if quant_cfg is not None:
         model = prepare_model_for_kbit_training(model)
 

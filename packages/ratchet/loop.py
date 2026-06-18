@@ -108,8 +108,9 @@ def run_session(session_id: int, api: API) -> None:
     """Orchestrate one autoresearch session to completion."""
     session = api.get_session(session_id)
     log.info("─── Session #%s: %s ───", session_id, session["name"])
-    log.info("  dataset=%s model=%s method=%s",
-             session["dataset"], session["base_model"], session["method"])
+    log.info("  dataset=%s model=%s method=%s backend=%s",
+             session["dataset"], session["base_model"], session["method"],
+             session.get("trainer_backend", "mlx"))
     log.info("  max_rounds=%s plateau_patience=%s min_delta=%s",
              session["max_rounds"], session["plateau_patience"], session["min_delta"])
 
@@ -137,7 +138,7 @@ def run_session(session_id: int, api: API) -> None:
                     history=hist,
                     current_best_metric=best_metric,
                 )
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 log.error("Hermes proposal failed: %s — using LR halving", e)
                 proposal = MutationProposal(
                     learning_rate=base_hyperparams["learning_rate"] * 0.5,
@@ -158,6 +159,9 @@ def run_session(session_id: int, api: API) -> None:
             "dataset": session["dataset"],
             "base_model": session["base_model"],
             "method": session["method"],
+            # Phase U — pin every iteration to the session's backend, else runs
+            # default to "mlx" and a CUDA-only host never claims them.
+            "trainer_backend": session.get("trainer_backend", "mlx"),
             **hp,
             "grad_checkpoint": False,
             "seed": 0,
@@ -268,7 +272,7 @@ def run_session(session_id: int, api: API) -> None:
                 timeout=10,
             ).raise_for_status()
             log.info("  auto-queue export for best run #%s", best_run_id)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             log.warning("  failed to auto-queue export: %s", e)
     log.info("─── Session #%s complete. Best run: #%s (val_loss=%s) ───",
              session_id, best_run_id, best_metric)

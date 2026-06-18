@@ -12,6 +12,7 @@ from apps.api.middleware.auth import requires
 from apps.api.models.run import Run, RunMethod
 from apps.api.models.session import SessionStatus, TargetMetric, TrainingSession
 from apps.api.services.db import get_session
+from apps.api.services.model_catalog import validate_run_request
 
 router = APIRouter()
 
@@ -19,7 +20,10 @@ router = APIRouter()
 class SessionCreate(BaseModel):
     name: str
     dataset: str
-    base_model: str = "mlx-community/gemma-3n-E2B-it-bf16"
+    base_model: str = "mlx-community/Qwen2.5-3B-Instruct-4bit"
+    # Phase U — backend pinned for every iteration; validated against the catalog
+    # exactly like RunCreate so a bad model/backend combo fails at create time.
+    trainer_backend: str = "mlx"
     method: RunMethod = RunMethod.LORA
     iters: int = 100
     batch_size: int = 4
@@ -49,6 +53,12 @@ SessionDep = Annotated[Session, Depends(get_session)]
 def create_session(
     payload: SessionCreate, request: Request, db: SessionDep
 ) -> TrainingSession:
+    # Phase U — catalog enforcement (disable via SLM_FORGE_ENFORCE_CATALOG=false),
+    # mirroring create_run so an experiment can't be queued for a backend/model
+    # combo no worker can ever claim.
+    error = validate_run_request(payload.base_model, payload.trainer_backend)
+    if error is not None:
+        raise HTTPException(422, error)
     s = TrainingSession(**payload.model_dump())
     db.add(s)
     db.commit()
@@ -113,10 +123,11 @@ def list_iterations(sid: int, db: SessionDep) -> list[Run]:
 @router.delete("/{sid}", status_code=204)
 def delete_session(sid: int, db: SessionDep) -> None:
     """Delete a session and ALL its child runs (cascading). Blocks if any child run has exports."""
-    from apps.api.models.export import Export
-    from apps.api.models.metric import Metric
     import shutil
     from pathlib import Path
+
+    from apps.api.models.export import Export
+    from apps.api.models.metric import Metric
 
     s = db.get(TrainingSession, sid)
     if not s:

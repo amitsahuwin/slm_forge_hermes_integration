@@ -120,6 +120,7 @@ export type NavKey =
   | 'research'
   | 'agents'
   | 'traces'
+  | 'autofix'
   | 'admin';
 
 const NAV_TO_PERM: Record<NavKey, { action: Action; resource: Resource } | 'always' | 'admin_only'> = {
@@ -134,6 +135,8 @@ const NAV_TO_PERM: Record<NavKey, { action: Action; resource: Resource } | 'alwa
   agents: { action: 'read', resource: 'chat' },
   // The Hermes traces tab exposes raw prompt + response bodies; admin only.
   traces: 'admin_only',
+  // PR-C — auto-fix attempts may carry stack traces / source paths; admin only.
+  autofix: 'admin_only',
   admin: 'admin_only',
 };
 

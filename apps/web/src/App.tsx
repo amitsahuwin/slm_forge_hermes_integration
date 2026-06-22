@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import Nav from './components/Nav';
 import RequireRole from './components/RequireRole';
 import Agents from './pages/Agents';
+import AutoFixes from './pages/AutoFixes';
 import Chat from './pages/Chat';
 import Dashboard from './pages/Dashboard';
 import DatasetDetail from './pages/DatasetDetail';
@@ -59,6 +60,14 @@ export default function App() {
               element={
                 <RequireRole role="admin">
                   <Traces />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/autofix"
+              element={
+                <RequireRole role="admin">
+                  <AutoFixes />
                 </RequireRole>
               }
             />

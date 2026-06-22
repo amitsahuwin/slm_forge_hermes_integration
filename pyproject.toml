@@ -23,6 +23,7 @@ dependencies = [
     # so downstream consumers can swap formatters without code changes.
     "python-json-logger>=2.0",
     "prometheus-client>=0.20",
+    "tenacity>=8.2",
 ]
 
 [dependency-groups]

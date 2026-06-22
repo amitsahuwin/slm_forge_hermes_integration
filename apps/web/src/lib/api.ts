@@ -433,3 +433,71 @@ export const deletes = {
   session: (id: number) => jdelete(`/api/v1/sessions/${id}`),
   export: (id: number) => jdelete(`/api/v1/exports/${id}`),
 };
+
+// ─── PR-C: Auto-fix attempts (admin) ──────────────────────────────────
+
+export type AutoFixStatus =
+  | 'reported'
+  | 'proposed'
+  | 'applied'
+  | 'verified'
+  | 'deployed'
+  | 'rejected'
+  | 'failed';
+
+export type AutoFixRow = {
+  id: number;
+  fingerprint: string;
+  mode: 'production' | 'development';
+  source: string;
+  error_type: string;
+  error_message: string;
+  file_target: string | null;
+  branch: string | null;
+  status: AutoFixStatus;
+  attempt_count: number;
+  issue_url: string | null;
+  pr_url: string | null;
+  occurrences_in_window: number;
+  correlation_request_id: string | null;
+  correlation_run_id: string | null;
+  correlation_session_id: string | null;
+  tenant_id: string;
+  created_at: string;
+  completed_at: string | null;
+};
+
+export type AutoFixDetail = AutoFixRow & {
+  diff: string | null;
+  test_path: string | null;
+};
+
+export type AutoFixStats = {
+  total: number;
+  by_status: Record<string, number>;
+  by_source: Record<string, number>;
+  by_mode: Record<string, number>;
+};
+
+export const autofix = {
+  list: (params: {
+    status?: AutoFixStatus | '';
+    fingerprint?: string;
+    limit?: number;
+    offset?: number;
+  } = {}) => {
+    const qs = new URLSearchParams();
+    if (params.status) qs.set('status', params.status);
+    if (params.fingerprint) qs.set('fingerprint', params.fingerprint);
+    qs.set('limit', String(params.limit ?? 50));
+    if (params.offset) qs.set('offset', String(params.offset));
+    return jget<AutoFixRow[]>(`/api/v1/autofix/attempts?${qs}`);
+  },
+  get: (id: number) => jget<AutoFixDetail>(`/api/v1/autofix/attempts/${id}`),
+  abandon: (id: number) =>
+    jpost<{ id: number; status: string; completed_at: string }>(
+      `/api/v1/autofix/attempts/${id}/abandon`,
+      {},
+    ),
+  stats: () => jget<AutoFixStats>('/api/v1/autofix/stats'),
+};

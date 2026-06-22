@@ -24,6 +24,7 @@ export default function Nav() {
     research: useCanSeeNav('research'),
     agents: useCanSeeNav('agents'),
     traces: useCanSeeNav('traces'),
+    autofix: useCanSeeNav('autofix'),
   };
   // Header action buttons (right side).
   const canCreateDataset = useCan('create', 'dataset');
@@ -85,6 +86,11 @@ export default function Nav() {
             {show.traces && (
               <NavLink to="/traces" className={({ isActive }) => `${link} ${isActive ? activeLink : ''}`}>
                 Traces
+              </NavLink>
+            )}
+            {show.autofix && (
+              <NavLink to="/autofix" className={({ isActive }) => `${link} ${isActive ? activeLink : ''}`}>
+                Auto-Fixes
               </NavLink>
             )}
         </nav>

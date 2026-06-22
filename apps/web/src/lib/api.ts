@@ -243,6 +243,26 @@ export type IngestPreview = {
   detected_fields: string[];
   sample_rows: Record<string, unknown>[];
   total_rows: number;
+  // PR-4 — opaque handle for polling /api/v1/ingest/qa/{qa_id}. Null when
+  // the API skipped the quality scan (feature flag off, or no rows).
+  qa_id?: string | null;
+};
+
+export type QAWarning = {
+  severity: 'low' | 'medium' | 'high';
+  category: string;
+  message: string;
+  affected_count: number;
+  fix: string;
+};
+
+export type QAStatus = {
+  status: 'pending' | 'ready' | 'unavailable';
+  overall_health?: 'good' | 'fair' | 'poor' | null;
+  summary?: string | null;
+  warnings: QAWarning[];
+  ready_to_train?: boolean | null;
+  error?: string | null;
 };
 
 export type FinalizeResponse = {
@@ -307,6 +327,17 @@ export const ingest = {
     }).then(async (r) => {
       if (!r.ok) throw new Error(`Finalize failed: HTTP ${r.status} — ${await r.text()}`);
       return r.json() as Promise<FinalizeResponse>;
+    }),
+  // PR-4 — poll the QA status for a preview. The UI calls this every few
+  // seconds while ``status === 'pending'``.
+  fetchQA: (qaId: string) =>
+    authFetch(`${API_URL}/api/v1/ingest/qa/${encodeURIComponent(qaId)}`).then(async (r) => {
+      if (r.status === 404) {
+        // Expired out of the in-memory store — caller can stop polling.
+        return null;
+      }
+      if (!r.ok) throw new Error(`QA poll failed: HTTP ${r.status} — ${await r.text()}`);
+      return r.json() as Promise<QAStatus>;
     }),
 };
 

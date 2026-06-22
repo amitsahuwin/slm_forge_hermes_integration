@@ -6,9 +6,10 @@ import logging
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
+from apps.api.services import qa_store
 from packages.ingest import local, s3, scrape, staging, url
 from packages.ingest.formatter import ChatTemplate, format_row
 
@@ -20,13 +21,38 @@ DATA_ROOT = Path("/app/data/datasets")
 
 
 class IngestPreview(BaseModel):
-    """Returned to UI after parsing. The staging_id is required for finalize."""
+    """Returned to UI after parsing. The staging_id is required for finalize.
+
+    PR-4: ``qa_id`` is the polling handle for the asynchronous quality scan
+    (``GET /api/v1/ingest/qa/{qa_id}``). Optional — clients that don't care
+    about quality warnings can ignore it.
+    """
     staging_id: str
     source_type: Literal["upload", "url", "scrape", "s3"]
     format: str
     detected_fields: list[str]
     sample_rows: list[dict]
     total_rows: int
+    qa_id: str | None = None
+
+
+class QAWarningOut(BaseModel):
+    severity: str
+    category: str
+    message: str
+    affected_count: int = 0
+    fix: str = ""
+
+
+class QAStatusResponse(BaseModel):
+    """PR-4 — polling payload for ``GET /api/v1/ingest/qa/{qa_id}``."""
+
+    status: str  # "pending" | "ready" | "unavailable"
+    overall_health: str | None = None
+    summary: str | None = None
+    warnings: list[QAWarningOut] = []
+    ready_to_train: bool | None = None
+    error: str | None = None
 
 
 class FinalizeRequest(BaseModel):
@@ -50,11 +76,26 @@ class FinalizeResponse(BaseModel):
     skipped: int
 
 
-def _build_preview(rows: list[dict], source_type: str, fmt: str) -> IngestPreview:
+def _build_preview(
+    rows: list[dict],
+    source_type: str,
+    fmt: str,
+    background: BackgroundTasks | None = None,
+) -> IngestPreview:
     if not rows:
         raise HTTPException(400, "Source contained zero parseable rows")
     fields = sorted({k for r in rows[:50] for k in r.keys() if k})
     sid = staging.stash(rows)
+
+    # PR-4 — enqueue the asynchronous quality scan if the feature is enabled
+    # and the caller supplied a BackgroundTasks. Sample rows are capped to
+    # the first 50 inside the scan itself.
+    qa_id: str | None = None
+    if background is not None and qa_store._enabled():
+        qa_id = qa_store.new_id()
+        qa_store.init_pending(qa_id)
+        background.add_task(qa_store.run_qa, qa_id, rows[:50])
+
     return IngestPreview(
         staging_id=sid,
         source_type=source_type,  # type: ignore[arg-type]
@@ -62,6 +103,7 @@ def _build_preview(rows: list[dict], source_type: str, fmt: str) -> IngestPrevie
         detected_fields=fields,
         sample_rows=rows[:5],
         total_rows=len(rows),
+        qa_id=qa_id,
     )
 
 
@@ -71,13 +113,16 @@ def _build_preview(rows: list[dict], source_type: str, fmt: str) -> IngestPrevie
 
 
 @router.post("/upload/preview", response_model=IngestPreview)
-async def preview_upload(file: UploadFile = File(...)) -> IngestPreview:
+async def preview_upload(
+    background: BackgroundTasks,
+    file: UploadFile = File(...),
+) -> IngestPreview:
     content = await file.read()
     try:
         fmt, rows = local.parse_auto(file.filename or "upload", content)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         raise HTTPException(400, f"Parse failed: {e}") from e
-    return _build_preview(rows, "upload", fmt)
+    return _build_preview(rows, "upload", fmt, background)
 
 
 class UrlIn(BaseModel):
@@ -85,21 +130,21 @@ class UrlIn(BaseModel):
 
 
 @router.post("/url/preview", response_model=IngestPreview)
-def preview_url(payload: UrlIn) -> IngestPreview:
+def preview_url(payload: UrlIn, background: BackgroundTasks) -> IngestPreview:
     try:
         fmt, rows = url.fetch_and_parse(payload.url)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         raise HTTPException(400, f"URL fetch failed: {e}") from e
-    return _build_preview(rows, "url", fmt)
+    return _build_preview(rows, "url", fmt, background)
 
 
 @router.post("/scrape/preview", response_model=IngestPreview)
-def preview_scrape(payload: UrlIn) -> IngestPreview:
+def preview_scrape(payload: UrlIn, background: BackgroundTasks) -> IngestPreview:
     try:
         row = scrape.scrape_url(payload.url)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         raise HTTPException(400, f"Scrape failed: {e}") from e
-    return _build_preview([row], "scrape", "html")
+    return _build_preview([row], "scrape", "html", background)
 
 
 class S3In(BaseModel):
@@ -110,7 +155,7 @@ class S3In(BaseModel):
 
 
 @router.post("/s3/preview", response_model=IngestPreview)
-def preview_s3(payload: S3In) -> IngestPreview:
+def preview_s3(payload: S3In, background: BackgroundTasks) -> IngestPreview:
     try:
         fmt, rows = s3.fetch_and_parse(
             payload.s3_path,
@@ -118,9 +163,43 @@ def preview_s3(payload: S3In) -> IngestPreview:
             secret_key=payload.secret_key,
             region=payload.region,
         )
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         raise HTTPException(400, f"S3 fetch failed: {e}") from e
-    return _build_preview(rows, "s3", fmt)
+    return _build_preview(rows, "s3", fmt, background)
+
+
+# ─────────────────────────────────────────────────────────────
+#   PR-4 — QA polling endpoint
+# ─────────────────────────────────────────────────────────────
+
+
+@router.get("/qa/{qa_id}", response_model=QAStatusResponse)
+def get_qa(qa_id: str) -> QAStatusResponse:
+    """Polled by the UI every few seconds while ``status="pending"``.
+
+    Returns 404 only when the qa_id was never registered (or expired out of
+    the TTL). A still-running scan returns 200 with ``status="pending"``.
+    """
+    result = qa_store.get(qa_id)
+    if result is None:
+        raise HTTPException(404, f"qa_id {qa_id!r} not found or expired")
+    return QAStatusResponse(
+        status=result.status,
+        overall_health=result.overall_health,
+        summary=result.summary,
+        warnings=[
+            QAWarningOut(
+                severity=w.severity,
+                category=w.category,
+                message=w.message,
+                affected_count=w.affected_count,
+                fix=w.fix,
+            )
+            for w in result.warnings
+        ],
+        ready_to_train=result.ready_to_train,
+        error=result.error,
+    )
 
 
 # ─────────────────────────────────────────────────────────────

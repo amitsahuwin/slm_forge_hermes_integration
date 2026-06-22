@@ -337,6 +337,57 @@ def propose_mutation(
         ) from e
 
 
+def run_skill(
+    name: str,
+    payload: dict[str, Any] | str,
+    *,
+    expect_json: bool = False,
+    fallback_system: str | None = None,
+) -> str:
+    """Invoke a Hermes skill by name.
+
+    ``name`` is the filename stem under ``.hermes-skills/`` (no ``.md``). The
+    skill markdown becomes the system prompt; ``payload`` becomes the user
+    message (JSON-serialized if a dict). Inherits the retry / redaction /
+    tenant behaviour of ``_call_ollama``.
+
+    Args:
+        name: skill stem (e.g. ``"failure_post_mortem"``).
+        payload: dict or string. dicts are ``json.dumps``-ed with ``default=str``.
+        expect_json: ``True`` for skills that return JSON (forces Ollama
+            ``format=json``); ``False`` for markdown-producing skills like
+            ``failure_post_mortem``.
+        fallback_system: optional inline system prompt used when the skill
+            markdown isn't on disk. Without it, a missing skill raises
+            ``FileNotFoundError`` so the caller is forced to handle the gap.
+
+    Returns:
+        The raw response content (markdown for ``expect_json=False``;
+        JSON-as-string otherwise — caller parses).
+
+    Raises:
+        FileNotFoundError: skill not found and no ``fallback_system`` provided.
+        httpx.HTTPError: propagated from ``_call_ollama`` after retries exhaust.
+    """
+    skill_text = load_skill(name)
+    if skill_text is None:
+        if fallback_system is None:
+            raise FileNotFoundError(
+                f"Hermes skill {name!r} not found in {SKILLS_DIR} or .hermes-skills/"
+            )
+        skill_text = fallback_system
+
+    user_msg = (
+        payload if isinstance(payload, str) else json.dumps(payload, default=str)
+    )
+    return _call_ollama(
+        skill_text,
+        user_msg,
+        expect_json=expect_json,
+        trace_source=f"skill:{name}",
+    )
+
+
 def _list_available_models() -> list[str]:
     """Best-effort list of pulled Ollama models for friendly error messages."""
     try:

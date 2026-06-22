@@ -33,6 +33,11 @@ _RUN_MIGRATIONS: list[tuple[str, str]] = [
     # Phase R — atomic claiming + lease
     ("claimed_by", "TEXT"),
     ("claimed_at", "TIMESTAMP"),
+    # PR-2 — auto-generated post-mortem markdown on run-failure transition.
+    ("post_mortem", "TEXT"),
+    ("post_mortem_status", "TEXT DEFAULT 'skipped'"),
+    ("post_mortem_input_hash", "TEXT"),
+    ("post_mortem_generated_at", "TIMESTAMP"),
 ]
 
 # Phase U — sessions table forward-migrations (backend pinned per session)

@@ -62,6 +62,18 @@ class Run(SQLModel, table=True):
     mutation_reasoning: str | None = None
     canary_loss: float | None = None
 
+    # PR-2 (Hermes opportunity #1) — auto-generated failure post-mortem.
+    # ``post_mortem_status`` is the source of truth for UI polling:
+    #   "pending"     — background task queued, waiting on Hermes
+    #   "ready"       — markdown is populated
+    #   "unavailable" — Hermes was offline or errored; check ``post_mortem``
+    #   "skipped"     — feature disabled via ``HERMES_POST_MORTEM_ENABLED=false``
+    #                   or no failure transition recorded
+    post_mortem: str | None = None
+    post_mortem_status: str = "skipped"
+    post_mortem_input_hash: str | None = None
+    post_mortem_generated_at: datetime | None = None
+
     created_at: datetime = Field(default_factory=_now)
     started_at: datetime | None = None
     completed_at: datetime | None = None

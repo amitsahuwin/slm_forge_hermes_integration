@@ -10,7 +10,16 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+)
 from pydantic import BaseModel
 from sqlmodel import Session, desc, select
 from sse_starlette.sse import EventSourceResponse
@@ -21,6 +30,7 @@ from apps.api.models.run import Run, RunMethod, RunStatus
 from apps.api.services.claims import claim_next_run
 from apps.api.services.db import get_session
 from apps.api.services.model_catalog import validate_run_request
+from apps.api.services.post_mortem import generate_for_run
 
 router = APIRouter()
 
@@ -129,10 +139,17 @@ def get_run(run_id: int, session: SessionDep) -> Run:
 
 
 @router.patch("/{run_id}", response_model=Run)
-def patch_run(run_id: int, payload: RunPatch, session: SessionDep) -> Run:
+def patch_run(
+    run_id: int,
+    payload: RunPatch,
+    session: SessionDep,
+    background: BackgroundTasks,
+) -> Run:
     run = session.get(Run, run_id)
     if not run:
         raise HTTPException(404, "Run not found")
+    # Capture the pre-PATCH status so we can detect the failed-transition edge.
+    prev_status = run.status
     data = payload.model_dump(exclude_unset=True)
     for k, v in data.items():
         setattr(run, k, v)
@@ -143,7 +160,44 @@ def patch_run(run_id: int, payload: RunPatch, session: SessionDep) -> Run:
     session.add(run)
     session.commit()
     session.refresh(run)
+
+    # PR-2 — kick off the post-mortem on the first transition into FAILED.
+    # Idempotent at the service layer (cache key + per-run lock), but the
+    # status check here saves one BackgroundTask schedule per duplicate PATCH.
+    if (
+        payload.status == RunStatus.FAILED
+        and prev_status != RunStatus.FAILED
+        and run.id is not None
+    ):
+        background.add_task(generate_for_run, run.id)
+
     return run
+
+
+class PostMortemResponse(BaseModel):
+    """PR-2 — payload for ``GET /api/v1/runs/{run_id}/post_mortem``.
+
+    UI polls this every 5s while ``status="pending"``; flips to ``"ready"`` or
+    ``"unavailable"`` once the background task completes.
+    """
+
+    status: str
+    markdown: str | None
+    generated_at: str | None
+
+
+@router.get("/{run_id}/post_mortem", response_model=PostMortemResponse)
+def get_post_mortem(run_id: int, session: SessionDep) -> PostMortemResponse:
+    run = session.get(Run, run_id)
+    if not run:
+        raise HTTPException(404, "Run not found")
+    return PostMortemResponse(
+        status=run.post_mortem_status,
+        markdown=run.post_mortem,
+        generated_at=run.post_mortem_generated_at.isoformat()
+        if run.post_mortem_generated_at
+        else None,
+    )
 
 
 @router.get("/{run_id}/metrics", response_model=list[Metric])

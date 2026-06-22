@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from apps.api.middleware.auth import AuthMiddleware
+from apps.api.middleware.error_capture import ErrorCaptureMiddleware
 from apps.api.middleware.metrics import PrometheusMiddleware
 from apps.api.middleware.request_context import RequestContextMiddleware
 from apps.api.routers import (
@@ -113,7 +114,36 @@ async def lifespan(app: FastAPI):
     setup_worker_logging("api")
     init_db()
     _recover_stranded_runs_and_sessions()
-    yield
+
+    # PR-A — wire the error-responder. Validates settings fail-fast (raises
+    # RuntimeError when DEPLOYMENT_MODE=production without GITHUB_TOKEN, etc.).
+    import asyncio as _asyncio
+
+    from packages.error_responder import capture
+    from packages.error_responder import config as _err_config
+
+    _err_config.get_settings()  # fail-fast
+    capture.set_service_version(API_VERSION)
+    capture.start_dispatcher()
+
+    # asyncio.create_task exceptions are silently swallowed by default. Install
+    # a handler so escapes from background tasks (e.g. _run_synth_job) reach
+    # the same reporter as request-path errors.
+    def _asyncio_exc_handler(loop, context):  # type: ignore[no-untyped-def]
+        exc = context.get("exception")
+        if exc is not None:
+            try:
+                capture.report_exception(exc, source="api.asyncio")
+            except Exception:
+                pass
+        loop.default_exception_handler(context)
+
+    _asyncio.get_event_loop().set_exception_handler(_asyncio_exc_handler)
+
+    try:
+        yield
+    finally:
+        await capture.stop_dispatcher()
 
 
 app = FastAPI(title="SLM-Forge API", version="0.6.0", lifespan=lifespan)
@@ -137,12 +167,18 @@ app = FastAPI(title="SLM-Forge API", version="0.6.0", lifespan=lifespan)
 #   would 401 every preflight. With CORS outermost, CORS short-circuits
 #   preflight responses without consulting inner middleware.
 #
-# Order at runtime (request → response): CORS → Prometheus → RequestContext
-# → AuthMiddleware → routes → AuthMiddleware → RequestContext → Prometheus
-# → CORS.
+# Order at runtime (request → response): CORS → ErrorCapture → Prometheus →
+# RequestContext → AuthMiddleware → routes → AuthMiddleware → RequestContext
+# → Prometheus → ErrorCapture → CORS.
+#
+# PR-A — ErrorCaptureMiddleware sits just inside CORS so it sees *every*
+# uncaught exception from the inner middleware stack (Auth/JWKS failures,
+# Prometheus accounting bugs, etc.) — exceptions that ``@app.exception_handler``
+# does not reach.
 app.add_middleware(AuthMiddleware)
 app.add_middleware(RequestContextMiddleware)
 app.add_middleware(PrometheusMiddleware)
+app.add_middleware(ErrorCaptureMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -151,6 +187,33 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["X-Request-ID"],
 )
+
+
+# PR-A — global exception handler for anything that escapes a route handler.
+# 4xx HTTPExceptions stay on FastAPI's default path; we only report 5xx.
+from fastapi import HTTPException as _HTTPException  # noqa: E402
+from fastapi import Request as _Request
+from fastapi.responses import JSONResponse as _JSONResponse  # noqa: E402
+
+
+@app.exception_handler(Exception)
+async def _unhandled_exception_handler(request: _Request, exc: Exception):
+    if isinstance(exc, _HTTPException):
+        raise exc  # let FastAPI render its default response
+    try:
+        from packages.error_responder import capture as _capture
+
+        _capture.report_exception(
+            exc,
+            source="api",
+        )
+    except Exception:
+        pass
+    request_id = getattr(request.state, "request_id", "")
+    return _JSONResponse(
+        {"detail": "Internal Server Error", "request_id": request_id},
+        status_code=500,
+    )
 
 app.include_router(runs.router, prefix="/api/v1/runs", tags=["runs"])
 app.include_router(sessions.router, prefix="/api/v1/sessions", tags=["sessions"])
@@ -176,6 +239,10 @@ app.include_router(research.router, prefix="/api/v1/research", tags=["research"]
 app.include_router(agents.router, prefix="/api/v1/agents", tags=["agents"])
 # Admin-only Hermes/Ollama request-response trace inspector.
 app.include_router(traces.router, prefix="/api/v1/hermes/traces", tags=["hermes-traces"])
+# PR-A — admin-only auto-fix audit trail (reports today; full attempts in PR-B).
+from apps.api.routers import autofix as _autofix_router  # noqa: E402
+
+app.include_router(_autofix_router.router, prefix="/api/v1/autofix", tags=["autofix"])
 # Phase L — Prometheus metrics scrape endpoint (root /metrics, no prefix).
 app.include_router(metrics.router, tags=["observability"])
 # Phase M — auth (Keycloak + OPA). The endpoints work in both enforcement

@@ -126,4 +126,17 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # PR-A — top-level wrapper. See packages/exporter/__main__.py for rationale.
+    try:
+        sys.exit(main())
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except BaseException as _exc:
+        try:
+            from packages.error_responder import capture as _capture
+
+            _capture.report_exception_sync(_exc, source="trainer")
+            _capture.flush(timeout=30)
+        except Exception:
+            pass
+        raise

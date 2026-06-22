@@ -30,6 +30,8 @@ class TraceRow(BaseModel):
     error: str | None
     request_body: str
     response_body: str
+    attempts: int = 1
+    tenant_id: str = "default"
 
 
 @router.get("", response_model=list[TraceRow])
@@ -39,6 +41,7 @@ def list_traces(
     db: SessionDep,
     limit: int = Query(50, ge=1, le=500),
     source_like: str | None = Query(None, description="substring filter on `source`"),
+    tenant_id: str | None = Query(None, description="exact match on `tenant_id`"),
 ) -> list[TraceRow]:
     """Return the most recent traces, newest first.
 
@@ -46,14 +49,12 @@ def list_traces(
     because the request/response bodies contain dataset rows, system
     prompts, model weights metadata — basically the full prompt surface.
     """
-    stmt = select(HermesTrace).order_by(desc(HermesTrace.created_at)).limit(limit)
+    stmt = select(HermesTrace)
     if source_like:
-        stmt = (
-            select(HermesTrace)
-            .where(HermesTrace.source.contains(source_like))  # type: ignore[attr-defined]
-            .order_by(desc(HermesTrace.created_at))
-            .limit(limit)
-        )
+        stmt = stmt.where(HermesTrace.source.contains(source_like))  # type: ignore[attr-defined]
+    if tenant_id:
+        stmt = stmt.where(HermesTrace.tenant_id == tenant_id)
+    stmt = stmt.order_by(desc(HermesTrace.created_at)).limit(limit)
     rows = db.exec(stmt).all()
     return [
         TraceRow(
@@ -65,6 +66,8 @@ def list_traces(
             error=r.error,
             request_body=r.request_body,
             response_body=r.response_body,
+            attempts=r.attempts,
+            tenant_id=r.tenant_id,
         )
         for r in rows
     ]
@@ -85,6 +88,8 @@ def get_trace(trace_id: int, request: Request, db: SessionDep) -> TraceRow:
         error=row.error,
         request_body=row.request_body,
         response_body=row.response_body,
+        attempts=row.attempts,
+        tenant_id=row.tenant_id,
     )
 
 

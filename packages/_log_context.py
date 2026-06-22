@@ -40,6 +40,9 @@ session_id_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar(
 trace_id_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "slm_forge_trace_id", default=None
 )
+tenant_id_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "slm_forge_tenant_id", default=None
+)
 
 _NAME_TO_VAR: dict[str, contextvars.ContextVar[str | None]] = {
     "request_id": request_id_ctx,
@@ -47,6 +50,7 @@ _NAME_TO_VAR: dict[str, contextvars.ContextVar[str | None]] = {
     "run_id": run_id_ctx,
     "session_id": session_id_ctx,
     "trace_id": trace_id_ctx,
+    "tenant_id": tenant_id_ctx,
 }
 
 
@@ -57,6 +61,7 @@ def bind(
     run_id: str | int | None = None,
     session_id: str | int | None = None,
     trace_id: str | int | None = None,
+    tenant_id: str | int | None = None,
 ) -> dict[str, contextvars.Token[str | None]]:
     """Set provided IDs on their ContextVars and return reset tokens.
 
@@ -69,6 +74,7 @@ def bind(
         "run_id": run_id,
         "session_id": session_id,
         "trace_id": trace_id,
+        "tenant_id": tenant_id,
     }
     tokens: dict[str, contextvars.Token[str | None]] = {}
     for name, value in pairs.items():

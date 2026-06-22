@@ -40,6 +40,13 @@ _SESSION_MIGRATIONS: list[tuple[str, str]] = [
     ("trainer_backend", "TEXT DEFAULT 'mlx'"),
 ]
 
+# PR-1 A1/A4 — hermes_traces additive migration. Both columns are backfilled
+# with safe defaults so existing rows continue to roundtrip cleanly.
+_HERMES_TRACE_MIGRATIONS: list[tuple[str, str]] = [
+    ("attempts", "INTEGER DEFAULT 1"),
+    ("tenant_id", "TEXT DEFAULT 'default'"),
+]
+
 # Phase 4 — exports table is created by SQLModel; no ALTER needed unless schema changes
 
 
@@ -61,6 +68,10 @@ def _migrate_sessions() -> None:
     _migrate_table("sessions", _SESSION_MIGRATIONS)
 
 
+def _migrate_hermes_traces() -> None:
+    _migrate_table("hermes_traces", _HERMES_TRACE_MIGRATIONS)
+
+
 def init_db() -> None:
     from apps.api.models import chat as _chat  # noqa: F401
     from apps.api.models import export as _export  # noqa: F401
@@ -73,6 +84,7 @@ def init_db() -> None:
     SQLModel.metadata.create_all(engine)
     _migrate_runs()
     _migrate_sessions()
+    _migrate_hermes_traces()
 
 
 def get_session() -> Generator[Session, None, None]:

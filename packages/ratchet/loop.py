@@ -8,7 +8,11 @@ from typing import Any
 import httpx
 
 from packages.ratchet.decision import evaluate_iteration
-from packages.ratchet.hermes_bridge import MutationProposal, propose_mutation
+from packages.ratchet.hermes_bridge import (
+    MutationProposal,
+    MutationProposalError,
+    propose_mutation,
+)
 
 log = logging.getLogger("ratchet.loop")
 
@@ -120,6 +124,12 @@ def run_session(session_id: int, api: API) -> None:
     best_metric: float | None = None
     best_run_id: int | None = None
     no_improvement_streak = 0
+    # PR-1 A2 — track consecutive unparseable proposals; abort the session
+    # after ``HERMES_MAX_PROPOSAL_FAILURES`` rather than silently fabricating
+    # a do-nothing mutation as the old code did.
+    proposal_failure_streak = 0
+    import os as _os  # local import — avoids module-load surprises in tests
+    max_proposal_failures = int(_os.environ.get("HERMES_MAX_PROPOSAL_FAILURES", "3"))
 
     for round_idx in range(session["max_rounds"]):
         api.patch_session(session_id, current_round=round_idx)
@@ -138,13 +148,26 @@ def run_session(session_id: int, api: API) -> None:
                     history=hist,
                     current_best_metric=best_metric,
                 )
-            except Exception as e:
-                log.error("Hermes proposal failed: %s — using LR halving", e)
-                proposal = MutationProposal(
-                    learning_rate=base_hyperparams["learning_rate"] * 0.5,
-                    reasoning=f"Hermes failed ({e}); LR halved as safe fallback",
-                    expected_outcome="conservative continued training",
+            except MutationProposalError as e:
+                # PR-1 A2 — surface the failure instead of fabricating a fake proposal.
+                proposal_failure_streak += 1
+                log.warning(
+                    "Hermes proposal unparseable (streak=%d/%d): %s",
+                    proposal_failure_streak,
+                    max_proposal_failures,
+                    e,
                 )
+                if proposal_failure_streak >= max_proposal_failures:
+                    log.error(
+                        "Aborting session — %d consecutive proposal failures",
+                        proposal_failure_streak,
+                    )
+                    api.patch_session(session_id, status="failed")
+                    return
+                # Skip this iteration cleanly — no run created, no mutation faked.
+                continue
+            else:
+                proposal_failure_streak = 0
             # Apply mutation on top of the BEST-so-far config (or baseline if no best yet)
             mutate_from = base_hyperparams
             if best_run_id is not None:

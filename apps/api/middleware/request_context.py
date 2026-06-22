@@ -27,7 +27,7 @@ _DEFAULT_USER = os.environ.get("SLM_FORGE_DEFAULT_USER", "anonymous")
 
 
 class RequestContextMiddleware(BaseHTTPMiddleware):
-    """Bind ``request_id`` and ``user_id`` into log context for the request."""
+    """Bind ``request_id``, ``user_id`` and ``tenant_id`` into log context for the request."""
 
     async def dispatch(self, request: Request, call_next):  # type: ignore[override]
         # Prefer a client-supplied ID (for end-to-end tracing through a proxy)
@@ -44,7 +44,14 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         # accepts a re-bind so subsequent log lines pick up the real user.
         user_id = _DEFAULT_USER
 
-        tokens = bind(request_id=request_id, user_id=user_id)
+        # PR-1 A4: every request carries a tenant. A future JWT claim or
+        # subdomain rule can override this; today we use the process default
+        # so single-tenant deployments keep working unchanged.
+        from apps.api.services.tenant import default_tenant
+
+        tenant_id = request.headers.get("x-tenant-id", "").strip() or default_tenant()
+
+        tokens = bind(request_id=request_id, user_id=user_id, tenant_id=tenant_id)
         try:
             response: Response = await call_next(request)
             # Best-effort re-bind for downstream log emitters running after

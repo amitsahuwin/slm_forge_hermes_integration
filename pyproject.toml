@@ -97,6 +97,9 @@ auth = [
     # key-construction step.
     "python-jose[cryptography]>=3.3",
 ]
+error-responder = [
+    "claude-agent-sdk>=0.2.106",
+]
 
 [tool.ruff]
 line-length = 100

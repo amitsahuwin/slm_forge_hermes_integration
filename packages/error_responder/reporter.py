@@ -176,10 +176,58 @@ def _persist_attempt(event: _CaptureEvent, *, action: str, url: str | None) -> i
         return None
 
 
+def _dispatch_dev(event: _CaptureEvent) -> bool:
+    """Dev-mode: try the auto-fix loop. Returns ``True`` on success
+    (status=deployed), ``False`` on any rejection/failure so the caller
+    can degrade to the GitHub-issue path.
+
+    Lazy-imports ``autofix`` so PR-A consumers (and tests that don't enable
+    autofix) never pay the import cost.
+    """
+    settings = _config.get_settings()
+    if not settings.autofix_enabled:
+        return False
+    try:
+        from packages.error_responder import autofix as _autofix
+
+        # Use a fresh event loop — workers/CLI hooks don't have one running.
+        outcome = _autofix.run_autofix_flow_sync(
+            fingerprint=event.fingerprint,
+            file_target=event.file_target,
+            exc_type=event.exc_type,
+            error_message=event.error_message,
+            redacted_traceback=event.redacted_traceback,
+        )
+        log.info(
+            "autofix dispatch: status=%s fp=%s reason=%s",
+            outcome.status,
+            event.fingerprint[:12],
+            outcome.reason or "—",
+        )
+        return outcome.status == "deployed"
+    except Exception as e:
+        log.error("autofix dispatch swallowed an unexpected error: %s", e)
+        return False
+
+
 def _dispatch_production(event: _CaptureEvent, *, client: httpx.Client | None = None) -> None:
     """Production mode: open or comment on a GitHub issue. Synchronous; the
-    caller decided whether to run it on a background task or inline."""
+    caller decided whether to run it on a background task or inline.
+
+    PR-B: when ``DEPLOYMENT_MODE=development`` AND ``AUTOFIX_ENABLED=true``,
+    we try the auto-fix loop first. Only if it rejects or fails do we fall
+    through to the GitHub-issue path — the operator still gets visibility.
+    """
     settings = _config.get_settings()
+
+    if (
+        settings.deployment_mode == "development"
+        and settings.autofix_enabled
+        and _dispatch_dev(event)
+    ):
+        return  # auto-fix landed — no need to also open an issue
+    # Else (autofix off, rejected, or failed): fall through to GitHub-issue.
+
     if not settings.github_token or not settings.github_repo:
         log.debug("github not configured — recording attempt without remote post")
         _persist_attempt(event, action="skipped", url=None)

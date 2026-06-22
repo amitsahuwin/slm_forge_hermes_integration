@@ -31,6 +31,7 @@ from apps.api.services.claims import claim_next_run
 from apps.api.services.db import get_session
 from apps.api.services.model_catalog import validate_run_request
 from apps.api.services.post_mortem import generate_for_run
+from apps.api.services.remedy import translate_error
 
 router = APIRouter()
 
@@ -81,11 +82,25 @@ SessionDep = Annotated[Session, Depends(get_session)]
 
 
 @router.post("", response_model=Run)
-def create_run(payload: RunCreate, session: SessionDep) -> Run:
+async def create_run(payload: RunCreate, session: SessionDep) -> Run:
+    """Create a new training run.
+
+    PR-3: catalog-validation failures (422) carry a plain-English remedy from
+    Hermes in ``detail.remedy`` when available. The original error string is
+    always in ``detail.message`` so clients have a stable field.
+    """
     # Phase P — catalog enforcement (disable via SLM_FORGE_ENFORCE_CATALOG=false).
     error = validate_run_request(payload.base_model, payload.trainer_backend)
     if error is not None:
-        raise HTTPException(422, error)
+        remedy = await translate_error(
+            error,
+            context={
+                "endpoint": "POST /api/v1/runs",
+                "base_model": payload.base_model,
+                "trainer_backend": payload.trainer_backend,
+            },
+        )
+        raise HTTPException(422, detail={"message": error, "remedy": remedy})
     run = Run(**payload.model_dump())
     session.add(run)
     session.commit()

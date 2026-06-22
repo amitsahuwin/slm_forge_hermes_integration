@@ -35,13 +35,43 @@ export async function authFetch(input: string, init: RequestInit = {}): Promise<
     let detail = 'Forbidden';
     try {
       const j = await res.clone().json();
-      if (j && typeof j.detail === 'string') detail = j.detail;
+      detail = extractDetailMessage(j) ?? detail;
     } catch {
       /* ignore */
     }
     toast.error(detail);
   }
   return res;
+}
+
+/**
+ * PR-3 — FastAPI `HTTPException.detail` is now either:
+ *   - a plain string (legacy paths), or
+ *   - `{ message: string, remedy: string | null }` (catalog + synth 4xx).
+ *
+ * Pull the human-readable message out either way. Returns `undefined` when
+ * the body has no usable detail field so callers can fall back to a default.
+ */
+export function extractDetailMessage(body: unknown): string | undefined {
+  if (!body || typeof body !== 'object') return undefined;
+  const detail = (body as { detail?: unknown }).detail;
+  if (typeof detail === 'string') return detail;
+  if (detail && typeof detail === 'object') {
+    const message = (detail as { message?: unknown }).message;
+    if (typeof message === 'string') return message;
+  }
+  return undefined;
+}
+
+/** PR-3 — the optional plain-English remedy that accompanies a 422/4xx. */
+export function extractDetailRemedy(body: unknown): string | null {
+  if (!body || typeof body !== 'object') return null;
+  const detail = (body as { detail?: unknown }).detail;
+  if (detail && typeof detail === 'object') {
+    const remedy = (detail as { remedy?: unknown }).remedy;
+    if (typeof remedy === 'string') return remedy;
+  }
+  return null;
 }
 
 export type RunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
@@ -355,7 +385,7 @@ async function jdelete(path: string): Promise<void> {
   const r = await authFetch(`${API_URL}${path}`, { method: 'DELETE' });
   if (!r.ok && r.status !== 204) {
     let detail = '';
-    try { detail = (await r.json()).detail ?? ''; } catch { /* ignore */ }
+    try { detail = extractDetailMessage(await r.json()) ?? ''; } catch { /* ignore */ }
     throw new Error(`DELETE ${path} → HTTP ${r.status}${detail ? ` — ${detail}` : ''}`);
   }
 }

@@ -30,9 +30,27 @@ from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
 from apps.api.middleware.auth import requires
-
+from apps.api.services.remedy import translate_error
 from packages.dataset_synth.engine import detect_format, synthesize
 from packages.ratchet.hermes_bridge import HERMES_MODEL, OLLAMA_URL
+
+
+async def _attach_remedy(exc: HTTPException, endpoint: str, request_obj: Any) -> HTTPException:
+    """PR-3 — convert a 4xx ``HTTPException`` with string detail into one with
+    ``detail={"message": str, "remedy": str | None}``.
+
+    Non-4xx exceptions and ones that already carry a dict detail pass through
+    unchanged. Returns the (possibly new) exception for the caller to raise.
+    """
+    if not (400 <= exc.status_code < 500):
+        return exc
+    if not isinstance(exc.detail, str):
+        return exc
+    remedy = await translate_error(
+        exc.detail,
+        context={"endpoint": endpoint, "request": request_obj},
+    )
+    return HTTPException(exc.status_code, detail={"message": exc.detail, "remedy": remedy})
 
 log = logging.getLogger("api.synth")
 router = APIRouter()
@@ -146,7 +164,7 @@ class _Job:
                 try:
                     q.get_nowait()
                     q.put_nowait(payload)
-                except Exception:  # noqa: BLE001
+                except Exception:
                     pass
 
 
@@ -368,7 +386,7 @@ async def _run_synth_job(job: _Job) -> None:
             len(valid_recs),
             len(canary_recs),
         )
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         log.exception("Synth job %s failed", job.job_id)
         job.status = "failed"
         job.error = f"{type(e).__name__}: {e}"
@@ -382,38 +400,46 @@ async def _run_synth_job(job: _Job) -> None:
 @router.post("/start", response_model=SynthStartResponse)
 @requires("create", "dataset")
 async def start_synth(req: SynthRequest, request: Request) -> SynthStartResponse:
-    src_dir = _dataset_dir(req.source_dataset)
-    if not src_dir.exists() or not src_dir.is_dir():
-        raise HTTPException(404, f"Source dataset {req.source_dataset!r} not found")
+    # PR-3 — wrap the validation block so any 4xx string-detail raise is
+    # re-issued with a Hermes-generated remedy. The asyncio.create_task below
+    # never raises HTTPException so it's intentionally outside the try.
+    try:
+        src_dir = _dataset_dir(req.source_dataset)
+        if not src_dir.exists() or not src_dir.is_dir():
+            raise HTTPException(404, f"Source dataset {req.source_dataset!r} not found")
 
-    out_dir = _dataset_dir(req.new_dataset)
-    if out_dir.exists():
-        raise HTTPException(409, f"Dataset {req.new_dataset!r} already exists")
-    if not req.new_dataset or "/" in req.new_dataset or req.new_dataset.startswith("."):
-        raise HTTPException(400, "Invalid new_dataset name")
+        out_dir = _dataset_dir(req.new_dataset)
+        if out_dir.exists():
+            raise HTTPException(409, f"Dataset {req.new_dataset!r} already exists")
+        if not req.new_dataset or "/" in req.new_dataset or req.new_dataset.startswith("."):
+            raise HTTPException(400, "Invalid new_dataset name")
 
-    ratio_sum = req.train_ratio + req.valid_ratio + req.canary_ratio
-    if abs(ratio_sum - 1.0) > 0.01:
-        raise HTTPException(
-            400, f"Ratios must sum to 1.0 ± 0.01 (got {ratio_sum:.3f})"
-        )
-    if any(r < 0 for r in (req.train_ratio, req.valid_ratio, req.canary_ratio)):
-        raise HTTPException(400, "Ratios must be non-negative")
-    if req.target_count < 8:
-        raise HTTPException(400, "target_count must be >= 8")
-    if req.valid_ratio * req.target_count < 4:
-        raise HTTPException(
-            400,
-            "valid split would be < 4 records; raise valid_ratio or target_count",
-        )
+        ratio_sum = req.train_ratio + req.valid_ratio + req.canary_ratio
+        if abs(ratio_sum - 1.0) > 0.01:
+            raise HTTPException(
+                400, f"Ratios must sum to 1.0 ± 0.01 (got {ratio_sum:.3f})"
+            )
+        if any(r < 0 for r in (req.train_ratio, req.valid_ratio, req.canary_ratio)):
+            raise HTTPException(400, "Ratios must be non-negative")
+        if req.target_count < 8:
+            raise HTTPException(400, "target_count must be >= 8")
+        if req.valid_ratio * req.target_count < 4:
+            raise HTTPException(
+                400,
+                "valid split would be < 4 records; raise valid_ratio or target_count",
+            )
 
-    source_count = _count_jsonl(src_dir / "train.jsonl") + _count_jsonl(
-        src_dir / "valid.jsonl"
-    )
-    if source_count == 0:
-        raise HTTPException(
-            400, f"Source dataset {req.source_dataset!r} has no train/valid records"
+        source_count = _count_jsonl(src_dir / "train.jsonl") + _count_jsonl(
+            src_dir / "valid.jsonl"
         )
+        if source_count == 0:
+            raise HTTPException(
+                400, f"Source dataset {req.source_dataset!r} has no train/valid records"
+            )
+    except HTTPException as e:
+        raise await _attach_remedy(
+            e, endpoint="POST /api/v1/synth/start", request_obj=req.model_dump()
+        ) from None
 
     job = _Job(req)
     _JOBS[job.job_id] = job
@@ -459,7 +485,7 @@ async def stream_job(job_id: str) -> EventSourceResponse:
             while True:
                 try:
                     ev = await asyncio.wait_for(q.get(), timeout=1.0)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     # No new events — check if we're done.
                     if j.status in {"completed", "failed", "cancelled"} and q.empty():
                         return

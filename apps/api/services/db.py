@@ -77,7 +77,18 @@ def _migrate_hermes_traces() -> None:
     _migrate_table("hermes_traces", _HERMES_TRACE_MIGRATIONS)
 
 
+# PR-A — auto_fix_attempt is a new table; create_all handles the initial
+# schema. The migrations list exists so PR-B (and beyond) can extend the
+# row shape additively without hand-editing prod databases.
+_AUTOFIX_MIGRATIONS: list[tuple[str, str]] = []
+
+
+def _migrate_autofix() -> None:
+    _migrate_table("auto_fix_attempt", _AUTOFIX_MIGRATIONS)
+
+
 def init_db() -> None:
+    from apps.api.models import autofix as _autofix  # noqa: F401
     from apps.api.models import chat as _chat  # noqa: F401
     from apps.api.models import export as _export  # noqa: F401
     from apps.api.models import heartbeat as _heartbeat  # noqa: F401
@@ -90,6 +101,7 @@ def init_db() -> None:
     _migrate_runs()
     _migrate_sessions()
     _migrate_hermes_traces()
+    _migrate_autofix()
 
 
 def get_session() -> Generator[Session, None, None]:

@@ -9,8 +9,9 @@ import time
 import httpx
 
 try:
-    from dotenv import load_dotenv
     from pathlib import Path
+
+    from dotenv import load_dotenv
     load_dotenv(Path(__file__).resolve().parents[2] / ".env", override=False)
 except ImportError:
     pass
@@ -45,7 +46,7 @@ def fetch_next_queued() -> dict | None:
         r.raise_for_status()
         rows = r.json()
         return rows[-1] if rows else None
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         log.warning("API poll failed: %s", e)
         return None
 
@@ -59,7 +60,7 @@ def main() -> int:
             log.info("API is up.")
             start_heartbeat(API_URL, worker="exporter")
             break
-        except Exception:  # noqa: BLE001
+        except Exception:
             if attempt == 0:
                 log.info("Waiting for API...")
             time.sleep(2)
@@ -94,7 +95,7 @@ def main() -> int:
         except KeyboardInterrupt:
             log.info("Stopping.")
             return 0
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             log.exception("Error: %s", e)
             if export:
                 try:
@@ -103,10 +104,26 @@ def main() -> int:
                         json={"status": "failed", "error_message": str(e)[:500]},
                         timeout=10,
                     )
-                except Exception:  # noqa: BLE001
+                except Exception:
                     pass
             time.sleep(POLL_INTERVAL)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # PR-A — top-level wrapper. Captures any exception that escaped ``main()``
+    # to the error reporter, then re-raises so the exit code and stderr trace
+    # are preserved. KeyboardInterrupt / SystemExit are intentional exits and
+    # don't get reported.
+    try:
+        sys.exit(main())
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except BaseException as _exc:
+        try:
+            from packages.error_responder import capture as _capture
+
+            _capture.report_exception_sync(_exc, source="exporter")
+            _capture.flush(timeout=30)
+        except Exception:
+            pass
+        raise

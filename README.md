@@ -166,6 +166,54 @@ open http://localhost:5173    # or: xdg-open on Linux
 
 The `/chat` page exposes a categorized template library covering every step above; the `/research` page runs Ollama-driven market-research reports grounded in DuckDuckGo / SerpAPI / Tavily search.
 
+## What's new in 0.7.0 (Hermes Hardening)
+
+Release notes: [`release/0.7.0.md`](release/0.7.0.md). Architecture decisions: [`docs/adr/`](docs/adr/). Client-facing tour: [`docs/SLM_FORGE_PRODUCT_GUIDE.md`](docs/SLM_FORGE_PRODUCT_GUIDE.md) (or open the new `/product` tab in the UI).
+
+**New tabs**
+
+- **`/product`** — visual showcase of every feature in the app. Visible to all users.
+- **`/autofix`** — admin-only audit trail for the self-healing error reporter (captured errors, proposed fixes, deploy status, abandon action).
+
+**New behaviours, all default-on (each has a kill-switch env var)**
+
+- Catalog-rejected `POST /api/v1/runs` and `POST /api/v1/synth/start` 4xx responses now carry `detail.remedy` — a 1-3 sentence plain-English fix from Hermes (`HERMES_REMEDY_ENABLED`).
+- Every `/api/v1/ingest/*/preview` returns a `qa_id`; a background `data_quality_review` scan flags duplicates / PII / off-topic rows (`HERMES_QA_ENABLED`).
+- When a Run flips to `status=failed`, an auto post-mortem Markdown is generated and stored on the row + a sidecar file (`HERMES_POST_MORTEM_ENABLED`).
+- Every uncaught exception in the API + workers is captured by `packages/error_responder/`. Production → dedup-by-fingerprint GitHub issue. Development (with `AUTOFIX_ENABLED=true`) → Claude Agent SDK proposes a fix on `auto-fix/<fp>` (main is never touched).
+
+**New env vars (quick reference)**
+
+| Category | Env var | Default | Purpose |
+|---|---|---|---|
+| Hermes bridge (PR-1) | `HERMES_MAX_RETRIES` | `3` | Tenacity retries on transient Ollama failures |
+| | `HERMES_OLLAMA_TIMEOUT_S` | `300` | Per-attempt wall-clock cap |
+| | `HERMES_RETRY_BACKOFF_MULT_S` | `0.5` | Exponential backoff multiplier |
+| | `HERMES_MAX_PROPOSAL_FAILURES` | `3` | Consecutive `MutationProposalError`s before the ratchet aborts a session |
+| | `HERMES_LOG_PAYLOADS` | `false` | Opt-in DEBUG-level body log (developer only) |
+| | `HERMES_TRACE_STORE_PAYLOADS` | `true` | Persist request/response bodies in `hermes_traces` |
+| | `HERMES_TRACE_REDACT_SOURCES` | `skill:dataset_synth,skill:ingest_dataset,skill:auto_label_unlabeled,skill:data_quality_review` | Source labels whose bodies are always blanked in the trace table |
+| | `SLM_FORGE_TENANT_ID` / `SLM_FORGE_DEFAULT_TENANT` | unset / `default` | Per-worker override / process-wide fallback for `HermesTrace.tenant_id` |
+| Post-mortem (PR-2) | `HERMES_POST_MORTEM_ENABLED` | `true` | Background skill on run-failure |
+| | `HERMES_MAX_CONCURRENT` | `2` | Semaphore cap on simultaneous skill calls |
+| Error remedy (PR-3) | `HERMES_REMEDY_ENABLED` | `true` | Inline remedy on 4xx |
+| | `HERMES_REMEDY_TIMEOUT_S` | `4` | Hard wall-cap on the inline call |
+| Dataset QA (PR-4) | `HERMES_QA_ENABLED` | `true` | Background QA scan on ingest preview |
+| | `HERMES_QA_TIMEOUT_S` | `45` | Skill wall-cap |
+| | `HERMES_QA_CACHE_TTL_S` | `1800` | qa_store TTL |
+| | `HERMES_QA_CACHE_CAP` | `100` | LRU cap |
+| Error responder (PR-A) | `ERROR_REPORTER_ENABLED` | `true` | Master switch |
+| | `DEPLOYMENT_MODE` | `development` | `production` opens GitHub issues; `development` runs auto-fix when enabled |
+| | `GITHUB_TOKEN` / `GITHUB_REPO` | unset / auto-detected | Required for production mode; repo coords auto-detected from `git remote get-url origin` |
+| | `ERROR_REPORTER_STORM_THRESHOLD` | `10` | Sliding 60-s window cap per fingerprint |
+| Auto-fix (PR-B) | `AUTOFIX_ENABLED` | `false` | Dev-mode kill switch — opt-in |
+| | `AUTOFIX_DEPLOY` | `auto-commit-reload` | Commit on sandbox branch; main never touched |
+| | `AUTOFIX_MAX_ATTEMPTS_PER_FINGERPRINT_24H` | `3` | Per-fingerprint circuit breaker |
+| | `AUTOFIX_DENYLIST` | (see `.env.example`) | Files the auto-fix loop must NEVER edit |
+
+Enable dev-mode auto-fix with `uv sync --extra error-responder` to pull in `claude-agent-sdk`.
+
+
 ## Multi-backend training (MLX + CUDA)
 
 Every run targets a **training backend**, picked on the New Run form. `mlx` (default) trains on this Mac; `cuda` trains on any NVIDIA GPU machine pointed at the same API.

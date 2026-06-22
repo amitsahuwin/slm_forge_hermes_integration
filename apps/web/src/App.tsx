@@ -4,6 +4,7 @@ import RequireRole from './components/RequireRole';
 import Agents from './pages/Agents';
 import AutoFixes from './pages/AutoFixes';
 import Chat from './pages/Chat';
+import Product from './pages/Product';
 import Dashboard from './pages/Dashboard';
 import DatasetDetail from './pages/DatasetDetail';
 import Datasets from './pages/Datasets';
@@ -32,6 +33,7 @@ export default function App() {
           <main className="mx-auto max-w-7xl px-8 py-10">
             <Routes>
               <Route path="/" element={<Dashboard />} />
+              <Route path="/product" element={<Product />} />
 
               {/* Experiments (new canonical URLs) */}
               <Route path="/experiments" element={<Experiments />} />

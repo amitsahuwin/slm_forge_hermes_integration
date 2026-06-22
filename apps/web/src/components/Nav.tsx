@@ -43,6 +43,9 @@ export default function Nav() {
             <NavLink to="/" end className={({ isActive }) => `${link} ${isActive ? activeLink : ''}`}>
               Dashboard
             </NavLink>
+            <NavLink to="/product" className={({ isActive }) => `${link} ${isActive ? activeLink : ''}`}>
+              Product
+            </NavLink>
             {show.experiments && (
               <NavLink to="/experiments" className={({ isActive }) => `${link} ${isActive ? activeLink : ''}`}>
                 Experiments

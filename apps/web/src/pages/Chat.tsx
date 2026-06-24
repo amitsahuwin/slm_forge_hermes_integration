@@ -328,16 +328,23 @@ export default function Chat() {
   };
 
   return (
-    <div className="grid grid-cols-[16rem_1fr_20rem] gap-4 h-[calc(100vh-12rem)]">
+    /*
+     * Fixed-height grid: only the middle thread scrolls. Left + right
+     * panels scroll internally so long lists stay reachable without
+     * pushing page-level scroll. ``overflow-hidden`` on the grid keeps
+     * the asides "pinned" — their height is bounded so any longer
+     * content scrolls inside the aside instead of dragging the page.
+     */
+    <div className="grid grid-cols-[16rem_1fr_20rem] gap-4 h-[calc(100dvh-9rem)] overflow-hidden">
       {/* Left: conversations */}
-      <aside className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 flex flex-col">
+      <aside className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 flex flex-col min-h-0">
         <button
           onClick={() => void newConversation()}
-          className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500"
+          className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 shrink-0"
         >
           + New chat
         </button>
-        <div className="mt-3 flex-1 overflow-y-auto space-y-1">
+        <div className="mt-3 flex-1 min-h-0 overflow-y-auto space-y-1">
           {conversations.map((c) => (
             <button
               key={c.id}
@@ -358,8 +365,8 @@ export default function Chat() {
         </div>
       </aside>
 
-      {/* Center: thread */}
-      <section className="flex flex-col rounded-xl border border-zinc-800 bg-zinc-950">
+      {/* Center: thread — the ONLY column that should scroll on the page */}
+      <section className="flex flex-col rounded-xl border border-zinc-800 bg-zinc-950 min-h-0">
         <ChatBanner
           health={health}
           streamError={streamError}
@@ -367,7 +374,7 @@ export default function Chat() {
         />
         <div
           ref={threadRef}
-          className="flex-1 overflow-y-auto p-4 space-y-4"
+          className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4"
         >
           {messages.length === 0 ? (
             <EmptyState />
@@ -394,7 +401,7 @@ export default function Chat() {
       </section>
 
       {/* Right: templates panel */}
-      <aside className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 overflow-y-auto">
+      <aside className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 min-h-0 overflow-y-auto">
         <ChatTemplates
           onPick={(text) => {
             setInput(text);
@@ -768,9 +775,32 @@ function StartExperimentCard({ data }: { data: unknown }) {
     payload?: Record<string, unknown>;
     summary?: string;
   };
-  const payload = d.payload ?? {};
+  const initialPayload = d.payload ?? {};
+  // ``editPayload`` is the user's working copy. Edits are committed back on
+  // every keystroke so when the user hits **Start** the freshly-typed values
+  // are POSTed, not the agent's original suggestion.
+  const [editPayload, setEditPayload] = useState<Record<string, unknown>>(
+    () => ({ ...initialPayload }),
+  );
+  const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [done, setDone] = useState<null | { id?: number; error?: string }>(null);
+
+  const setField = (key: string, raw: string, originalIsNumber: boolean) => {
+    setEditPayload((prev) => {
+      let value: unknown = raw;
+      if (originalIsNumber) {
+        // Empty input → drop the field so the API uses its own default.
+        if (raw.trim() === '') {
+          const { [key]: _drop, ...rest } = prev;
+          return rest;
+        }
+        const n = Number(raw);
+        value = Number.isFinite(n) ? n : raw;
+      }
+      return { ...prev, [key]: value };
+    });
+  };
 
   const confirm = async () => {
     setConfirming(true);
@@ -778,7 +808,7 @@ function StartExperimentCard({ data }: { data: unknown }) {
       const r = await fetch(`${API_URL}/api/v1/sessions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(editPayload),
       });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const out = await r.json();
@@ -790,18 +820,42 @@ function StartExperimentCard({ data }: { data: unknown }) {
     }
   };
 
+  const dirty = JSON.stringify(initialPayload) !== JSON.stringify(editPayload);
+
   return (
     <CardShell title="start_experiment" meta="confirmation required">
       <p className="text-sm text-zinc-200">{d.summary ?? 'Start this experiment?'}</p>
-      <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] font-mono">
-        {Object.entries(payload).map(([k, v]) => (
-          <div key={k} className="flex justify-between">
-            <dt className="text-zinc-500">{k}</dt>
-            <dd className="text-zinc-300 truncate ml-2">{String(v)}</dd>
-          </div>
-        ))}
-      </dl>
-      <div className="mt-3 flex gap-2">
+      {editing ? (
+        <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2 text-[11px] font-mono">
+          {Object.entries(initialPayload).map(([k, original]) => {
+            const isNumber = typeof original === 'number';
+            const current = editPayload[k];
+            return (
+              <label key={k} className="flex flex-col gap-0.5">
+                <span className="text-zinc-500">{k}</span>
+                <input
+                  type={isNumber ? 'number' : 'text'}
+                  step={isNumber && String(original).includes('.') ? 'any' : undefined}
+                  value={current == null ? '' : String(current)}
+                  onChange={(e) => setField(k, e.target.value, isNumber)}
+                  disabled={confirming || done?.id != null}
+                  className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-100 focus:border-emerald-600 focus:outline-none"
+                />
+              </label>
+            );
+          })}
+        </div>
+      ) : (
+        <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] font-mono">
+          {Object.entries(editPayload).map(([k, v]) => (
+            <div key={k} className="flex justify-between">
+              <dt className="text-zinc-500">{k}</dt>
+              <dd className="text-zinc-300 truncate ml-2">{String(v)}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
         <button
           disabled={confirming || done?.id != null}
           onClick={confirm}
@@ -810,11 +864,21 @@ function StartExperimentCard({ data }: { data: unknown }) {
           {done?.id ? 'Started' : confirming ? 'Starting…' : 'Start'}
         </button>
         <button
-          disabled={confirming}
-          className="rounded-md border border-zinc-700 px-3 py-1 text-xs text-zinc-300 hover:bg-zinc-800"
+          disabled={confirming || done?.id != null}
+          onClick={() => setEditing((v) => !v)}
+          className="rounded-md border border-zinc-700 px-3 py-1 text-xs text-zinc-300 hover:bg-zinc-800 disabled:opacity-50"
         >
-          Edit
+          {editing ? 'Done editing' : 'Edit'}
         </button>
+        {editing && dirty && (
+          <button
+            disabled={confirming}
+            onClick={() => setEditPayload({ ...initialPayload })}
+            className="rounded-md border border-zinc-700 px-3 py-1 text-xs text-zinc-400 hover:bg-zinc-800 disabled:opacity-50"
+          >
+            Reset
+          </button>
+        )}
         <button
           disabled={confirming}
           onClick={() => setDone({ error: 'cancelled' })}
@@ -822,6 +886,9 @@ function StartExperimentCard({ data }: { data: unknown }) {
         >
           Cancel
         </button>
+        {dirty && (
+          <span className="text-[10px] text-emerald-400">edited</span>
+        )}
       </div>
       {done?.id != null && (
         <p className="mt-2 text-[11px] text-emerald-400">

@@ -388,64 +388,24 @@ def _persist_turn(
     final_text: str,
     tool_results: list[dict[str, Any]],
 ) -> None:
-    """Persist one completed chat turn as discrete rows so the next turn's
-    ``_load_history_as_langchain`` can rebuild the LangChain sequence.
+    """Persist one completed chat turn as a single assistant row carrying
+    the ``tool_results`` list verbatim in ``tool_calls_json``.
 
-    Row sequence when tools fired:
-      * ``role='assistant'`` content="" tool_calls_json=[{id,name,args}]
-      * one ``role='tool'`` per result, content=result_json,
-        tool_calls_json={"tool_call_id":..., "name":...}
-      * ``role='assistant'`` content=final_text tool_calls_json=NULL
-
-    Row sequence when no tools fired:
-      * ``role='assistant'`` content=final_text tool_calls_json=NULL
+    This is the format the React Chat tab reads on reload — the UI
+    deserialises ``tool_calls_json`` into ``Message.tool_calls`` (each
+    item shaped ``{tool, tool_call_id, result}``) and renders each as a
+    ``ToolCard``. The companion loader ``_load_history_as_langchain``
+    parses the same legacy shape into an
+    ``AIMessage(tool_calls=...)`` + ``ToolMessage`` pair for the agent.
     """
-    if tool_results:
-        tool_calls_payload: list[dict[str, Any]] = []
-        for r in tool_results:
-            name = r.get("tool") or r.get("name")
-            tcid = r.get("tool_call_id")
-            if not tcid:
-                # Skip results lacking a tool_call_id — they can't be
-                # round-tripped to a ToolMessage on the next turn.
-                continue
-            tool_calls_payload.append({"id": tcid, "name": name, "args": r.get("args") or {}})
-        if tool_calls_payload:
-            db.add(
-                ChatMessage(
-                    conversation_id=cid,
-                    role="assistant",
-                    content="",
-                    tool_calls_json=json.dumps(tool_calls_payload),
-                )
-            )
-            for r in tool_results:
-                tcid = r.get("tool_call_id")
-                if not tcid:
-                    continue
-                result_text = r.get("result")
-                content = (
-                    json.dumps(result_text)
-                    if not isinstance(result_text, str)
-                    else result_text
-                )
-                db.add(
-                    ChatMessage(
-                        conversation_id=cid,
-                        role="tool",
-                        content=content,
-                        tool_calls_json=json.dumps(
-                            {"tool_call_id": tcid, "name": r.get("tool")}
-                        ),
-                    )
-                )
-
     db.add(
         ChatMessage(
             conversation_id=cid,
             role="assistant",
             content=final_text,
-            tool_calls_json=None,
+            tool_calls_json=(
+                json.dumps(tool_results) if tool_results else None
+            ),
         )
     )
     db.commit()
@@ -566,16 +526,54 @@ def _load_history_as_langchain(
         elif m.role == "user":
             out.append(HumanMessage(content=m.content))
         elif m.role == "assistant":
-            tcs: list[dict[str, Any]] = []
+            parsed_json: list[dict[str, Any]] = []
             if m.tool_calls_json:
                 try:
-                    parsed = json.loads(m.tool_calls_json)
-                    if isinstance(parsed, list):
-                        tcs = parsed
+                    decoded = json.loads(m.tool_calls_json)
+                    if isinstance(decoded, list):
+                        parsed_json = decoded
                 except json.JSONDecodeError:
-                    tcs = []
-            if tcs:
-                out.append(AIMessage(content=m.content, tool_calls=tcs))
+                    parsed_json = []
+            # The UI persists ``tool_calls_json`` as a list of *results*
+            # shaped ``{tool, tool_call_id, result}``. The agent expects
+            # tool_calls shaped ``{id, name, args}`` + a separate
+            # ToolMessage per result. Detect the legacy results shape and
+            # synthesise both the AIMessage(tool_calls=...) and the
+            # follow-up ToolMessage(s) so the agent has full context on
+            # the next turn.
+            if parsed_json and _looks_like_results_list(parsed_json):
+                calls = [
+                    {
+                        "id": r.get("tool_call_id") or "",
+                        "name": r.get("tool") or r.get("name") or "",
+                        "args": r.get("args") or {},
+                    }
+                    for r in parsed_json
+                    if r.get("tool_call_id")
+                ]
+                if calls:
+                    out.append(AIMessage(content=m.content, tool_calls=calls))
+                else:
+                    out.append(AIMessage(content=m.content))
+                for r in parsed_json:
+                    if not r.get("tool_call_id"):
+                        continue
+                    result_val = r.get("result")
+                    content = (
+                        result_val
+                        if isinstance(result_val, str)
+                        else json.dumps(result_val)
+                    )
+                    out.append(
+                        ToolMessage(
+                            content=content,
+                            tool_call_id=str(r["tool_call_id"]),
+                        )
+                    )
+            elif parsed_json:
+                # New shape (list of tool_calls). Forward-compat for any
+                # rows persisted by the transient split-rows scheme.
+                out.append(AIMessage(content=m.content, tool_calls=parsed_json))
             else:
                 out.append(AIMessage(content=m.content))
         elif m.role == "tool":
@@ -590,6 +588,19 @@ def _load_history_as_langchain(
             out.append(ToolMessage(content=m.content, tool_call_id=tool_call_id))
         # Unknown roles (forward-compat) are silently skipped.
     return out
+
+
+def _looks_like_results_list(items: list[dict[str, Any]]) -> bool:
+    """The UI's ``tool_calls_json`` shape: each item has a ``result`` key
+    and is keyed by ``tool``/``tool_call_id``. The agent's shape uses
+    ``id``/``name``/``args`` instead. Distinguishes the two persisted
+    formats by structural inspection of the first item."""
+    if not items:
+        return False
+    first = items[0]
+    if not isinstance(first, dict):
+        return False
+    return "result" in first or ("tool" in first and "id" not in first)
 
 
 @router.get("/conversations/{cid}/stream")

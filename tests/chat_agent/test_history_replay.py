@@ -207,12 +207,17 @@ def test_unknown_role_is_skipped(engine_with_convo) -> None:
 
 
 def test_persist_turn_round_trips_through_loader(engine_with_convo) -> None:
-    """End-to-end contract: ``_persist_turn`` writes rows that, on the
-    next turn, load back as the correct LangChain sequence:
+    """End-to-end contract: ``_persist_turn`` writes a *single* assistant
+    row whose ``tool_calls_json`` carries the legacy results-list shape
+    (what the React Chat tab persists / reads). On the next turn, the
+    loader synthesises an AIMessage(tool_calls=...) + ToolMessage pair.
 
-      AIMessage(tool_calls=[...]) → ToolMessage → ... → AIMessage(final)
+    Keeping the legacy on-disk shape is what makes the Chat tab's
+    /messages reload render tool results as ToolCards (the formatted
+    green badges) rather than as plain JSON text.
     """
     from langchain_core.messages import AIMessage, ToolMessage
+    from sqlmodel import select
 
     from apps.api.routers.chat import _persist_turn
 
@@ -227,10 +232,24 @@ def test_persist_turn_round_trips_through_loader(engine_with_convo) -> None:
     with Session(eng) as db:
         _persist_turn(db, cid, final_text="Here is run #42.", tool_results=tool_results)
 
+    # On disk: exactly one assistant row carrying the results list.
+    with Session(eng) as db:
+        rows = db.exec(select(ChatMessage)).all()
+    assert len(rows) == 1
+    assert rows[0].role == "assistant"
+    assert rows[0].content == "Here is run #42."
+    assert rows[0].tool_calls_json is not None
+    persisted = json.loads(rows[0].tool_calls_json)
+    assert persisted == tool_results, (
+        "UI reload reads this raw — must match the live-stream shape "
+        "exactly so ToolCard renders identically on first paint and reload"
+    )
+
+    # And the loader synthesises the agent-shaped LangChain sequence.
     with Session(eng) as db:
         msgs = _load_history_as_langchain(db, cid)
     kinds = [type(m).__name__ for m in msgs]
-    assert kinds == ["AIMessage", "ToolMessage", "AIMessage"]
+    assert kinds == ["AIMessage", "ToolMessage"]
     first_ai = msgs[0]
     assert isinstance(first_ai, AIMessage)
     saved_tcs = getattr(first_ai, "tool_calls", None) or []
@@ -240,19 +259,22 @@ def test_persist_turn_round_trips_through_loader(engine_with_convo) -> None:
     tool_msg = msgs[1]
     assert isinstance(tool_msg, ToolMessage)
     assert tool_msg.tool_call_id == "call_abc"
-    final_ai = msgs[2]
-    assert isinstance(final_ai, AIMessage)
-    assert final_ai.content == "Here is run #42."
 
 
 def test_persist_turn_text_only_writes_single_assistant_row(engine_with_convo) -> None:
     """When the turn produced no tool calls, only one assistant row should
-    land — no orphan empty-content assistant rows, no tool rows."""
+    land and ``tool_calls_json`` is NULL."""
+    from sqlmodel import select
+
     from apps.api.routers.chat import _persist_turn
 
     eng, cid = engine_with_convo
     with Session(eng) as db:
         _persist_turn(db, cid, final_text="just chatting", tool_results=[])
+        rows = db.exec(select(ChatMessage)).all()
+    assert len(rows) == 1
+    assert rows[0].content == "just chatting"
+    assert rows[0].tool_calls_json is None
 
     with Session(eng) as db:
         msgs = _load_history_as_langchain(db, cid)

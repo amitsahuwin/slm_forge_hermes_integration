@@ -291,6 +291,72 @@ def propose_hyperparams(dataset: str, history: list[dict[str, Any]]) -> dict[str
         return {"error": f"{type(e).__name__}: {e}"}
 
 
+# ─── Synthetic dataset generation ─────────────────────────────────
+
+
+@tool
+def synthesize_dataset(
+    source_dataset: str,
+    new_dataset: str,
+    target_count: int,
+    style_guidance: str = "",
+) -> dict[str, Any]:
+    """Generate a synthetic dataset by expanding an existing one.
+
+    Fires an async synthesis job that reads ``source_dataset``, asks
+    Hermes to produce ``target_count`` additional records preserving the
+    source style, and writes the result to ``data/datasets/<new_dataset>``
+    so subsequent experiments can use it by name.
+
+    Args:
+        source_dataset: name of the existing dataset to expand.
+        new_dataset: directory name under data/datasets for the output.
+        target_count: how many records to generate (8..5000).
+        style_guidance: optional one-line style hint (tone, format).
+
+    Returns ``{job_id, new_dataset, status, source_count, target_count}``
+    on success. Use ``get_synth_job_status`` to poll until ``completed``.
+    """
+    if not (8 <= target_count <= 5000):
+        return {
+            "error": f"target_count must be in [8, 5000], got {target_count}",
+            "path": "/api/v1/synth/start",
+        }
+    payload = {
+        "source_dataset": source_dataset,
+        "new_dataset": new_dataset,
+        "target_count": target_count,
+        "style_guidance": style_guidance,
+    }
+    result = _safe_post("/api/v1/synth/start", payload)
+    if isinstance(result, dict) and "error" in result:
+        return result
+    return {
+        "job_id": result.get("job_id"),
+        "new_dataset": new_dataset,
+        "status": "queued",
+        "source_count": result.get("source_count"),
+        "target_count": result.get("target_count"),
+        "next_step": (
+            f"Use get_synth_job_status('{result.get('job_id')}') to check "
+            "progress. When status is 'completed' the dataset is on disk "
+            f"and start_experiment can reference '{new_dataset}'."
+        ),
+    }
+
+
+@tool
+def get_synth_job_status(job_id: str) -> dict[str, Any]:
+    """Get the current status of a synthesis job started via
+    ``synthesize_dataset``.
+
+    Returns the full JobInfo: status (queued|running|completed|failed),
+    generated count, batch number, dropped count, timestamps, and the
+    final result (with the on-disk path) once completed.
+    """
+    return _safe_get(f"/api/v1/synth/jobs/{job_id}")
+
+
 # ─── Documentation search ─────────────────────────────────────────
 
 
@@ -345,5 +411,7 @@ ALL_TOOLS = [
     confirm_start_experiment,
     propose_hyperparams,
     get_export_status,
+    synthesize_dataset,
+    get_synth_job_status,
     search_docs,
 ]

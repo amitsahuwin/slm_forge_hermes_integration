@@ -97,6 +97,30 @@ def _migrate_autofix() -> None:
     _migrate_table("auto_fix_attempt", _AUTOFIX_MIGRATIONS)
 
 
+# Context-aware-chat spec — additive migrations on the chat tables.
+# tenant_id default = 'default' so legacy rows keep working in the
+# single-tenant case; everything else is nullable so back-compat holds.
+_CHAT_CONVERSATION_MIGRATIONS: list[tuple[str, str]] = [
+    ("tenant_id", "TEXT DEFAULT 'default'"),
+    ("user_id", "TEXT"),
+    ("summary_message_id", "INTEGER"),
+    ("last_summarized_at", "TIMESTAMP"),
+]
+
+_CHAT_MESSAGE_MIGRATIONS: list[tuple[str, str]] = [
+    ("tenant_id", "TEXT DEFAULT 'default'"),
+    ("token_estimate", "INTEGER DEFAULT 0"),
+]
+
+
+def _migrate_chat_conversations() -> None:
+    _migrate_table("chat_conversations", _CHAT_CONVERSATION_MIGRATIONS)
+
+
+def _migrate_chat_messages() -> None:
+    _migrate_table("chat_messages", _CHAT_MESSAGE_MIGRATIONS)
+
+
 def init_db() -> None:
     from apps.api.models import autofix as _autofix  # noqa: F401
     from apps.api.models import chat as _chat  # noqa: F401
@@ -112,6 +136,8 @@ def init_db() -> None:
     _migrate_sessions()
     _migrate_hermes_traces()
     _migrate_autofix()
+    _migrate_chat_conversations()
+    _migrate_chat_messages()
 
 
 def get_session() -> Generator[Session, None, None]:

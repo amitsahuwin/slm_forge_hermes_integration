@@ -329,7 +329,18 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return _json_response(e.status_code, friendly, code=code)
 
         request.state.user = user
-        return await call_next(request)
+        # Bind the verified bearer to a contextvar so downstream code
+        # calling back into the SLM-Forge API on the user's behalf
+        # (chat-agent tools) can forward it instead of falling back to
+        # the synthetic-admin path. Reset on response so it never leaks
+        # across requests sharing the same asyncio task.
+        from packages._log_context import bearer_token_ctx
+
+        bearer_reset = bearer_token_ctx.set(token)
+        try:
+            return await call_next(request)
+        finally:
+            bearer_token_ctx.reset(bearer_reset)
 
 
 def _is_public_path(path: str) -> bool:

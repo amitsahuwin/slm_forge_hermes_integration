@@ -78,7 +78,7 @@ def _list_skill_paths() -> tuple[dict[str, Path], list[str]]:
                 continue
             found[p.stem] = p
 
-    if SKILLS_DIR.exists() and SKILLS_DIR != repo_skills:
+    if SKILLS_DIR.exists() and repo_skills != SKILLS_DIR:
         label_parts.append(str(SKILLS_DIR))
         for p in SKILLS_DIR.glob("*.md"):
             if p.name.lower() == "readme.md":
@@ -296,25 +296,47 @@ class SkillResponse(BaseModel):
     elapsed_ms: int
 
 
-def _run_skill(skill_name: str, user_payload: dict[str, Any]) -> SkillResponse:
+def _run_skill(
+    skill_name: str,
+    user_payload: dict[str, Any],
+    *,
+    run_id: int | None = None,
+    session_id: int | None = None,
+) -> SkillResponse:
     """Common entrypoint for skill invocations.
 
     Loads the named skill markdown, calls Ollama with it as system prompt and
     ``user_payload`` (as JSON) as the user message. Parses the response as
     JSON when possible. Raises HTTPException(503) if Ollama is unreachable.
+
+    Skill-Activity correlation: when an endpoint knows the originating run /
+    session (e.g. ``/diagnose-run/{run_id}``), it should pass them so the
+    resulting ``hermes_traces`` row carries the foreign keys.
     """
-    skill = load_skill(skill_name)
-    if skill is None:
+    from packages._log_context import binding
+
+    loaded = load_skill(skill_name)
+    if loaded is None:
         raise HTTPException(
             404,
             f"Skill {skill_name!r} not installed. Run `make hermes-install-skills` "
             "or verify the .hermes-skills/ directory is mounted.",
         )
+    skill, skill_sha, skill_mtime = loaded
     user_msg = json.dumps(user_payload, default=str)
     start = datetime.now(UTC)
     try:
-        raw = _call_ollama(skill, user_msg, expect_json=True)
-    except Exception as e:  # noqa: BLE001
+        with binding(run_id=run_id, session_id=session_id):
+            raw = _call_ollama(
+                skill,
+                user_msg,
+                expect_json=True,
+                trace_source=f"skill:{skill_name}",
+                skill_name=skill_name,
+                skill_sha256=skill_sha,
+                skill_mtime=skill_mtime,
+            )
+    except Exception as e:
         log.exception("skill %s failed", skill_name)
         raise HTTPException(
             503,
@@ -398,7 +420,7 @@ def diagnose_run(run_id: int, db: SessionDep) -> SkillResponse:
         "error_message": run.error_message or "",
         "training_log_tail": _tail_training_log(run_id, 80),
     }
-    return _run_skill("diagnose_mps_oom", payload)
+    return _run_skill("diagnose_mps_oom", payload, run_id=run_id, session_id=run.session_id)
 
 
 # 3. analyze_canary_drift — used by ExperimentDetail when drift is high ────
@@ -450,7 +472,7 @@ def analyze_drift(session_id: int, db: SessionDep) -> SkillResponse:
         "max_observed_drift": max_drift,
         "iterations": iterations,
     }
-    return _run_skill("analyze_canary_drift", payload)
+    return _run_skill("analyze_canary_drift", payload, session_id=session_id)
 
 
 # ─── Phase N.2 / N.4 — eight new skill invocations ─────────────────────────
@@ -617,7 +639,9 @@ def explain_anomaly(run_id: int, db: SessionDep) -> SkillResponse:
         "final_val_loss": run.final_val_loss,
         "canary_loss": run.canary_loss,
     }
-    return _run_skill("explain_metric_anomaly", payload)
+    return _run_skill(
+        "explain_metric_anomaly", payload, run_id=run_id, session_id=run.session_id
+    )
 
 
 # 8. recommend_export_quants — RunDetail export panel ──────────────────────
@@ -642,6 +666,8 @@ def recommend_quants(run_id: int, payload: RecommendQuantsIn, db: SessionDep) ->
             "target_device": payload.target_device,
             "use_case": payload.use_case,
         },
+        run_id=run_id,
+        session_id=run.session_id,
     )
 
 
@@ -693,7 +719,9 @@ def post_mortem(run_id: int, db: SessionDep) -> SkillResponse:
         "error_message": run.error_message or "",
         "training_log_tail": _tail_training_log(run_id, 80),
     }
-    resp = _run_skill("failure_post_mortem", payload)
+    resp = _run_skill(
+        "failure_post_mortem", payload, run_id=run_id, session_id=run.session_id
+    )
 
     # Best-effort: persist the markdown body alongside the run artifacts.
     try:

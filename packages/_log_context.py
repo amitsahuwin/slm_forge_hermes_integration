@@ -45,6 +45,14 @@ trace_id_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar(
 tenant_id_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "slm_forge_tenant_id", default=None
 )
+# Active request's verified bearer token (JWT). Bound by AuthMiddleware
+# after successful JWT verification so downstream code that calls back
+# into the API on the user's behalf — most notably chat-agent tools —
+# can forward the user's identity instead of falling back to a synthetic
+# admin or service-account bypass.
+bearer_token_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "slm_forge_bearer_token", default=None
+)
 
 _NAME_TO_VAR: dict[str, contextvars.ContextVar[str | None]] = {
     "request_id": request_id_ctx,

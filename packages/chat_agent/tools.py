@@ -22,6 +22,29 @@ API_URL = os.environ.get("SLM_FORGE_API_URL", "http://localhost:8000")
 _DEFAULT_TIMEOUT = httpx.Timeout(15.0, connect=5.0)
 
 
+def _auth_headers() -> dict[str, str]:
+    """Build outbound auth headers for calls back into the SLM-Forge API.
+
+    Resolution order (least-privilege first):
+      1. ``bearer_token_ctx`` — the active request's verified JWT, bound
+         by ``AuthMiddleware``. Forwards the user's own permissions so a
+         non-admin can't reach admin endpoints through the chat agent.
+      2. ``SLM_FORGE_SERVICE_TOKEN`` env — service-account bypass. Used
+         in worker contexts that have no request scope.
+      3. Neither — the call goes unauthenticated, matching today's dev
+         workflow when auth is disabled.
+    """
+    from packages._log_context import bearer_token_ctx
+
+    bound = bearer_token_ctx.get()
+    if bound:
+        return {"Authorization": f"Bearer {bound}"}
+    svc = os.environ.get("SLM_FORGE_SERVICE_TOKEN", "")
+    if svc:
+        return {"X-Service-Token": svc}
+    return {}
+
+
 def _client() -> httpx.Client:
     return httpx.Client(base_url=API_URL, timeout=_DEFAULT_TIMEOUT)
 
@@ -29,7 +52,11 @@ def _client() -> httpx.Client:
 def _safe_get(path: str, **params: Any) -> Any:
     try:
         with _client() as c:
-            r = c.get(path, params={k: v for k, v in params.items() if v is not None})
+            r = c.get(
+                path,
+                params={k: v for k, v in params.items() if v is not None},
+                headers=_auth_headers(),
+            )
             r.raise_for_status()
             return r.json()
     except httpx.HTTPError as e:
@@ -40,7 +67,7 @@ def _safe_get(path: str, **params: Any) -> Any:
 def _safe_post(path: str, payload: dict[str, Any]) -> Any:
     try:
         with _client() as c:
-            r = c.post(path, json=payload)
+            r = c.post(path, json=payload, headers=_auth_headers())
             r.raise_for_status()
             return r.json()
     except httpx.HTTPError as e:

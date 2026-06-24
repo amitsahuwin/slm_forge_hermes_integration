@@ -37,3 +37,26 @@ class HermesTrace(SQLModel, table=True):
     # PR-1 A4: tenant boundary. ``"default"`` for single-tenant deployments;
     # populated from the request contextvar in API context, env in worker context.
     tenant_id: str = Field(default="default", index=True)
+
+    # Skill-Activity view: parsed from ``source`` (``skill:foo`` → ``foo``).
+    # Indexed so the Traces tab can group / multi-select filter cheaply.
+    skill_name: str | None = Field(default=None, index=True)
+    # First 16 hex chars of sha256(skill_markdown) captured at load time.
+    # When this differs from the previous trace for the same skill_name,
+    # the UI surfaces a "skill content changed" badge.
+    skill_sha256: str | None = Field(default=None)
+    # Filesystem mtime of the skill file at load time (UTC) — gives a
+    # human-readable "last edited" timestamp alongside the hash.
+    skill_mtime: datetime | None = Field(default=None)
+    # Correlate each Hermes call back to the run / session that triggered it.
+    # Read from the existing run_id_ctx / session_id_ctx contextvars in
+    # ``packages._log_context``; NULL when unbound (no fabricated default).
+    run_id: int | None = Field(default=None, index=True)
+    session_id: int | None = Field(default=None, index=True)
+    # Materialised ``error is None`` so filtering by success/error doesn't
+    # have to inspect the error TEXT column. Index for fast filter.
+    # ``server_default`` mirrors the migration's ``DEFAULT 1`` so raw SQL
+    # inserts from older code paths land cleanly without a NULL violation.
+    success: bool = Field(
+        default=True, index=True, sa_column_kwargs={"server_default": "1"}
+    )

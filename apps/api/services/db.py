@@ -47,9 +47,19 @@ _SESSION_MIGRATIONS: list[tuple[str, str]] = [
 
 # PR-1 A1/A4 — hermes_traces additive migration. Both columns are backfilled
 # with safe defaults so existing rows continue to roundtrip cleanly.
+# Skill-Activity additions append below; all nullable except ``success``
+# which defaults to 1 (true) for legacy rows (rows pre-migration never
+# carried an explicit error flag — the original ``error`` column tells the
+# real story; ``success`` is a fast-filter materialisation going forward).
 _HERMES_TRACE_MIGRATIONS: list[tuple[str, str]] = [
     ("attempts", "INTEGER DEFAULT 1"),
     ("tenant_id", "TEXT DEFAULT 'default'"),
+    ("skill_name", "TEXT"),
+    ("skill_sha256", "TEXT"),
+    ("skill_mtime", "TIMESTAMP"),
+    ("run_id", "INTEGER"),
+    ("session_id", "INTEGER"),
+    ("success", "INTEGER DEFAULT 1"),
 ]
 
 # Phase 4 — exports table is created by SQLModel; no ALTER needed unless schema changes

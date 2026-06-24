@@ -22,6 +22,7 @@ import hashlib
 import json
 import logging
 import os
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -84,14 +85,30 @@ class MutationProposalError(RuntimeError):
     """
 
 
-def load_skill(name: str) -> str | None:
-    """Load a skill markdown by name (no .md extension)."""
-    candidate = SKILLS_DIR / f"{name}.md"
-    if candidate.exists():
-        return candidate.read_text(encoding="utf-8")
-    repo_candidate = Path(__file__).resolve().parents[2] / ".hermes-skills" / f"{name}.md"
-    if repo_candidate.exists():
-        return repo_candidate.read_text(encoding="utf-8")
+def load_skill(name: str) -> tuple[str, str, datetime] | None:
+    """Load a skill markdown by name (no .md extension).
+
+    Returns ``(text, sha256_hex_16, mtime)`` when found, ``None`` otherwise.
+
+    The 16-char sha256 prefix mirrors the digest format that
+    ``_log_response_meta`` already emits for response bodies, so the
+    Traces tab can show one consistent abbreviation. ``mtime`` is
+    UTC-aware so the React side renders a stable timestamp.
+
+    The cheap hash+stat at load time is what lets the Skill-Activity view
+    detect "skill content changed since last call" without any new
+    background watcher — every Hermes call re-hashes the file it just
+    read.
+    """
+    for candidate in (
+        SKILLS_DIR / f"{name}.md",
+        Path(__file__).resolve().parents[2] / ".hermes-skills" / f"{name}.md",
+    ):
+        if candidate.exists():
+            text = candidate.read_text(encoding="utf-8")
+            sha = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+            mtime = datetime.fromtimestamp(candidate.stat().st_mtime, tz=UTC)
+            return text, sha, mtime
     log.warning("Skill %s not found in %s or .hermes-skills/", name, SKILLS_DIR)
     return None
 
@@ -161,6 +178,9 @@ def _call_ollama(
     *,
     expect_json: bool = True,
     trace_source: str = "unknown",
+    skill_name: str | None = None,
+    skill_sha256: str | None = None,
+    skill_mtime: datetime | None = None,
 ) -> str:
     payload: dict[str, Any] = {
         "model": HERMES_MODEL,
@@ -209,6 +229,9 @@ def _call_ollama(
                     error=None,
                     duration_ms=duration_ms,
                     attempts=stats["attempts"],
+                    skill_name=skill_name,
+                    skill_sha256=skill_sha256,
+                    skill_mtime=skill_mtime,
                 )
                 _log_response_meta(content, duration_ms, trace_source)
                 return content
@@ -233,11 +256,30 @@ def _call_ollama(
             error=error_msg,
             duration_ms=duration_ms,
             attempts=stats["attempts"] or 1,
+            skill_name=skill_name,
+            skill_sha256=skill_sha256,
+            skill_mtime=skill_mtime,
         )
         raise
 
     # Defensive: ``Retrying`` with ``reraise=True`` either returns or raises.
     raise RuntimeError("retry loop exited without returning or raising")  # pragma: no cover
+
+
+def _coerce_int_id(raw: Any) -> int | None:
+    """Return ``raw`` as ``int`` when it parses cleanly, else ``None``.
+
+    Used to lift the string-typed ``run_id_ctx`` / ``session_id_ctx`` values
+    (the log-context API stringifies for JSON-formatter compatibility) into
+    integer foreign-key references on ``hermes_traces``. Non-numeric values
+    are dropped to NULL — no silent fabricated defaults (CLAUDE.md rule 16).
+    """
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except (ValueError, TypeError):
+        return None
 
 
 def _record_trace(
@@ -248,6 +290,9 @@ def _record_trace(
     error: str | None,
     duration_ms: int,
     attempts: int = 1,
+    skill_name: str | None = None,
+    skill_sha256: str | None = None,
+    skill_mtime: datetime | None = None,
 ) -> None:
     """Best-effort persistence of a single Ollama call.
 
@@ -258,6 +303,10 @@ def _record_trace(
     PR-1 A3: request/response bodies are filtered through ``_maybe_redact_body``
     before persistence; PII-risky sources are blanked by default.
     PR-1 A4: ``tenant_id`` resolved from request contextvar or env fallback.
+    Skill-Activity: ``skill_name`` / ``skill_sha256`` / ``skill_mtime`` come
+    from the caller (typically ``_call_ollama`` threading them from
+    ``load_skill``); ``run_id`` / ``session_id`` come from the existing
+    log-context contextvars, NULL when unbound.
     """
     try:
         import json as _json
@@ -267,6 +316,7 @@ def _record_trace(
         from apps.api.models.hermes_trace import HermesTrace
         from apps.api.services.db import engine
         from apps.api.services.tenant import current_tenant
+        from packages._log_context import run_id_ctx, session_id_ctx
 
         request_body_str = _maybe_redact_body(source, _json.dumps(request_body, ensure_ascii=False))
         response_body_str = _maybe_redact_body(source, response_text or "")
@@ -282,6 +332,12 @@ def _record_trace(
                     duration_ms=duration_ms,
                     attempts=attempts,
                     tenant_id=current_tenant(),
+                    skill_name=skill_name,
+                    skill_sha256=skill_sha256,
+                    skill_mtime=skill_mtime,
+                    run_id=_coerce_int_id(run_id_ctx.get()),
+                    session_id=_coerce_int_id(session_id_ctx.get()),
+                    success=error is None,
                 )
             )
             db.commit()
@@ -304,14 +360,18 @@ def propose_mutation(
             or fails ``MutationProposal`` validation. The caller decides what
             to do — there is no silent fabricated fallback (PR-1 A2).
     """
-    skill = load_skill("propose_hyperparam_mutation")
-    if skill is None:
+    loaded = load_skill("propose_hyperparam_mutation")
+    if loaded is None:
         skill = (
             "You are an ML researcher. Given iteration history, propose ONE "
             "hyperparameter change as JSON with keys: learning_rate, batch_size, "
             "num_layers, iters, max_seq_length (all optional), reasoning, "
             "expected_outcome. Change AT MOST TWO fields. Be conservative."
         )
+        skill_sha: str | None = None
+        skill_mtime: datetime | None = None
+    else:
+        skill, skill_sha, skill_mtime = loaded
 
     user_msg = json.dumps(
         {
@@ -326,7 +386,15 @@ def propose_mutation(
         default=str,
     )
 
-    raw = _call_ollama(skill, user_msg, expect_json=True, trace_source="skill:propose_hyperparam_mutation")
+    raw = _call_ollama(
+        skill,
+        user_msg,
+        expect_json=True,
+        trace_source="skill:propose_hyperparam_mutation",
+        skill_name="propose_hyperparam_mutation",
+        skill_sha256=skill_sha,
+        skill_mtime=skill_mtime,
+    )
 
     try:
         data = json.loads(raw)
@@ -369,13 +437,17 @@ def run_skill(
         FileNotFoundError: skill not found and no ``fallback_system`` provided.
         httpx.HTTPError: propagated from ``_call_ollama`` after retries exhaust.
     """
-    skill_text = load_skill(name)
-    if skill_text is None:
+    loaded = load_skill(name)
+    if loaded is None:
         if fallback_system is None:
             raise FileNotFoundError(
                 f"Hermes skill {name!r} not found in {SKILLS_DIR} or .hermes-skills/"
             )
         skill_text = fallback_system
+        skill_sha: str | None = None
+        skill_mtime: datetime | None = None
+    else:
+        skill_text, skill_sha, skill_mtime = loaded
 
     user_msg = (
         payload if isinstance(payload, str) else json.dumps(payload, default=str)
@@ -385,6 +457,9 @@ def run_skill(
         user_msg,
         expect_json=expect_json,
         trace_source=f"skill:{name}",
+        skill_name=name,
+        skill_sha256=skill_sha,
+        skill_mtime=skill_mtime,
     )
 
 

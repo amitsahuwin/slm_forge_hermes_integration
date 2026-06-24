@@ -20,7 +20,9 @@ All bind() arguments are optional — pass only the ones you have.
 """
 from __future__ import annotations
 
+import contextlib
 import contextvars
+from collections.abc import Iterator
 from typing import Any
 
 # Each ContextVar's default is None so missing fields are simply omitted
@@ -97,6 +99,33 @@ def reset(tokens: dict[str, contextvars.Token[str | None]]) -> None:
             # this happens when bind() is called from one task and reset()
             # from another. Better than raising in a finally clause.
             pass
+
+
+@contextlib.contextmanager
+def binding(
+    *,
+    request_id: str | int | None = None,
+    user_id: str | int | None = None,
+    run_id: str | int | None = None,
+    session_id: str | int | None = None,
+    trace_id: str | int | None = None,
+    tenant_id: str | int | None = None,
+) -> Iterator[None]:
+    """Scoped ``bind`` — ``with binding(run_id=42): ...`` and the ContextVars
+    are reset on exit. Eliminates the bind/try-finally/reset boilerplate at
+    every call site (ratchet loop, FastAPI dependencies, skill endpoints)."""
+    tokens = bind(
+        request_id=request_id,
+        user_id=user_id,
+        run_id=run_id,
+        session_id=session_id,
+        trace_id=trace_id,
+        tenant_id=tenant_id,
+    )
+    try:
+        yield
+    finally:
+        reset(tokens)
 
 
 def current() -> dict[str, Any]:

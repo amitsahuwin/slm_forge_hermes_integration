@@ -7,6 +7,7 @@ from typing import Any
 
 import httpx
 
+from packages._log_context import binding
 from packages.ratchet.decision import evaluate_iteration
 from packages.ratchet.hermes_bridge import (
     MutationProposal,
@@ -110,6 +111,11 @@ def _history_summary(iterations: list[dict]) -> list[dict]:
 
 def run_session(session_id: int, api: API) -> None:
     """Orchestrate one autoresearch session to completion."""
+    with binding(session_id=session_id):
+        _run_session_inner(session_id, api)
+
+
+def _run_session_inner(session_id: int, api: API) -> None:
     session = api.get_session(session_id)
     log.info("─── Session #%s: %s ───", session_id, session["name"])
     log.info("  dataset=%s model=%s method=%s backend=%s",

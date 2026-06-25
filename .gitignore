@@ -58,3 +58,5 @@ commit_message.md
 ./data
 ./runs
 ./exports
+
+.serena/cache/

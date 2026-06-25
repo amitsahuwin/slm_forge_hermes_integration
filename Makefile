@@ -309,6 +309,29 @@ mcp-down: ## Stop the MCP server
 mcp-logs: ## Tail MCP container logs
 	$(COMPOSE) logs -f mcp
 
+# ─── LiteLLM proxy (Anthropic-compatible front door over host Ollama) ─────
+#
+# Used by the auto-fix loop's claude_agent_sdk invocation so the SDK can
+# call a local Ollama model instead of the real Anthropic API. Opt-in via
+# the `autofix` profile; default `make dev` doesn't pull this image.
+#
+# Once running: anthropic-shaped POSTs to http://localhost:4000 (host) or
+# http://litellm:4000 (intra-compose) are translated to Ollama calls
+# against host.docker.internal:11434 — see litellm/config.yaml for the
+# model alias table.
+
+litellm-up: ## Start the LiteLLM proxy (port 4000) — requires Ollama running on host :11434
+	$(COMPOSE) --profile autofix up -d litellm
+	@echo ""
+	@echo "  ✓ LiteLLM proxy → http://localhost:4000  (master key in litellm/config.yaml)"
+	@echo "  Set in .env:  ANTHROPIC_BASE_URL=http://localhost:4000  AUTOFIX_MODEL=anthropic/claude-3-5-sonnet-20241022"
+
+litellm-down: ## Stop the LiteLLM proxy (core stack stays up)
+	$(COMPOSE) --profile autofix down
+
+litellm-logs: ## Tail LiteLLM proxy logs
+	$(COMPOSE) logs -f litellm
+
 # ─── Convenience entry-points for the UI ──────────────────────────────────
 
 admin-panel: ## Open the SLM-Forge admin panel (requires auth ENABLED + admin role)
@@ -331,5 +354,5 @@ clean: ## Remove build caches / node_modules / .venv
 	find . -type d -name .mypy_cache -exec rm -rf {} + 2>/dev/null || true
 
 nuke: clean ## Also stop every compose stack and wipe Docker volumes
-	$(COMPOSE) $(OBS_FILES) --profile auth --profile mcp down -v
+	$(COMPOSE) $(OBS_FILES) --profile auth --profile mcp --profile autofix down -v
 	@echo "All stacks down + volumes wiped."

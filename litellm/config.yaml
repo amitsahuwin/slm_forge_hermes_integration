@@ -1,0 +1,38 @@
+# LiteLLM proxy config — Anthropic-compatible front door over Ollama.
+#
+# claude_agent_sdk speaks the Anthropic Messages API. Vanilla Ollama doesn't.
+# LiteLLM bridges the two: the SDK posts /v1/messages here, LiteLLM translates
+# and proxies to the Ollama HTTP API. The auto-fix flow then runs against the
+# host's local Ollama model (default: qwen3:30b-a3b).
+#
+# Aliases live under `model_name` — claude_agent_sdk picks one via the
+# AUTOFIX_MODEL env var (forwarded into ClaudeAgentOptions(model=...)).
+
+model_list:
+  # PRIMARY auto-fix model. Aliased to look like Anthropic so the SDK
+  # is happy ("anthropic/..."), routed under the hood to host Ollama.
+  - model_name: anthropic/claude-3-5-sonnet-20241022
+    litellm_params:
+      model: ollama_chat/qwen3:30b-a3b
+      api_base: http://host.docker.internal:11434
+      timeout: 180
+
+  # Explicit qwen alias — set AUTOFIX_MODEL to this if you want to make
+  # the qwen model the obvious target in logs / debug output.
+  - model_name: anthropic/qwen3-30b-a3b
+    litellm_params:
+      model: ollama_chat/qwen3:30b-a3b
+      api_base: http://host.docker.internal:11434
+      timeout: 180
+
+litellm_settings:
+  # Drop the request/response body from logs — auto-fix payloads include
+  # the redacted traceback, which is intentionally redacted upstream but
+  # there's no reason to persist it twice.
+  set_verbose: false
+  drop_params: true
+
+general_settings:
+  # Master key the SDK must present as `ANTHROPIC_API_KEY`. Override via
+  # the LITELLM_MASTER_KEY env var in docker-compose for prod-like setups.
+  master_key: sk-local-litellm-master

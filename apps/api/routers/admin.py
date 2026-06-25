@@ -164,3 +164,57 @@ def _find_rejected_runs(db: Session) -> list[int]:
         if not has_export:
             rejected_ids.append(r.id)
     return rejected_ids
+
+
+# ─── Diagnostic crash endpoint (dev-only) ──────────────────────────────────
+#
+# Lets an admin verify the auto-fix capture pipeline under controlled input.
+# The handler delegates the actual raise to ``apps/api/services/_debug_target``
+# so the redacted traceback's top project frame points at a file marked
+# ``# NO_AUTOFIX``. The SDK is correctly short-circuited at preflight (status
+# ``rejected``) while every upstream stage — middleware → exception handler →
+# reporter → dispatcher → AutoFixAttempt row → /autofix UI — still fires.
+#
+# Returns 404 in production mode (the route is conditionally registered).
+
+
+class DiagnosticRaiseRequest(BaseModel):
+    exc_type: str = "ValueError"
+    message: str = "diagnostic crash from /api/v1/admin/__debug__/raise"
+
+
+def _dev_mode_only() -> bool:
+    """Read DEPLOYMENT_MODE without coupling to the error_responder import.
+
+    The error_responder config caches a frozen snapshot at startup; here we
+    just want the live env so a tester flipping modes mid-process gets the
+    expected behavior.
+    """
+    import os
+    return os.environ.get("DEPLOYMENT_MODE", "development").strip().lower() == "development"
+
+
+@router.post("/__debug__/raise")
+@requires("update", "setting")
+def diagnostic_raise(
+    request: Request,
+    payload: DiagnosticRaiseRequest,
+) -> dict:
+    """Raise the requested exception inside a stable call frame.
+
+    Production mode → 404 (route exists but degrades to "not found" so the
+    surface area visible to authenticated admins is identical to the
+    "endpoint does not exist" case). Development mode → raises, which the
+    global ``@app.exception_handler(Exception)`` catches, hands to the
+    error reporter, and renders as a 500. The success path *is* the 500.
+    """
+    from fastapi import HTTPException as _HTTPException
+
+    if not _dev_mode_only():
+        raise _HTTPException(status_code=404, detail="Not Found")
+
+    from apps.api.services import _debug_target
+
+    _debug_target.raise_for_diagnostic(payload.exc_type, payload.message)
+    # Unreachable — kept for type-checker happiness.
+    return {"ok": False}

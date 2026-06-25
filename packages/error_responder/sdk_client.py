@@ -148,6 +148,22 @@ def parse_response(raw: str) -> dict:
         raise ValueError(f"SDK JSON block malformed: {e}") from e
 
 
+def _resolve_model() -> str:
+    """Return the model alias to send to ``ClaudeAgentOptions(model=)``.
+
+    Reads ``settings.autofix_model`` (env: ``AUTOFIX_MODEL``) so a LiteLLM
+    alias swap is a one-env-var change. Falls back to the SDK default when
+    settings can't be loaded (e.g. the reporter is misconfigured) — the
+    SDK then 401s, but we don't crash the import.
+    """
+    try:
+        from packages.error_responder import config as _config
+
+        return _config.get_settings().autofix_model
+    except Exception:
+        return "anthropic/claude-3-5-sonnet-20241022"
+
+
 async def run_sdk_proposal(
     *,
     prompt: str,
@@ -178,6 +194,7 @@ async def run_sdk_proposal(
         permission_mode="acceptEdits",
         cwd=str(cwd),
         max_turns=max_turns,
+        model=_resolve_model(),
     )
 
     last_assistant_text = ""

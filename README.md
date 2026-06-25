@@ -180,7 +180,8 @@ Release notes: [`release/0.7.0.md`](release/0.7.0.md). Architecture decisions: [
 - Catalog-rejected `POST /api/v1/runs` and `POST /api/v1/synth/start` 4xx responses now carry `detail.remedy` — a 1-3 sentence plain-English fix from Hermes (`HERMES_REMEDY_ENABLED`).
 - Every `/api/v1/ingest/*/preview` returns a `qa_id`; a background `data_quality_review` scan flags duplicates / PII / off-topic rows (`HERMES_QA_ENABLED`).
 - When a Run flips to `status=failed`, an auto post-mortem Markdown is generated and stored on the row + a sidecar file (`HERMES_POST_MORTEM_ENABLED`).
-- Every uncaught exception in the API + workers is captured by `packages/error_responder/`. Production → dedup-by-fingerprint GitHub issue. Development (with `AUTOFIX_ENABLED=true`) → Claude Agent SDK proposes a fix on `auto-fix/<fp>` (main is never touched).
+- Every uncaught exception in the API + workers is captured by `packages/error_responder/`. Production → dedup-by-fingerprint GitHub issue. Development (with `AUTOFIX_ENABLED=true`) → Claude Agent SDK proposes a fix on `auto-fix/<fp>` (main is never touched). With `AUTOFIX_DEPLOY=pr` the sandbox branch is also pushed to `origin` and a PR is opened (0.7.4). The SDK can target a local Ollama model via the LiteLLM proxy: `make litellm-up` (see `docs/adr/0003-litellm-for-autofix-sdk.md`).
+- Verify the capture pipeline end-to-end with `POST /api/v1/admin/__debug__/raise` (dev + admin only; 0.7.4). Returns 500 after raising the requested exception — exercise the dispatcher under controlled input.
 
 **New env vars (quick reference)**
 
@@ -207,11 +208,13 @@ Release notes: [`release/0.7.0.md`](release/0.7.0.md). Architecture decisions: [
 | | `GITHUB_TOKEN` / `GITHUB_REPO` | unset / auto-detected | Required for production mode; repo coords auto-detected from `git remote get-url origin` |
 | | `ERROR_REPORTER_STORM_THRESHOLD` | `10` | Sliding 60-s window cap per fingerprint |
 | Auto-fix (PR-B) | `AUTOFIX_ENABLED` | `false` | Dev-mode kill switch — opt-in |
-| | `AUTOFIX_DEPLOY` | `auto-commit-reload` | Commit on sandbox branch; main never touched |
+| | `AUTOFIX_DEPLOY` | `auto-commit-reload` | `auto-commit-reload` = local-only sandbox commit. `pr` (0.7.4) also pushes + opens a GitHub PR (needs Contents/PRs write on GITHUB_TOKEN). |
+| | `AUTOFIX_MODEL` | `anthropic/claude-3-5-sonnet-20241022` | Model alias passed to `ClaudeAgentOptions(model=)`. With the LiteLLM proxy, this is an alias defined in `litellm/config.yaml`. (0.7.4) |
 | | `AUTOFIX_MAX_ATTEMPTS_PER_FINGERPRINT_24H` | `3` | Per-fingerprint circuit breaker |
 | | `AUTOFIX_DENYLIST` | (see `.env.example`) | Files the auto-fix loop must NEVER edit |
+| LiteLLM proxy (0.7.4) | `LITELLM_MASTER_KEY` | `sk-local-litellm-master` | Shared secret the SDK sends as `ANTHROPIC_API_KEY`; must match `litellm/config.yaml`. Start the proxy with `make litellm-up`. |
 
-Enable dev-mode auto-fix with `uv sync --extra error-responder` to pull in `claude-agent-sdk`.
+Enable dev-mode auto-fix with `uv sync --extra error-responder` to pull in `claude-agent-sdk`. For local model routing run `make litellm-up` after `ollama pull qwen3:30b-a3b`.
 
 
 ## Multi-backend training (MLX + CUDA)

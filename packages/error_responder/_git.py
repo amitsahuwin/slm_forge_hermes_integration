@@ -64,3 +64,37 @@ def is_working_tree_clean(path: Path | None = None) -> bool:
         return out.strip() == ""
     except (subprocess.SubprocessError, OSError):
         return False
+
+
+def push_branch(
+    branch: str,
+    *,
+    cwd: Path | None = None,
+    remote: str = "origin",
+    timeout: int = 30,
+) -> tuple[bool, str | None]:
+    """Push a local branch to ``remote`` and set its upstream.
+
+    Returns ``(True, None)`` on success, ``(False, error_message)`` on
+    failure. Never raises — the caller (auto-fix orchestrator) needs a
+    structured outcome so it can mark the AutoFixAttempt row ``failed``
+    without a stacktrace leaking past it.
+    """
+    path = cwd or Path.cwd()
+    try:
+        proc = subprocess.run(
+            ["git", "push", "-u", remote, branch],
+            check=False,
+            capture_output=True,
+            text=True,
+            cwd=str(path),
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return False, f"git push timed out after {timeout}s"
+    except OSError as e:
+        return False, f"git push could not be invoked: {e}"
+    if proc.returncode == 0:
+        return True, None
+    err = (proc.stderr or proc.stdout or "").strip() or f"exit {proc.returncode}"
+    return False, err

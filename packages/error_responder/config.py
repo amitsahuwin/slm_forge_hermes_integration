@@ -54,6 +54,7 @@ class ErrorReporterSettings:
     autofix_max_per_fp_24h: int
     autofix_deploy: str  # "pr" | "local-reload" | "auto-merge"
     autofix_denylist: tuple[str, ...]
+    autofix_model: str  # forwarded into ClaudeAgentOptions(model=)
 
     # Anthropic SDK (consumed by claude_agent_sdk via os.environ — we just
     # validate presence here).
@@ -163,6 +164,10 @@ def get_settings(*, refresh: bool = False) -> ErrorReporterSettings:
     raw_denylist = os.environ.get("AUTOFIX_DENYLIST", _DEFAULT_DENYLIST)
     autofix_denylist = tuple(p.strip() for p in raw_denylist.split(",") if p.strip())
 
+    autofix_model = os.environ.get(
+        "AUTOFIX_MODEL", "anthropic/claude-3-5-sonnet-20241022"
+    ).strip()
+
     anth_base = os.environ.get("ANTHROPIC_BASE_URL", "").strip() or None
     anth_token = os.environ.get("ANTHROPIC_AUTH_TOKEN", "").strip() or None
     anth_key = os.environ.get("ANTHROPIC_API_KEY", "").strip() or None
@@ -202,6 +207,7 @@ def get_settings(*, refresh: bool = False) -> ErrorReporterSettings:
         autofix_max_per_fp_24h=autofix_max_per_fp_24h,
         autofix_deploy=autofix_deploy,
         autofix_denylist=autofix_denylist,
+        autofix_model=autofix_model,
         anthropic_base_url=anth_base,
         anthropic_auth_token=anth_token,
         anthropic_api_key=anth_key,

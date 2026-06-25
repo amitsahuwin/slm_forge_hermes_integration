@@ -46,6 +46,7 @@ class AutoFixOutcome:
     test_path: str | None = None
     source_files: list[str] = field(default_factory=list)
     diff: str | None = None  # captured `git diff` snapshot (capped)
+    pr_url: str | None = None  # populated only when AUTOFIX_DEPLOY=pr
 
 
 # ── Preflight ─────────────────────────────────────────────────────────
@@ -380,6 +381,7 @@ def _update_attempt(
     diff: str | None,
     error_message: str,
     exc_type: str,
+    pr_url: str | None = None,
 ) -> int | None:
     """Insert an AutoFixAttempt row for this run. Best-effort."""
     try:
@@ -401,6 +403,7 @@ def _update_attempt(
                 test_path=test_path,
                 status=status,
                 diff=diff,
+                pr_url=pr_url,
                 tenant_id=current_tenant(),
                 completed_at=datetime.now(UTC),
             )
@@ -575,15 +578,50 @@ async def run_autofix_flow(
                 diff=diff_snapshot,
             )
 
-        # SUCCESS. main is intentionally NOT touched — the sandbox branch
-        # carries the fix and uvicorn --reload (if running) picks up the
-        # source-file change via watchfiles. Workers must be restarted by
-        # an operator; we emit the canonical signal log entry here.
+        # Commit landed on the sandbox branch — branch on the deploy mode.
+        # main is intentionally NEVER touched: uvicorn --reload picks up the
+        # source-file change via watchfiles; workers emit the canonical
+        # autofix.restart_required signal so an operator can restart them.
+        pr_url: str | None = None
+        if settings.autofix_deploy == "pr":
+            pr_url, deploy_reason = _deploy_via_pr(
+                repo_root=repo_root,
+                branch=branch,
+                base_branch=original_branch,
+                settings=settings,
+                fp12=fp12,
+                fingerprint=fingerprint,
+                exc_type=exc_type,
+                error_message=error_message,
+                file_target=file_target,
+                diff_snapshot=diff_snapshot,
+                test_path=proposal.test_path,
+            )
+            if pr_url is None:
+                _update_attempt(
+                    fingerprint=fingerprint,
+                    status="failed",
+                    branch=branch,
+                    test_path=proposal.test_path,
+                    file_target=file_target,
+                    diff=diff_snapshot,
+                    error_message=deploy_reason,
+                    exc_type=exc_type,
+                )
+                return AutoFixOutcome(
+                    status="failed",
+                    reason=deploy_reason,
+                    branch=branch,
+                    source_files=proposal.source_files,
+                    diff=diff_snapshot,
+                )
+
         log.info(
-            "autofix.restart_required source=worker branch=%s file=%s fp=%s",
+            "autofix.restart_required source=worker branch=%s file=%s fp=%s pr=%s",
             branch,
             file_target,
             fp12,
+            pr_url or "—",
         )
         _update_attempt(
             fingerprint=fingerprint,
@@ -594,6 +632,7 @@ async def run_autofix_flow(
             diff=diff_snapshot,
             error_message=error_message,
             exc_type=exc_type,
+            pr_url=pr_url,
         )
 
         return AutoFixOutcome(
@@ -602,7 +641,62 @@ async def run_autofix_flow(
             test_path=proposal.test_path,
             source_files=proposal.source_files,
             diff=diff_snapshot,
+            pr_url=pr_url,
         )
+
+
+def _deploy_via_pr(
+    *,
+    repo_root: Path,
+    branch: str,
+    base_branch: str,
+    settings,
+    fp12: str,
+    fingerprint: str,
+    exc_type: str,
+    error_message: str,
+    file_target: str | None,
+    diff_snapshot: str | None,
+    test_path: str | None,
+) -> tuple[str | None, str]:
+    """Push the sandbox branch and open a PR. Returns ``(pr_url, reason)``.
+
+    On success, ``pr_url`` is set and ``reason`` is empty. On failure,
+    ``pr_url`` is None and ``reason`` carries the failure cause for the
+    AutoFixAttempt row.
+    """
+    if not settings.github_token or not settings.github_repo:
+        return None, "AUTOFIX_DEPLOY=pr but GITHUB_TOKEN/GITHUB_REPO not set"
+
+    pushed_ok, push_err = _git.push_branch(branch, cwd=repo_root)
+    if not pushed_ok:
+        return None, f"git push failed: {push_err}"
+
+    from packages.error_responder import github_pr as _gh_pr
+
+    body = _gh_pr.render_pr_body(
+        fingerprint=fingerprint,
+        exc_type=exc_type,
+        error_message=error_message,
+        file_target=file_target,
+        correlation_ids={},  # populated by dispatcher in PR-A; not threaded here
+        redacted_traceback="",  # see above — keeps the PR body lean
+        test_path=test_path,
+        diff_excerpt=diff_snapshot,
+    )
+    title = f"[auto-fix] {exc_type} at {file_target or '(unknown)'}"
+    outcome = _gh_pr.open_pull_request(
+        repo=settings.github_repo,
+        token=settings.github_token,
+        head_branch=branch,
+        base_branch=base_branch,
+        title=title[:160],
+        body=body,
+        fingerprint=fingerprint,
+    )
+    if outcome.action in ("opened", "exists") and outcome.url:
+        return outcome.url, ""
+    return None, f"PR API failed: {outcome.error or outcome.action}"
 
 
 def run_autofix_flow_sync(**kwargs) -> AutoFixOutcome:

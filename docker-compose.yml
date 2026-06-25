@@ -46,6 +46,21 @@ services:
       - SLM_FORGE_PLATFORM_OS=${SLM_FORGE_PLATFORM_OS:-}
       - SLM_FORGE_PLATFORM_ARCH=${SLM_FORGE_PLATFORM_ARCH:-}
       - SLM_FORGE_PLATFORM_HAS_NVIDIA=${SLM_FORGE_PLATFORM_HAS_NVIDIA:-false}
+      # Error-responder / auto-fix loop — read at startup by the FastAPI
+      # lifespan (fails fast on missing prod creds). For development mode the
+      # LiteLLM proxy stands in for the Anthropic API so the SDK can reach
+      # the host's local Ollama model. ``litellm`` resolves via the compose
+      # network; host workers use ``http://localhost:4000`` instead (see .env).
+      - DEPLOYMENT_MODE=${DEPLOYMENT_MODE:-development}
+      - ERROR_REPORTER_ENABLED=${ERROR_REPORTER_ENABLED:-true}
+      - AUTOFIX_ENABLED=${AUTOFIX_ENABLED:-false}
+      - AUTOFIX_DEPLOY=${AUTOFIX_DEPLOY:-auto-commit-reload}
+      - AUTOFIX_MODEL=${AUTOFIX_MODEL:-anthropic/claude-3-5-sonnet-20241022}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - GITHUB_REPO=${GITHUB_REPO:-}
+      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL_API:-http://litellm:4000}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-sk-local-litellm-master}
+      - ANTHROPIC_AUTH_TOKEN=${ANTHROPIC_AUTH_TOKEN:-sk-local-litellm-master}
     # `host-gateway` makes host.docker.internal resolve even on Linux hosts
     # (Docker Desktop on Mac maps it automatically, but this is harmless +
     # portable).
@@ -154,6 +169,33 @@ services:
       - "8181:8181"
     volumes:
       - ./policies:/policies:ro
+    restart: unless-stopped
+
+  # LiteLLM proxy — Anthropic-compatible front door over host Ollama. Used by
+  # claude_agent_sdk in the auto-fix loop (DEPLOYMENT_MODE=development AND
+  # AUTOFIX_ENABLED=true). Gated by the `autofix` profile so default
+  # `make dev` doesn't pull a third image. Start with: `make litellm-up`.
+  #
+  # The proxy listens on :4000 — both the api container (intra-compose DNS
+  # `litellm:4000`) and host workers (`localhost:4000`) can reach it. The
+  # config maps `anthropic/claude-3-5-sonnet-20241022` and
+  # `anthropic/qwen3-30b-a3b` aliases to host Ollama's `qwen3:30b-a3b` model.
+  litellm:
+    image: ghcr.io/berriai/litellm:main-stable
+    container_name: slm-forge-litellm
+    profiles: ["autofix"]
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml:ro
+    command: ["--config", "/app/config.yaml", "--port", "4000", "--host", "0.0.0.0"]
+    environment:
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-sk-local-litellm-master}
+    # host.docker.internal lets the proxy reach the host's Ollama on :11434
+    # (Mac handles this automatically; the explicit mapping makes it portable
+    # to Linux dev boxes too).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
   # MCP server — exposes SLM-Forge to Claude Desktop / Cursor / Claude Code.

@@ -11,7 +11,10 @@ COPY pyproject.toml uv.lock /app/
 # Install dependencies (no trainer extra — MLX is macOS-only; trainer runs on host)
 # `chat` extra brings in langgraph + langchain-ollama so /api/v1/chat works.
 # `research` extra brings in ddgs so R&D web grounding works out of the box.
-RUN uv sync --extra ingest --extra chat --extra research --extra auth --no-install-project
+# `error-responder` extra brings in claude-agent-sdk for the dev-mode auto-fix
+# loop. The error_responder.config layer fail-fasts when AUTOFIX_ENABLED=true
+# and the package isn't installed, so we install it unconditionally.
+RUN uv sync --extra ingest --extra chat --extra research --extra auth --extra error-responder --no-install-project
 
 # Copy source
 COPY apps /app/apps

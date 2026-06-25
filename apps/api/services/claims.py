@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 
 from sqlalchemy import update
 from sqlmodel import Session, desc, or_, select
@@ -59,13 +60,24 @@ def last_activity(db: Session, run: Run) -> datetime | None:
     return max(candidates) if candidates else None
 
 
-def release_expired_claims(db: Session, *, include_legacy: bool = False) -> int:
-    """Re-queue abandoned running runs; return how many were released.
+def release_expired_claims(
+    db: Session,
+    *,
+    include_legacy: bool = False,
+    stranded_action: Literal["requeue", "fail"] = "requeue",
+) -> int:
+    """Sweep abandoned running runs; return how many were touched.
 
-    ``include_legacy=True`` (startup recovery) also re-queues running runs
-    that were never claimed (``claimed_at IS NULL`` — rows from before
-    Phase R, or local crashes mid-transition). During normal claim-time
-    sweeps those are left alone.
+    ``include_legacy=True`` (startup recovery) also processes running
+    runs that were never claimed (``claimed_at IS NULL`` — pre-Phase-R
+    rows or local crashes mid-transition).
+
+    ``stranded_action`` controls the disposition. ``'requeue'`` (the
+    default, used by ``claim_next_run``'s mid-operation sweep) puts the
+    run back into the QUEUED pool so a living worker can take over.
+    ``'fail'`` (used by API startup recovery) instead marks the run
+    FAILED — the API never auto-resumes user work on boot, so the user
+    decides whether to rerun.
     """
     now = datetime.now(UTC)
     timeout = claim_timeout()
@@ -76,19 +88,35 @@ def release_expired_claims(db: Session, *, include_legacy: bool = False) -> int:
         if run.claimed_at is None:
             if not include_legacy:
                 continue
-            reason = (
-                "Re-queued by startup recovery — run was 'running' with no "
-                "claim record (pre-lease era or crashed mid-transition)."
-            )
+            if stranded_action == "fail":
+                reason = (
+                    "Stranded by API restart — run was 'running' with no "
+                    "claim record. Rerun manually if needed."
+                )
+            else:
+                reason = (
+                    "Re-queued by startup recovery — run was 'running' with "
+                    "no claim record (pre-lease era or crashed mid-transition)."
+                )
         else:
             activity = last_activity(db, run)
             if activity is not None and now - activity < timeout:
                 continue  # worker is alive (or within its lease)
-            reason = (
-                f"Re-queued: claim lease expired (no activity from "
-                f"'{run.claimed_by}' for over {timeout}). "
-            )
-        run.status = RunStatus.QUEUED
+            if stranded_action == "fail":
+                reason = (
+                    f"Stranded by API restart — claim lease expired (no "
+                    f"activity from '{run.claimed_by}' for over {timeout}). "
+                    f"Rerun manually if needed."
+                )
+            else:
+                reason = (
+                    f"Re-queued: claim lease expired (no activity from "
+                    f"'{run.claimed_by}' for over {timeout}). "
+                )
+        if stranded_action == "fail":
+            run.status = RunStatus.FAILED
+        else:
+            run.status = RunStatus.QUEUED
         run.claimed_by = None
         run.claimed_at = None
         run.error_message = reason
@@ -97,7 +125,11 @@ def release_expired_claims(db: Session, *, include_legacy: bool = False) -> int:
 
     if released:
         db.commit()
-        log.info("Released %d expired/legacy claim(s)", released)
+        log.info(
+            "%s %d expired/legacy claim(s)",
+            "Failed" if stranded_action == "fail" else "Released",
+            released,
+        )
     return released
 
 

@@ -61,45 +61,97 @@ class PlatformInfo(BaseModel):
     platform_label: str  # Human-readable label for UI
 
 
-def _recover_stranded_runs_and_sessions() -> None:
-    """Re-queue runs / sessions stranded by a server crash — lease-aware.
+def _recover_stranded(db) -> tuple[int, int]:  # type: ignore[no-untyped-def]
+    """Reconcile or fail stranded work — never auto-resume on boot.
 
-    Phase R: an API restart must NOT re-queue a run that a (possibly
-    remote) worker is still actively training. ``release_expired_claims``
-    only re-queues runs whose claim lease has expired (no metric activity
-    within ``SLM_FORGE_CLAIM_TIMEOUT_MIN``) plus legacy rows that were
-    ``running`` without any claim record. Actively-reporting claimed runs
-    survive the restart untouched.
+    The API never restarts user work on startup. Stranded runs are
+    marked FAILED (not re-queued — that auto-pickup is what hammered
+    Ollama on every container restart). Sessions stuck at RUNNING are
+    reconciled to COMPLETED when their children show a clear winner, or
+    transitioned to FAILED with a "rerun manually" message otherwise.
+
+    Returns ``(runs_failed, sessions_touched)``.
     """
-    from sqlmodel import Session, select
+    from sqlmodel import select
 
+    from apps.api.models.run import Run, RunStatus
     from apps.api.models.session import SessionStatus, TrainingSession
     from apps.api.services.claims import release_expired_claims
+
+    runs_failed = release_expired_claims(
+        db, include_legacy=True, stranded_action="fail",
+    )
+
+    running_sessions = db.exec(
+        select(TrainingSession).where(
+            TrainingSession.status == SessionStatus.RUNNING
+        )
+    ).all()
+
+    sessions_touched = 0
+    terminal_run_states = (
+        RunStatus.COMPLETED,
+        RunStatus.FAILED,
+        RunStatus.CANCELLED,
+    )
+    for s in running_sessions:
+        child_runs = db.exec(
+            select(Run).where(Run.session_id == s.id)
+        ).all()
+        completed = [r for r in child_runs if r.status == RunStatus.COMPLETED]
+        all_terminal = all(r.status in terminal_run_states for r in child_runs)
+
+        if completed:
+            # Experiment produced at least one successful run; reconcile
+            # to COMPLETED instead of restarting. Preserve any best_run_id
+            # the ratchet already wrote — only derive one if absent.
+            s.status = SessionStatus.COMPLETED
+            if s.best_run_id is None:
+                with_metric = [
+                    r for r in completed if r.final_val_loss is not None
+                ]
+                if with_metric:
+                    best = min(with_metric, key=lambda r: r.final_val_loss or 0.0)
+                    s.best_run_id = best.id
+                    s.best_metric_value = best.final_val_loss
+                else:
+                    s.best_run_id = completed[0].id
+            s.error_message = None
+        elif child_runs and all_terminal:
+            s.status = SessionStatus.FAILED
+            s.error_message = (
+                "All training runs failed before the experiment could "
+                "complete. Click Rerun to try again."
+            )
+        else:
+            # No children, or at least one still mid-flight (now-FAILED
+            # by release_expired_claims above, but conceptually orphaned).
+            s.status = SessionStatus.FAILED
+            s.error_message = (
+                "Server restarted while this experiment was in progress. "
+                "Rerun it manually if you want to continue."
+            )
+        db.add(s)
+        sessions_touched += 1
+
+    db.commit()
+    return runs_failed, sessions_touched
+
+
+def _recover_stranded_runs_and_sessions() -> None:
+    """Lifespan wrapper around ``_recover_stranded`` — opens a DB session."""
+    from sqlmodel import Session
+
     from apps.api.services.db import engine
 
     try:
         with Session(engine) as db:
-            released = release_expired_claims(db, include_legacy=True)
-
-            running_sessions = db.exec(
-                select(TrainingSession).where(
-                    TrainingSession.status == SessionStatus.RUNNING
-                )
-            ).all()
-            for s in running_sessions:
-                s.status = SessionStatus.QUEUED
-                s.error_message = (
-                    "Re-queued by API startup recovery — the previous server "
-                    "process exited while this experiment was in progress."
-                )
-                db.add(s)
-            db.commit()
-
-            if released or running_sessions:
+            runs_failed, sessions_touched = _recover_stranded(db)
+            if runs_failed or sessions_touched:
                 import logging as _logging
                 _logging.getLogger("api.startup").warning(
-                    "startup recovery: re-queued %d run(s) and %d session(s)",
-                    released, len(running_sessions),
+                    "startup recovery: failed %d run(s), reconciled %d session(s)",
+                    runs_failed, sessions_touched,
                 )
     except Exception as e:
         # Don't fail startup over this. Log and move on.

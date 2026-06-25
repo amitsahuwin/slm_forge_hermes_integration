@@ -96,5 +96,5 @@ scrape_configs:
         regex: '/(slm-forge-.*)'
         target_label: 'container'
       - source_labels: ['__meta_docker_container_name']
-        regex: '/slm-forge-(api|web)'
+        regex: '/slm-forge-(.+)'
         target_label: 'service'

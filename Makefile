@@ -221,12 +221,13 @@ ps: ## List running containers
 
 # ─── Observability stack (Loki + Promtail + Prometheus + Grafana) ──────────
 
-obs-up: ## Bring up the observability overlay (Loki/Grafana/Prometheus/Promtail)
+obs-up: ## Bring up the observability overlay (Loki/Grafana/Prometheus/Promtail/cAdvisor)
 	@echo "→ Starting observability stack alongside core…"
 	$(COMPOSE) $(OBS_FILES) up -d
 	@echo ""
 	@echo "  ✓ Grafana    → http://localhost:3001  (admin/admin)"
 	@echo "  ✓ Prometheus → http://localhost:9090"
+	@echo "  ✓ cAdvisor   → http://localhost:8085"
 	@echo "  ✓ Loki       → http://localhost:3100"
 	@echo ""
 	@echo "Tip: run \`make trainer\` (etc.) so JSON logs flow into Loki."
@@ -235,7 +236,7 @@ obs-down: ## Stop the observability overlay (keeps core running)
 	$(COMPOSE) $(OBS_FILES) down
 
 obs-logs: ## Tail observability container logs
-	$(COMPOSE) $(OBS_FILES) logs -f loki promtail prometheus grafana
+	$(COMPOSE) $(OBS_FILES) logs -f loki promtail prometheus grafana cadvisor
 
 grafana: ## Open Grafana in your browser
 	@open http://localhost:3001 || xdg-open http://localhost:3001 || echo "Grafana → http://localhost:3001"

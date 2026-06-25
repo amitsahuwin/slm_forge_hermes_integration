@@ -225,6 +225,8 @@ export const api = {
   getSession: (id: number) => jget<TrainingSession>(`/api/v1/sessions/${id}`),
   createSession: (body: Partial<TrainingSession>) =>
     jpost<TrainingSession>('/api/v1/sessions', body),
+  rerunSession: (id: number) =>
+    jpost<TrainingSession>(`/api/v1/sessions/${id}/rerun`, {}),
   listIterations: (id: number) => jget<Run[]>(`/api/v1/sessions/${id}/iterations`),
   // Datasets & models
   listDatasets: () => jget<DatasetInfo[]>('/api/v1/datasets'),

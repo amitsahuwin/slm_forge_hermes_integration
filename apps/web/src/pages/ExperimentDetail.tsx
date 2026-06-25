@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import CanaryDriftChart from '../components/ratchet/CanaryDriftChart';
 import HyperparamHeatmap from '../components/ratchet/HyperparamHeatmap';
 import IterationTable from '../components/ratchet/IterationTable';
@@ -29,10 +29,13 @@ const STATUS_STYLES: Record<SessionStatus, string> = {
 
 export default function ExperimentDetail() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const sid = id ? parseInt(id, 10) : undefined;
   const [experiment, setExperiment] = useState<Experiment | null>(null);
   const [iterations, setIterations] = useState<Run[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [rerunning, setRerunning] = useState(false);
+  const [rerunError, setRerunError] = useState<string | null>(null);
 
   // Phase N.1 — Hermes analyze_canary_drift
   const [analyzing, setAnalyzing] = useState(false);
@@ -54,6 +57,20 @@ export default function ExperimentDetail() {
   const hasAnyCanary = maxDrift != null;
   const exceedsThreshold =
     hasAnyCanary && !!experiment && maxDrift > experiment.canary_drift_threshold;
+
+  async function rerun() {
+    if (sid === undefined) return;
+    setRerunning(true);
+    setRerunError(null);
+    try {
+      const next = await api.rerunSession(sid);
+      navigate(`/experiments/${next.id}`);
+    } catch (e: unknown) {
+      setRerunError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRerunning(false);
+    }
+  }
 
   async function analyzeDrift() {
     if (sid === undefined) return;
@@ -118,10 +135,31 @@ export default function ExperimentDetail() {
             {experiment.base_model.replace(/^mlx-community\//, '')} · {experiment.method}
           </p>
         </div>
-        <div className={`font-mono text-sm ${STATUS_STYLES[experiment.status]}`}>
-          ● {experiment.status}
+        <div className="flex items-center gap-3">
+          {(experiment.status === 'failed' ||
+            experiment.status === 'completed' ||
+            experiment.status === 'cancelled') && (
+            <button
+              type="button"
+              onClick={rerun}
+              disabled={rerunning}
+              className="rounded border border-emerald-700 bg-emerald-900/40 px-3 py-1.5 text-xs font-medium text-emerald-100 hover:bg-emerald-900/70 disabled:opacity-50"
+              title="Clone this experiment's config into a new queued experiment"
+            >
+              {rerunning ? 'Rerunning…' : '↻ Rerun'}
+            </button>
+          )}
+          <div className={`font-mono text-sm ${STATUS_STYLES[experiment.status]}`}>
+            ● {experiment.status}
+          </div>
         </div>
       </div>
+
+      {rerunError && (
+        <div className="rounded-md bg-rose-950/40 px-3 py-2 font-mono text-xs text-rose-300">
+          Rerun failed: {rerunError}
+        </div>
+      )}
 
       {experiment.error_message && (
         <div className="rounded-md bg-rose-950/40 px-3 py-2 font-mono text-xs text-rose-300">

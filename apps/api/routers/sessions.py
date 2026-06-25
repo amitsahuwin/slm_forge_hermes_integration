@@ -91,6 +91,53 @@ def get_session_(sid: int, db: SessionDep) -> TrainingSession:
     return s
 
 
+# Config fields cloned by ``rerun_session``. Anything not listed here
+# (status, progress, results, timestamps) is initialised to its model
+# default so the new session reads as a fresh queued experiment.
+_RERUN_CLONED_FIELDS = (
+    "dataset",
+    "base_model",
+    "trainer_backend",
+    "method",
+    "iters",
+    "batch_size",
+    "learning_rate",
+    "num_layers",
+    "max_seq_length",
+    "max_rounds",
+    "plateau_patience",
+    "min_delta",
+    "target_metric",
+    "canary_drift_threshold",
+)
+
+
+@router.post("/{sid}/rerun", response_model=TrainingSession)
+@requires("create", "experiment")
+def rerun_session(
+    sid: int, request: Request, db: SessionDep,
+) -> TrainingSession:
+    """Clone a session's config into a new ``queued`` session.
+
+    The source row is never mutated — its history (runs, metrics, best
+    pointer, error message) stays intact. The ratchet worker picks up
+    the new session via its normal queue poll.
+    """
+    src = db.get(TrainingSession, sid)
+    if not src:
+        raise HTTPException(404, "Session not found")
+    payload = {field: getattr(src, field) for field in _RERUN_CLONED_FIELDS}
+    new = TrainingSession(
+        name=f"{src.name} (rerun)",
+        status=SessionStatus.QUEUED,
+        **payload,
+    )
+    db.add(new)
+    db.commit()
+    db.refresh(new)
+    return new
+
+
 @router.patch("/{sid}", response_model=TrainingSession)
 def patch_session(sid: int, payload: SessionPatch, db: SessionDep) -> TrainingSession:
     s = db.get(TrainingSession, sid)

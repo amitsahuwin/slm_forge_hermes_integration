@@ -46,10 +46,18 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 @pytest.fixture(autouse=True)
 def _autofix_env(monkeypatch: pytest.MonkeyPatch):
-    """Default to "everything green" — individual tests flip what they need."""
+    """Default to "everything green" — individual tests flip what they need.
+
+    ``AUTOFIX_DEPLOY`` is pinned to the legacy default so the test_autofix_pr
+    suite (which sets it to ``pr``) can't leak into these tests via the
+    ambient process env (e.g. when ``.env`` exports ``AUTOFIX_DEPLOY=pr``).
+    """
     monkeypatch.setenv("DEPLOYMENT_MODE", "development")
     monkeypatch.setenv("AUTOFIX_ENABLED", "true")
+    monkeypatch.setenv("AUTOFIX_DEPLOY", "auto-commit-reload")
     monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "stub")
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GITHUB_REPO", raising=False)
     _config.reset_settings_cache()
     yield
     _config.reset_settings_cache()

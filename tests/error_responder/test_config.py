@@ -22,6 +22,7 @@ def _isolated_env(monkeypatch: pytest.MonkeyPatch):
         "AUTOFIX_MAX_ATTEMPTS_PER_FINGERPRINT_24H",
         "AUTOFIX_DEPLOY",
         "AUTOFIX_DENYLIST",
+        "AUTOFIX_MODEL",
         "ANTHROPIC_BASE_URL",
         "ANTHROPIC_AUTH_TOKEN",
         "ANTHROPIC_API_KEY",
@@ -127,3 +128,15 @@ def test_invalid_autofix_deploy_raises(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("AUTOFIX_DEPLOY", "yolo")
     with pytest.raises(RuntimeError, match="AUTOFIX_DEPLOY"):
         config.get_settings()
+
+
+def test_autofix_model_defaults_when_unset():
+    s = config.get_settings()
+    assert s.autofix_model
+    assert isinstance(s.autofix_model, str)
+
+
+def test_autofix_model_reads_env(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("AUTOFIX_MODEL", "anthropic/qwen3-30b-a3b")
+    s = config.get_settings()
+    assert s.autofix_model == "anthropic/qwen3-30b-a3b"

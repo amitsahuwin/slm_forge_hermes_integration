@@ -41,6 +41,17 @@ services:
       - --storage.tsdb.retention.time=15d
     restart: unless-stopped
 
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: slm-forge-cadvisor
+    ports:
+      - "8085:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    restart: unless-stopped
+
   grafana:
     image: grafana/grafana:11.3.0
     container_name: slm-forge-grafana
@@ -59,4 +70,5 @@ services:
     depends_on:
       - prometheus
       - loki
+      - cadvisor
     restart: unless-stopped

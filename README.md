@@ -281,6 +281,10 @@ make mcp-logs                 # tail it
 make install-hermes           # Ollama + qwen3 + Hermes binary
 make hermes-install-skills    # mirror .hermes-skills/ → ~/.hermes/skills/
 
+# LiteLLM proxy (Phase U — auto-fix + Claude integration)
+make litellm-up               # start LiteLLM proxy container (port 4000)
+make litellm-down             # stop LiteLLM proxy
+
 # Data
 make seed-data                # copy the 6 starter datasets into data/datasets/
 make download-base-model      # pull the default base model from HF

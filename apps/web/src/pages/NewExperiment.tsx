@@ -176,7 +176,7 @@ export default function NewExperiment() {
 
   if (loadError) {
     return (
-      <div className="rounded-md bg-rose-950/50 px-3 py-2 text-sm text-rose-300">{loadError}</div>
+      <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">{loadError}</div>
     );
   }
 
@@ -186,34 +186,34 @@ export default function NewExperiment() {
     <div className="max-w-2xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">New Experiment</h1>
-        <p className="mt-1 text-sm text-zinc-500">
+        <p className="mt-1 text-sm text-hcl-dark/50">
           Hermes will autonomously sweep hyperparameters across multiple rounds. Make sure
-          <code className="ml-1 rounded bg-zinc-800 px-1.5 py-0.5 text-xs">make trainer</code> and
-          <code className="ml-1 rounded bg-zinc-800 px-1.5 py-0.5 text-xs">make ratchet</code> are
+          <code className="ml-1 rounded bg-hcl-tech-grey px-1.5 py-0.5 text-xs">make trainer</code> and
+          <code className="ml-1 rounded bg-hcl-tech-grey px-1.5 py-0.5 text-xs">make ratchet</code> are
           both running.
         </p>
       </div>
 
       {/* Phase N.1 — Ask Hermes to recommend a method + hyperparams */}
-      <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 space-y-3">
+      <section className="rounded-xl border border-hcl-light-blue bg-white p-4 space-y-3">
         <div className="flex items-baseline justify-between">
-          <h2 className="text-sm font-medium text-zinc-200">
+          <h2 className="text-sm font-medium text-hcl-dark">
             💡 Ask Hermes for a method recommendation
           </h2>
           {suggestion && (
             <button
               type="button"
               onClick={applySuggestion}
-              className="rounded border border-emerald-700 bg-emerald-900/40 px-2.5 py-1 text-xs text-emerald-200 hover:bg-emerald-800/50"
+              className="rounded border border-hcl-teal/30 bg-hcl-teal/10 px-2.5 py-1 text-xs text-hcl-dark-teal hover:bg-hcl-dark-teal/30"
             >
               Apply to form ↓
             </button>
           )}
         </div>
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs text-hcl-dark/50">
           Describe the task in plain English. Hermes picks LoRA / DoRA / full SFT
           and proposes baseline hyperparams using the
-          <code className="ml-1 rounded bg-zinc-800 px-1 py-0.5 font-mono text-[10px] text-zinc-300">
+          <code className="ml-1 rounded bg-hcl-tech-grey px-1 py-0.5 font-mono text-[10px] text-hcl-dark/80">
             select_method_for_task
           </code>{' '}
           skill.
@@ -223,14 +223,14 @@ export default function NewExperiment() {
           onChange={(e) => setTaskDescription(e.target.value)}
           rows={2}
           placeholder="e.g. Stock-analyst Q&A in a curt, factual tone. Sub-3B base model. ~20 examples."
-          className="w-full resize-none rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-emerald-600 focus:outline-none"
+          className="w-full resize-none rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 text-sm text-hcl-dark placeholder:text-hcl-dark/50 focus:border-hcl-teal focus:outline-none"
         />
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
             onClick={askHermes}
             disabled={askingHermes || !taskDescription.trim()}
-            className="rounded-md border border-zinc-700 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-md border border-hcl-teal/30 px-3 py-1.5 text-xs text-hcl-dark hover:bg-hcl-tech-grey disabled:cursor-not-allowed disabled:opacity-50"
           >
             {askingHermes ? 'Asking…' : 'Recommend method (LoRA/DoRA/SFT)'}
           </button>
@@ -256,20 +256,20 @@ export default function NewExperiment() {
             }}
           />
           {suggestionError && (
-            <span className="text-xs text-rose-400">{suggestionError}</span>
+            <span className="text-xs text-red-600">{suggestionError}</span>
           )}
         </div>
 
         {(modelRec || modelRecRaw) && (
-          <div className="rounded-md bg-zinc-950 px-3 py-2 text-xs text-zinc-300 space-y-1">
+          <div className="rounded-md bg-hcl-bg px-3 py-2 text-xs text-hcl-dark/80 space-y-1">
             {modelRec ? (
               <>
                 <div className="flex items-baseline justify-between gap-3">
                   <div>
-                    <span className="text-zinc-500">Primary:</span>{' '}
-                    <span className="font-mono text-emerald-300">{modelRec.primary}</span>
+                    <span className="text-hcl-dark/50">Primary:</span>{' '}
+                    <span className="font-mono text-hcl-teal">{modelRec.primary}</span>
                     {modelRec.expected_iphone_size_gb != null && (
-                      <span className="ml-2 text-zinc-500">
+                      <span className="ml-2 text-hcl-dark/50">
                         ({modelRec.expected_iphone_size_gb.toFixed(1)} GB on iPhone)
                       </span>
                     )}
@@ -278,21 +278,21 @@ export default function NewExperiment() {
                     <button
                       type="button"
                       onClick={() => setBaseModel(modelRec.primary!)}
-                      className="rounded border border-emerald-700 bg-emerald-900/40 px-2 py-0.5 text-emerald-200 hover:bg-emerald-800/50"
+                      className="rounded border border-hcl-teal/30 bg-hcl-teal/10 px-2 py-0.5 text-hcl-dark-teal hover:bg-hcl-dark-teal/30"
                     >
                       Use it ↓
                     </button>
                   )}
                 </div>
                 {modelRec.alternatives?.length ? (
-                  <div className="text-zinc-500">
+                  <div className="text-hcl-dark/50">
                     Alternatives:{' '}
                     {modelRec.alternatives.map((alt, i) => (
                       <span key={alt}>
                         <button
                           type="button"
                           onClick={() => setBaseModel(alt)}
-                          className="font-mono text-zinc-300 underline-offset-2 hover:text-emerald-300 hover:underline"
+                          className="font-mono text-hcl-dark/80 underline-offset-2 hover:text-hcl-teal hover:underline"
                         >
                           {alt}
                         </button>
@@ -302,18 +302,18 @@ export default function NewExperiment() {
                   </div>
                 ) : null}
                 {modelRec.reasoning && (
-                  <p className="italic text-zinc-400">{modelRec.reasoning}</p>
+                  <p className="italic text-hcl-dark/60">{modelRec.reasoning}</p>
                 )}
               </>
             ) : (
-              <pre className="whitespace-pre-wrap font-mono text-[11px] text-zinc-400">
+              <pre className="whitespace-pre-wrap font-mono text-[11px] text-hcl-dark/60">
                 {modelRecRaw}
               </pre>
             )}
           </div>
         )}
         {(suggestion || suggestionRaw) && (
-          <div className="rounded-md bg-zinc-950 px-3 py-2 text-xs text-zinc-300">
+          <div className="rounded-md bg-hcl-bg px-3 py-2 text-xs text-hcl-dark/80">
             {suggestion ? (
               <>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono">
@@ -337,11 +337,11 @@ export default function NewExperiment() {
                   )}
                 </div>
                 {suggestion.reasoning && (
-                  <p className="mt-2 italic text-zinc-400">{suggestion.reasoning}</p>
+                  <p className="mt-2 italic text-hcl-dark/60">{suggestion.reasoning}</p>
                 )}
               </>
             ) : (
-              <pre className="whitespace-pre-wrap font-mono text-[11px] text-zinc-400">
+              <pre className="whitespace-pre-wrap font-mono text-[11px] text-hcl-dark/60">
                 {suggestionRaw}
               </pre>
             )}
@@ -354,7 +354,7 @@ export default function NewExperiment() {
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm"
+            className="w-full rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-sm"
           />
         </Field>
 
@@ -362,7 +362,7 @@ export default function NewExperiment() {
           <select
             value={backend ?? ''}
             onChange={(e) => onBackendChange(e.target.value as TrainerBackendName)}
-            className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm"
+            className="w-full rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-sm"
           >
             {BACKEND_OPTIONS.map((b) => (
               <option key={b.value} value={b.value}>
@@ -370,14 +370,14 @@ export default function NewExperiment() {
               </option>
             ))}
           </select>
-          {backendTip && <p className="mt-1.5 text-xs text-zinc-500">{backendTip}</p>}
+          {backendTip && <p className="mt-1.5 text-xs text-hcl-dark/50">{backendTip}</p>}
         </Field>
 
         <Field label="Dataset">
           <select
             value={dataset}
             onChange={(e) => setDataset(e.target.value)}
-            className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm"
+            className="w-full rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-sm"
           >
             {datasets.map((d) => (
               <option key={d.name} value={d.name}>
@@ -391,7 +391,7 @@ export default function NewExperiment() {
           <select
             value={baseModel}
             onChange={(e) => setBaseModel(e.target.value)}
-            className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm"
+            className="w-full rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-sm"
           >
             {backendModels.map((m) => {
               const v = m.backends[backend!]!;
@@ -405,15 +405,15 @@ export default function NewExperiment() {
             })}
           </select>
           {selected && (
-            <div className="mt-1.5 space-y-0.5 text-xs text-zinc-500">
+            <div className="mt-1.5 space-y-0.5 text-xs text-hcl-dark/50">
               <p>
-                <span className="font-mono text-zinc-400">{selected.variant.model_id}</span>
+                <span className="font-mono text-hcl-dark/60">{selected.variant.model_id}</span>
                 {' · needs ≥ '}
                 {selected.variant.min_memory_gb} GB
                 {' · '}
                 <StatusBadge status={selected.variant.status} />
                 {selected.variant.gated && (
-                  <span className="ml-1.5 rounded bg-amber-950/60 px-1.5 py-0.5 text-[10px] font-medium uppercase text-amber-400">
+                  <span className="ml-1.5 rounded bg-hcl-warning/10 px-1.5 py-0.5 text-[10px] font-medium uppercase text-hcl-warning">
                     🔒 gated
                   </span>
                 )}
@@ -428,7 +428,7 @@ export default function NewExperiment() {
             <select
               value={method}
               onChange={(e) => setMethod(e.target.value as RunMethod)}
-              className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm"
+              className="w-full rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-sm"
             >
               <option value="lora">LoRA</option>
               <option value="dora">DoRA</option>
@@ -462,7 +462,7 @@ export default function NewExperiment() {
         </div>
 
         {submitError && (
-          <div className="rounded-md bg-rose-950/50 px-3 py-2 text-sm text-rose-300">
+          <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">
             {submitError}
           </div>
         )}
@@ -470,7 +470,7 @@ export default function NewExperiment() {
         <button
           type="submit"
           disabled={submitting || !dataset || !baseModel}
-          className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-zinc-700"
+          className="rounded-md bg-hcl-dark-teal px-4 py-2 text-sm font-medium text-white hover:bg-hcl-teal disabled:cursor-not-allowed disabled:bg-hcl-light-blue"
         >
           {submitting ? 'Starting…' : 'Start autoresearch experiment'}
         </button>
@@ -481,9 +481,9 @@ export default function NewExperiment() {
 
 function StatusBadge({ status }: { status: 'stable' | 'untested' | 'broken' }) {
   const styles: Record<string, string> = {
-    stable: 'bg-emerald-950/60 text-emerald-400',
-    untested: 'bg-amber-950/60 text-amber-400',
-    broken: 'bg-rose-950/60 text-rose-400',
+    stable: 'bg-hcl-teal/10 text-hcl-teal',
+    untested: 'bg-hcl-warning/10 text-hcl-warning',
+    broken: 'bg-red-50 text-red-600',
   };
   return (
     <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium uppercase ${styles[status]}`}>
@@ -495,7 +495,7 @@ function StatusBadge({ status }: { status: 'stable' | 'untested' | 'broken' }) {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-zinc-500">
+      <span className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-hcl-dark/50">
         {label}
       </span>
       {children}
@@ -506,8 +506,8 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <>
-      <span className="text-zinc-500">{label}</span>
-      <span className="text-zinc-100">{value}</span>
+      <span className="text-hcl-dark/50">{label}</span>
+      <span className="text-hcl-dark">{value}</span>
     </>
   );
 }
@@ -525,7 +525,7 @@ function Num({
       type="number"
       value={value}
       onChange={(e) => onChange(parseFloat(e.target.value))}
-      className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm"
+      className="w-full rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-sm"
       {...rest}
     />
   );

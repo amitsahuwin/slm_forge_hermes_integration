@@ -3,13 +3,13 @@ import { Link } from 'react-router-dom';
 import { type ExportRow, type ExportStatus, exportsApi, deletes } from '../lib/api';
 
 const STATUS_STYLES: Record<ExportStatus, string> = {
-  queued: 'text-zinc-400',
-  fusing: 'text-amber-400',
-  converting: 'text-amber-400',
-  quantizing: 'text-amber-400',
-  completed: 'text-emerald-400',
-  failed: 'text-rose-400',
-  cancelled: 'text-zinc-500',
+  queued: 'text-hcl-dark/60',
+  fusing: 'text-hcl-warning',
+  converting: 'text-hcl-warning',
+  quantizing: 'text-hcl-warning',
+  completed: 'text-hcl-teal',
+  failed: 'text-red-600',
+  cancelled: 'text-hcl-dark/50',
 };
 
 function humanBytes(n: number | null): string {
@@ -43,33 +43,33 @@ export default function Exports() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Exports</h1>
-        <p className="mt-1 text-sm text-zinc-500">
+        <p className="mt-1 text-sm text-hcl-dark/50">
           Fine-tuned models exported to GGUF for use on iPhone (PocketPal AI / Edge Gallery).
         </p>
       </div>
 
-      {error && <div className="rounded-md bg-rose-950/50 px-3 py-2 text-sm text-rose-300">{error}</div>}
+      {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>}
 
       {items === null ? (
-        <div className="text-sm text-zinc-500">Loading…</div>
+        <div className="text-sm text-hcl-dark/50">Loading…</div>
       ) : items.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-zinc-800 px-6 py-10 text-center text-sm text-zinc-500">
+        <div className="rounded-lg border border-dashed border-hcl-light-blue px-6 py-10 text-center text-sm text-hcl-dark/50">
           No exports yet. Open a completed run from{' '}
-          <Link to="/runs" className="text-emerald-400 hover:underline">Runs</Link>
+          <Link to="/runs" className="text-hcl-teal hover:underline">Runs</Link>
           {' '}and click "Export to GGUF".
         </div>
       ) : (
         <ul className="space-y-3">
           {items.map((e) => (
-            <li key={e.id} className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
+            <li key={e.id} className="rounded-lg border border-hcl-light-blue bg-white p-4">
               <div className="flex items-baseline justify-between">
                 <div className="flex items-baseline gap-3">
-                  <span className="font-mono text-sm text-zinc-100">Export #{e.id}</span>
-                  <span className="text-xs text-zinc-500">
-                    from <Link to={`/runs/${e.run_id}`} className="text-emerald-400 hover:underline">run #{e.run_id}</Link>
+                  <span className="font-mono text-sm text-hcl-dark">Export #{e.id}</span>
+                  <span className="text-xs text-hcl-dark/50">
+                    from <Link to={`/runs/${e.run_id}`} className="text-hcl-teal hover:underline">run #{e.run_id}</Link>
                   </span>
-                  <span className="text-xs text-zinc-500">·</span>
-                  <span className="font-mono text-xs text-zinc-500">{e.base_model.replace(/^mlx-community\//, '')}</span>
+                  <span className="text-xs text-hcl-dark/50">·</span>
+                  <span className="font-mono text-xs text-hcl-dark/50">{e.base_model.replace(/^mlx-community\//, '')}</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className={`font-mono text-xs ${STATUS_STYLES[e.status]}`}>● {e.status}</span>
@@ -82,7 +82,7 @@ export default function Exports() {
                         alert(err instanceof Error ? err.message : String(err));
                       }
                     }}
-                    className="text-xs text-zinc-600 hover:text-rose-400"
+                    className="text-xs text-hcl-dark/40 hover:text-red-500"
                     title="Delete export and GGUF files"
                   >
                     delete
@@ -91,11 +91,11 @@ export default function Exports() {
               </div>
 
               {e.progress_text && (
-                <p className="mt-2 font-mono text-xs text-zinc-400">{e.progress_text}</p>
+                <p className="mt-2 font-mono text-xs text-hcl-dark/60">{e.progress_text}</p>
               )}
 
               {e.error_message && (
-                <p className="mt-2 font-mono text-xs text-rose-300">{e.error_message}</p>
+                <p className="mt-2 font-mono text-xs text-red-600">{e.error_message}</p>
               )}
 
               {e.status === 'completed' && (
@@ -111,8 +111,8 @@ export default function Exports() {
         </ul>
       )}
 
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 text-xs text-zinc-400">
-        <strong className="text-zinc-300">iPhone deployment:</strong> download the <code className="font-mono">Q4_K_M.gguf</code> file,
+      <div className="rounded-lg border border-hcl-light-blue bg-white p-4 text-xs text-hcl-dark/60">
+        <strong className="text-hcl-dark/80">iPhone deployment:</strong> download the <code className="font-mono">Q4_K_M.gguf</code> file,
         AirDrop it to your iPhone, then open PocketPal AI → "Add Local Model" → select the file.
         Full instructions in <code className="font-mono">docs/IPHONE_DEPLOY.md</code>.
       </div>
@@ -131,21 +131,21 @@ function Variant({
 }) {
   if (!path) {
     return (
-      <div className="rounded-md border border-zinc-800 bg-zinc-900/40 px-3 py-2">
-        <div className="font-mono text-xs text-zinc-600">{label}</div>
-        <div className="mt-0.5 font-mono text-xs text-zinc-700">not produced</div>
+      <div className="rounded-md border border-hcl-light-blue bg-white px-3 py-2">
+        <div className="font-mono text-xs text-hcl-dark/40">{label}</div>
+        <div className="mt-0.5 font-mono text-xs text-hcl-dark/30">not produced</div>
       </div>
     );
   }
   return (
     <a
       href={href}
-      className={`rounded-md border px-3 py-2 transition-colors hover:bg-zinc-800/60 ${
-        highlight ? 'border-emerald-700 bg-emerald-950/30' : 'border-zinc-800 bg-zinc-900/40'
+      className={`rounded-md border px-3 py-2 transition-colors hover:bg-hcl-tech-grey/60 ${
+        highlight ? 'border-hcl-teal/30 bg-hcl-teal/10' : 'border-hcl-light-blue bg-white'
       }`}
     >
-      <div className="font-mono text-xs text-zinc-400">{label}</div>
-      <div className="mt-0.5 font-mono text-sm text-zinc-100">{humanBytes(bytes)} ↓</div>
+      <div className="font-mono text-xs text-hcl-dark/60">{label}</div>
+      <div className="mt-0.5 font-mono text-sm text-hcl-dark">{humanBytes(bytes)} ↓</div>
     </a>
   );
 }

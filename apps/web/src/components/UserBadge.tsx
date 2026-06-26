@@ -28,7 +28,7 @@ export default function UserBadge() {
     return (
       <span
         title="Authentication is disabled on the backend. Treat this session as a local admin."
-        className="rounded-full border border-zinc-700 bg-zinc-800/60 px-2.5 py-1 text-xs font-medium text-zinc-300"
+        className="rounded-full border border-white/30 bg-white/10 px-2.5 py-1 text-xs font-medium text-white"
       >
         Local mode
       </span>
@@ -39,7 +39,7 @@ export default function UserBadge() {
     return (
       <button
         onClick={() => login(window.location.pathname)}
-        className="rounded-md border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-sm font-medium text-zinc-200 hover:border-zinc-700 hover:bg-zinc-800"
+        className="rounded-md border border-white/30 bg-white/10 px-3 py-1.5 text-sm font-medium text-white hover:border-white/50 hover:bg-white/20"
       >
         Sign in
       </button>
@@ -53,34 +53,34 @@ export default function UserBadge() {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-sm text-zinc-200 hover:border-zinc-700 hover:bg-zinc-800"
+        className="flex items-center gap-2 rounded-md border border-white/30 bg-white/10 px-2.5 py-1.5 text-sm text-white hover:border-white/50 hover:bg-white/20"
       >
         <span className="max-w-[16ch] truncate">{user.email}</span>
         <span
           className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
             isAdmin
-              ? 'border border-emerald-800 bg-emerald-950/60 text-emerald-300'
-              : 'border border-zinc-700 bg-zinc-800/60 text-zinc-300'
+              ? 'border border-hcl-teal/50 bg-hcl-teal/20 text-white'
+              : 'border border-white/30 bg-white/10 text-white/80'
           }`}
         >
           {primaryRole}
         </span>
-        <svg width="10" height="10" viewBox="0 0 10 10" className="text-zinc-500">
+        <svg width="10" height="10" viewBox="0 0 10 10" className="text-white/60">
           <path d="M2 4l3 3 3-3" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" />
         </svg>
       </button>
 
       {open && (
-        <div className="absolute right-0 z-40 mt-2 w-56 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 shadow-xl">
-          <div className="border-b border-zinc-800 px-3 py-2 text-xs text-zinc-400">
-            <div className="truncate text-zinc-200">{user.email}</div>
-            <div className="mt-0.5 truncate font-mono text-[10px] text-zinc-500">{user.id}</div>
+        <div className="absolute right-0 z-40 mt-2 w-56 overflow-hidden rounded-xl border border-hcl-light-blue bg-white shadow-xl">
+          <div className="border-b border-hcl-light-blue px-3 py-2 text-xs text-hcl-dark/60">
+            <div className="truncate text-hcl-dark">{user.email}</div>
+            <div className="mt-0.5 truncate font-mono text-[10px] text-hcl-dark/40">{user.id}</div>
           </div>
           {isAdmin && (
             <NavLink
               to="/admin/users"
               onClick={() => setOpen(false)}
-              className="block px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-900"
+              className="block px-3 py-2 text-sm text-hcl-dark hover:bg-hcl-tech-grey"
             >
               Admin → Users
             </NavLink>
@@ -90,7 +90,7 @@ export default function UserBadge() {
               setOpen(false);
               logout();
             }}
-            className="block w-full px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-900"
+            className="block w-full px-3 py-2 text-left text-sm text-hcl-dark hover:bg-hcl-tech-grey"
           >
             Sign out
           </button>

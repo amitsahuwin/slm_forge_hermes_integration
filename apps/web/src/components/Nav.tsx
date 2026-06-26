@@ -8,8 +8,8 @@ import { useCan, useCanSeeNav } from '../auth/useCan';
 // wrapping to a second line. `shrink-0` on the tab strip prevents the
 // flex container from compressing the labels into ellipses.
 const link =
-  'rounded-md px-2 py-1 text-[13px] font-medium text-zinc-400 transition-colors hover:bg-zinc-800/70 hover:text-zinc-100 whitespace-nowrap';
-const activeLink = 'bg-zinc-800 text-zinc-100';
+  'rounded-md px-2.5 py-1 text-[13px] font-semibold text-white nav-text-shadow transition-colors hover:bg-white/15 whitespace-nowrap';
+const activeLink = 'bg-white/25 text-white';
 
 export default function Nav() {
   // Top-level nav: each tab is conditionally rendered based on the user's
@@ -31,13 +31,13 @@ export default function Nav() {
   const canCreateExperiment = useCan('create', 'experiment');
 
   return (
-    <header className="border-b border-zinc-800">
+    <header style={{ background: 'linear-gradient(135deg, #0B1D3A 0%, #0E3A5C 30%, #17707F 65%, #1A8A8F 100%)' }} className="shadow-md">
       <div className="mx-auto flex max-w-[1600px] items-center gap-4 px-6 py-3">
         <NavLink
           to="/"
-          className="shrink-0 whitespace-nowrap text-base font-semibold tracking-tight"
+          className="shrink-0 whitespace-nowrap text-base font-bold tracking-tight text-white"
         >
-          SLM-Forge
+          <span className="text-white">SLM-Forge</span>
         </NavLink>
         <nav className="flex flex-1 items-center gap-0.5 overflow-x-auto">
             <NavLink to="/" end className={({ isActive }) => `${link} ${isActive ? activeLink : ''}`}>
@@ -101,7 +101,7 @@ export default function Nav() {
           {canCreateDataset && (
             <NavLink
               to="/datasets/new"
-              className="whitespace-nowrap rounded-md border border-zinc-800 px-2.5 py-1 text-[12px] font-medium text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900"
+              className="whitespace-nowrap rounded-md border border-white/30 px-2.5 py-1 text-[12px] font-medium text-white/90 hover:border-white/50 hover:bg-white/10"
             >
               + Dataset
             </NavLink>
@@ -109,13 +109,13 @@ export default function Nav() {
           {canCreateExperiment && (
             <NavLink
               to="/experiments/new"
-              className="whitespace-nowrap rounded-md bg-emerald-600 px-2.5 py-1 text-[12px] font-medium text-white hover:bg-emerald-500"
+              className="whitespace-nowrap rounded-md bg-white px-2.5 py-1 text-[12px] font-bold text-hcl-dark-teal hover:bg-hcl-light-blue"
             >
               + Experiment
             </NavLink>
           )}
           <PlatformBadge />
-          <div className="ml-1 border-l border-zinc-800 pl-2">
+          <div className="ml-1 border-l border-white/30 pl-2">
             <UserBadge />
           </div>
         </div>

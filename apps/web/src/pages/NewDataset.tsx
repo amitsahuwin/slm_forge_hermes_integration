@@ -99,7 +99,7 @@ export default function NewDataset() {
     <div className="max-w-3xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">New Dataset</h1>
-        <p className="mt-1 text-sm text-zinc-500">
+        <p className="mt-1 text-sm text-hcl-dark/50">
           {step === 1
             ? 'Step 1 of 2 — pick a source and preview the rows.'
             : 'Step 2 of 2 — map fields onto the chat template, then save.'}
@@ -107,7 +107,7 @@ export default function NewDataset() {
       </div>
 
       {error && (
-        <div className="rounded-md bg-rose-950/50 px-3 py-2 font-mono text-xs text-rose-300">
+        <div className="rounded-md bg-red-50 px-3 py-2 font-mono text-xs text-red-600">
           {error}
         </div>
       )}
@@ -121,8 +121,8 @@ export default function NewDataset() {
                 onClick={() => setSource(t)}
                 className={`rounded-md border px-3 py-2 text-sm font-medium ${
                   source === t
-                    ? 'border-emerald-500 bg-emerald-950/40 text-emerald-300'
-                    : 'border-zinc-800 bg-zinc-900/40 text-zinc-400 hover:border-zinc-700'
+                    ? 'border-hcl-teal bg-hcl-teal/10 text-hcl-teal'
+                    : 'border-hcl-light-blue bg-white text-hcl-dark/60 hover:border-hcl-teal/30'
                 }`}
               >
                 {t === 'upload' && '📁 Upload file'}
@@ -139,10 +139,10 @@ export default function NewDataset() {
                 type="file"
                 accept=".jsonl,.ndjson,.csv,.json"
                 onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm file:mr-3 file:rounded file:border-0 file:bg-zinc-800 file:px-3 file:py-1 file:text-xs file:text-zinc-300"
+                className="w-full rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 text-sm file:mr-3 file:rounded file:border-0 file:bg-hcl-tech-grey file:px-3 file:py-1 file:text-xs file:text-hcl-dark/80"
               />
               {file && (
-                <p className="mt-1 font-mono text-xs text-zinc-500">
+                <p className="mt-1 font-mono text-xs text-hcl-dark/50">
                   {file.name} · {(file.size / 1024).toFixed(1)} KB
                 </p>
               )}
@@ -156,7 +156,7 @@ export default function NewDataset() {
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder="https://example.com/dataset.jsonl"
-                className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm"
+                className="w-full rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-sm"
               />
             </Field>
           )}
@@ -168,9 +168,9 @@ export default function NewDataset() {
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder="https://example.com/article"
-                className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm"
+                className="w-full rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-sm"
               />
-              <p className="mt-1 text-xs text-zinc-500">
+              <p className="mt-1 text-xs text-hcl-dark/50">
                 JS-heavy SPAs won't work. For those, save the rendered page and upload it as HTML.
               </p>
             </Field>
@@ -184,7 +184,7 @@ export default function NewDataset() {
                   value={s3Path}
                   onChange={(e) => setS3Path(e.target.value)}
                   placeholder="s3://my-bucket/path/to/file.jsonl"
-                  className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm"
+                  className="w-full rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-sm"
                 />
               </Field>
               <div className="grid grid-cols-2 gap-4">
@@ -193,7 +193,7 @@ export default function NewDataset() {
                     type="text"
                     value={s3Key}
                     onChange={(e) => setS3Key(e.target.value)}
-                    className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm"
+                    className="w-full rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-sm"
                   />
                 </Field>
                 <Field label="AWS secret key">
@@ -201,7 +201,7 @@ export default function NewDataset() {
                     type="password"
                     value={s3Secret}
                     onChange={(e) => setS3Secret(e.target.value)}
-                    className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm"
+                    className="w-full rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-sm"
                   />
                 </Field>
                 <Field label="Region">
@@ -209,11 +209,11 @@ export default function NewDataset() {
                     type="text"
                     value={s3Region}
                     onChange={(e) => setS3Region(e.target.value)}
-                    className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm"
+                    className="w-full rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-sm"
                   />
                 </Field>
               </div>
-              <p className="font-mono text-xs text-zinc-500">
+              <p className="font-mono text-xs text-hcl-dark/50">
                 Credentials are sent to the local API and used in-memory only. Not stored.
               </p>
             </>
@@ -222,7 +222,7 @@ export default function NewDataset() {
           <button
             onClick={doPreview}
             disabled={busy}
-            className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-zinc-700"
+            className="rounded-md bg-hcl-dark-teal px-4 py-2 text-sm font-medium text-white hover:bg-hcl-teal disabled:cursor-not-allowed disabled:bg-hcl-light-blue"
           >
             {busy ? 'Fetching…' : 'Preview rows →'}
           </button>
@@ -232,18 +232,18 @@ export default function NewDataset() {
       {step === 2 && preview && (
         <section className="space-y-5">
           {/* Preview summary */}
-          <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
+          <div className="rounded-lg border border-hcl-light-blue bg-white p-4">
             <div className="flex items-baseline justify-between">
-              <h3 className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+              <h3 className="text-xs font-medium uppercase tracking-wider text-hcl-dark/50">
                 Preview
               </h3>
-              <div className="font-mono text-xs text-zinc-500">
+              <div className="font-mono text-xs text-hcl-dark/50">
                 {preview.total_rows} row{preview.total_rows === 1 ? '' : 's'} · {preview.format} · {preview.source_type}
               </div>
             </div>
             <div className="mt-3 overflow-x-auto">
               <table className="w-full font-mono text-xs">
-                <thead className="text-zinc-500">
+                <thead className="bg-hcl-dark-blue text-white">
                   <tr>
                     {preview.detected_fields.map((f) => (
                       <th key={f} className="px-2 py-1.5 text-left font-medium">
@@ -252,9 +252,9 @@ export default function NewDataset() {
                     ))}
                   </tr>
                 </thead>
-                <tbody className="text-zinc-300">
+                <tbody className="text-hcl-dark/80">
                   {preview.sample_rows.map((row, i) => (
-                    <tr key={i} className="border-t border-zinc-800">
+                    <tr key={i} className="border-t border-hcl-light-blue">
                       {preview.detected_fields.map((f) => (
                         <td key={f} className="max-w-xs truncate px-2 py-1.5">
                           {String(row[f] ?? '')}
@@ -275,7 +275,7 @@ export default function NewDataset() {
               onChange={(e) => setDatasetName(e.target.value)}
               placeholder="my-domain-qa"
               pattern="^[a-z0-9][a-z0-9-_]*$"
-              className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm"
+              className="w-full rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-sm"
             />
           </Field>
 
@@ -284,7 +284,7 @@ export default function NewDataset() {
               <select
                 value={promptField}
                 onChange={(e) => setPromptField(e.target.value)}
-                className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm"
+                className="w-full rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-sm"
               >
                 {preview.detected_fields.map((f) => (
                   <option key={f} value={f}>
@@ -297,7 +297,7 @@ export default function NewDataset() {
               <select
                 value={responseField}
                 onChange={(e) => setResponseField(e.target.value)}
-                className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm"
+                className="w-full rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-sm"
               >
                 {preview.detected_fields.map((f) => (
                   <option key={f} value={f}>
@@ -312,7 +312,7 @@ export default function NewDataset() {
             <select
               value={template}
               onChange={(e) => setTemplate(e.target.value as Template)}
-              className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm"
+              className="w-full rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-sm"
             >
               <option value="qwen">Qwen (default)</option>
               <option value="llama3">Llama 3</option>
@@ -327,7 +327,7 @@ export default function NewDataset() {
               onChange={(e) => setSystemPrompt(e.target.value)}
               rows={2}
               placeholder="e.g. You are a helpful stock analyst."
-              className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm"
+              className="w-full rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-sm"
             />
           </Field>
 
@@ -340,7 +340,7 @@ export default function NewDataset() {
                 min={0}
                 max={0.5}
                 step={0.01}
-                className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm"
+                className="w-full rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-sm"
               />
             </Field>
             <Field label="Canary fraction (held-out for Goodhart check)">
@@ -351,7 +351,7 @@ export default function NewDataset() {
                 min={0}
                 max={0.3}
                 step={0.01}
-                className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm"
+                className="w-full rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-sm"
               />
             </Field>
           </div>
@@ -359,14 +359,14 @@ export default function NewDataset() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => setStep(1)}
-              className="rounded-md border border-zinc-800 bg-zinc-900 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800"
+              className="rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-4 py-2 text-sm text-hcl-dark/80 hover:bg-hcl-tech-grey"
             >
               ← Back
             </button>
             <button
               onClick={doFinalize}
               disabled={busy || !datasetName}
-              className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-zinc-700"
+              className="rounded-md bg-hcl-dark-teal px-4 py-2 text-sm font-medium text-white hover:bg-hcl-teal disabled:cursor-not-allowed disabled:bg-hcl-light-blue"
             >
               {busy ? 'Saving…' : `Save dataset (${preview.total_rows} rows)`}
             </button>
@@ -380,7 +380,7 @@ export default function NewDataset() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-zinc-500">
+      <span className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-hcl-dark/50">
         {label}
       </span>
       {children}

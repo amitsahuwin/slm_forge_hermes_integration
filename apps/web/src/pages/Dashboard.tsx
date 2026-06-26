@@ -68,17 +68,17 @@ const WORKER_META: Record<
 };
 
 const TONE_PILL: Record<WorkerTone, string> = {
-  ok: 'border-emerald-700/40 bg-emerald-900/30 text-emerald-300',
-  warn: 'border-amber-700/40 bg-amber-900/30 text-amber-300',
-  down: 'border-rose-700/40 bg-rose-900/30 text-rose-300',
-  unknown: 'border-zinc-700/60 bg-zinc-800/40 text-zinc-400',
+  ok: 'border-hcl-teal/40 bg-hcl-teal/10 text-hcl-dark-teal',
+  warn: 'border-hcl-warning/40 bg-hcl-warning/10 text-hcl-warning',
+  down: 'border-hcl-error/40 bg-red-50 text-red-700',
+  unknown: 'border-hcl-light-blue bg-hcl-tech-grey text-hcl-dark/60',
 };
 
 const TONE_DOT: Record<WorkerTone, string> = {
-  ok: 'bg-emerald-400',
-  warn: 'bg-amber-400',
-  down: 'bg-rose-400',
-  unknown: 'bg-zinc-500',
+  ok: 'bg-hcl-teal',
+  warn: 'bg-hcl-warning/100',
+  down: 'bg-red-500',
+  unknown: 'bg-hcl-mid-blue',
 };
 
 /**
@@ -325,8 +325,8 @@ export default function Dashboard() {
       {/* ── Header ──────────────────────────────────────────────── */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-          <p className="mt-1 text-sm text-zinc-500">
+          <h1 className="text-2xl font-bold tracking-tight text-hcl-dark-teal">Dashboard</h1>
+          <p className="mt-1 text-sm text-hcl-dark/60">
             Local-first SLM fine-tuning lab · Hermes-driven autoresearch
           </p>
         </div>
@@ -336,19 +336,19 @@ export default function Dashboard() {
       {/* ── Capabilities ────────────────────────────────────────── */}
       {health && (
         <section>
-          <h2 className="mb-3 text-sm font-medium uppercase tracking-wider text-zinc-500">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-hcl-dark-teal">
             Capabilities
           </h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
             {Object.entries(health.capabilities).map(([key, enabled]) => (
               <div
                 key={key}
-                className="rounded-lg border border-zinc-800 bg-zinc-900/40 px-3 py-2.5"
+                className="rounded-lg border border-hcl-light-blue bg-white px-3 py-2.5 shadow-sm"
               >
-                <div className="font-mono text-xs text-zinc-500">{key}</div>
+                <div className="font-mono text-xs text-hcl-dark/50">{key}</div>
                 <div
                   className={`mt-1 font-mono text-sm ${
-                    enabled ? 'text-emerald-400' : 'text-zinc-600'
+                    enabled ? 'text-hcl-dark-teal' : 'text-hcl-dark/30'
                   }`}
                 >
                   {enabled ? '● enabled' : '○ pending'}
@@ -361,7 +361,7 @@ export default function Dashboard() {
 
       {/* ── Service tiles ───────────────────────────────────────── */}
       <section>
-        <h2 className="mb-3 text-sm font-medium uppercase tracking-wider text-zinc-500">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-hcl-dark-teal">
           Services
         </h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -378,7 +378,7 @@ export default function Dashboard() {
 
       {/* ── Hermes detail strip ─────────────────────────────────── */}
       <section>
-        <h2 className="mb-3 text-sm font-medium uppercase tracking-wider text-zinc-500">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-hcl-dark-teal">
           Hermes Agent
         </h2>
         <HermesStatusCard />
@@ -410,7 +410,7 @@ function HealthPill({
       <span className={`h-1.5 w-1.5 rounded-full ${TONE_DOT[tone]}`} aria-hidden />
       <span className="font-mono text-xs">● {label}</span>
       {version && (
-        <span className="font-mono text-xs text-zinc-500">· v{version}</span>
+        <span className="font-mono text-xs text-hcl-dark/40">· v{version}</span>
       )}
     </div>
   );
@@ -431,27 +431,27 @@ function ServiceTile({
     <button
       type="button"
       onClick={onOpen}
-      className="group flex h-full flex-col rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 text-left transition hover:border-zinc-700 hover:bg-zinc-900/60 focus:outline-none focus:ring-2 focus:ring-zinc-600"
+      className="group flex h-full flex-col rounded-xl border border-hcl-light-blue bg-white p-5 text-left shadow-sm transition hover:border-hcl-teal/40 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-hcl-teal/40"
       aria-label={`Open ${meta.title} log`}
     >
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-lg font-semibold tracking-tight text-zinc-100">
+          <div className="text-lg font-bold tracking-tight text-hcl-dark">
             {meta.title}
           </div>
-          <div className="mt-0.5 text-xs text-zinc-500">{meta.subtitle}</div>
+          <div className="mt-0.5 text-xs text-hcl-dark/50">{meta.subtitle}</div>
         </div>
         <StatusPill tone={activity.tone} label={activity.label} />
       </div>
 
       <div className="mt-auto space-y-2">
-        <p className="font-mono text-xs text-zinc-400">{activity.lastLine}</p>
+        <p className="font-mono text-xs text-hcl-dark/60">{activity.lastLine}</p>
         {!running && (
-          <code className="block rounded bg-zinc-800 px-2 py-1.5 font-mono text-xs text-zinc-200">
+          <code className="block rounded bg-hcl-tech-grey px-2 py-1.5 font-mono text-xs text-hcl-dark">
             {meta.hint}
           </code>
         )}
-        <p className="text-xs text-zinc-600 group-hover:text-zinc-500">
+        <p className="text-xs text-hcl-dark/40 group-hover:text-hcl-dark-teal">
           Click to tail log →
         </p>
       </div>

@@ -225,16 +225,16 @@ export default function SynthesizeModal({
       onClick={handleBackdrop}
     >
       <div
-        className="w-full max-w-lg rounded-xl border border-zinc-800 bg-zinc-950 p-5 shadow-2xl"
+        className="w-full max-w-lg rounded-xl border border-hcl-light-blue bg-hcl-bg p-5 shadow-2xl"
         role="dialog"
         aria-modal="true"
         aria-label="Synthesize dataset"
       >
         <div className="mb-4 flex items-start justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-zinc-100">Synthesize dataset</h2>
-            <p className="mt-0.5 text-xs text-zinc-500">
-              Expand <span className="font-mono text-zinc-300">{sourceDataset}</span> (
+            <h2 className="text-lg font-semibold text-hcl-dark">Synthesize dataset</h2>
+            <p className="mt-0.5 text-xs text-hcl-dark/50">
+              Expand <span className="font-mono text-hcl-dark/80">{sourceDataset}</span> (
               {sourceCount.toLocaleString()} seeds) via local Ollama.
             </p>
           </div>
@@ -242,7 +242,7 @@ export default function SynthesizeModal({
             type="button"
             onClick={handleClose}
             disabled={phase === 'running'}
-            className="rounded-md p-1 text-zinc-500 hover:bg-zinc-900 hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-md p-1 text-hcl-dark/50 hover:bg-hcl-tech-grey hover:text-hcl-dark disabled:cursor-not-allowed disabled:opacity-40"
             aria-label="Close"
           >
             <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
@@ -258,7 +258,7 @@ export default function SynthesizeModal({
                 type="text"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm text-zinc-100 placeholder-zinc-600 focus:border-emerald-600 focus:outline-none"
+                className="w-full rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-sm text-hcl-dark placeholder-hcl-dark/30 focus:border-hcl-teal focus:outline-none"
                 placeholder="my-dataset-expanded"
               />
             </Field>
@@ -273,7 +273,7 @@ export default function SynthesizeModal({
                 max={2000}
                 value={target}
                 onChange={(e) => setTarget(Number.parseInt(e.target.value || '0', 10))}
-                className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm text-zinc-100 focus:border-emerald-600 focus:outline-none"
+                className="w-full rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-sm text-hcl-dark focus:border-hcl-teal focus:outline-none"
               />
             </Field>
 
@@ -282,7 +282,7 @@ export default function SynthesizeModal({
                 value={style}
                 onChange={(e) => setStyle(e.target.value)}
                 rows={2}
-                className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-emerald-600 focus:outline-none"
+                className="w-full rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 text-sm text-hcl-dark placeholder-hcl-dark/30 focus:border-hcl-teal focus:outline-none"
                 placeholder="e.g. Make examples more diverse in technical depth"
               />
               <div className="mt-1">
@@ -302,7 +302,7 @@ export default function SynthesizeModal({
             </Field>
 
             <div>
-              <div className="mb-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-500">
+              <div className="mb-1.5 font-mono text-[10px] uppercase tracking-wider text-hcl-dark/50">
                 Split ratios
               </div>
               <div className="space-y-2">
@@ -311,25 +311,25 @@ export default function SynthesizeModal({
                   value={trainR}
                   onChange={setTrainR}
                   rows={trainRows}
-                  accent="text-emerald-400"
+                  accent="text-hcl-teal"
                 />
                 <RatioSlider
                   label="valid"
                   value={validR}
                   onChange={setValidR}
                   rows={validRows}
-                  accent="text-sky-400"
+                  accent="text-hcl-info"
                 />
                 <RatioSlider
                   label="canary"
                   value={canaryR}
                   onChange={setCanaryR}
                   rows={canaryRows}
-                  accent="text-amber-400"
+                  accent="text-hcl-warning"
                 />
               </div>
               {!ratiosValid && (
-                <div className="mt-2 font-mono text-[10px] text-rose-400">
+                <div className="mt-2 font-mono text-[10px] text-red-600">
                   ratios sum = {ratioSum.toFixed(3)} (must equal 1.00)
                 </div>
               )}
@@ -339,7 +339,7 @@ export default function SynthesizeModal({
               <button
                 type="button"
                 onClick={handleClose}
-                className="rounded-md border border-zinc-800 px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-900"
+                className="rounded-md border border-hcl-light-blue px-3 py-1.5 text-sm text-hcl-dark/80 hover:bg-hcl-tech-grey"
               >
                 Cancel
               </button>
@@ -347,7 +347,7 @@ export default function SynthesizeModal({
                 type="button"
                 onClick={handleSubmit}
                 disabled={!canSubmit}
-                className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+                className="rounded-md bg-hcl-dark-teal px-3 py-1.5 text-sm font-medium text-white hover:bg-hcl-teal disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Generate
               </button>
@@ -359,25 +359,25 @@ export default function SynthesizeModal({
           <div className="space-y-4">
             <div className="flex items-center gap-3">
               <Spinner />
-              <div className="font-mono text-xs text-zinc-400">
+              <div className="font-mono text-xs text-hcl-dark/60">
                 Generating batch {progress?.batch ?? 0} via local Ollama…
               </div>
             </div>
             <div>
               <div className="mb-1 flex items-baseline justify-between font-mono text-xs">
-                <span className="text-zinc-400">
+                <span className="text-hcl-dark/60">
                   {progress?.generated ?? 0} / {progress?.target ?? target}
                 </span>
-                <span className="text-zinc-500">{pct.toFixed(0)}%</span>
+                <span className="text-hcl-dark/50">{pct.toFixed(0)}%</span>
               </div>
-              <div className="h-2 overflow-hidden rounded-full bg-zinc-900">
+              <div className="h-2 overflow-hidden rounded-full bg-hcl-tech-grey">
                 <div
-                  className="h-full bg-emerald-500 transition-[width] duration-300"
+                  className="h-full bg-hcl-teal transition-[width] duration-300"
                   style={{ width: `${pct}%` }}
                 />
               </div>
             </div>
-            <p className="font-mono text-[10px] text-zinc-600">
+            <p className="font-mono text-[10px] text-hcl-dark/40">
               Close disabled while generating. This can take a few minutes for 100+ records.
             </p>
           </div>
@@ -385,7 +385,7 @@ export default function SynthesizeModal({
 
         {phase === 'done' && result && (
           <div className="space-y-3">
-            <div className="rounded-md border border-emerald-900/60 bg-emerald-950/30 p-3 text-sm text-emerald-200">
+            <div className="rounded-md border border-hcl-teal/30 bg-hcl-teal/10 p-3 text-sm text-hcl-dark-teal">
               Wrote <span className="font-mono">{result.new_dataset}</span> — {result.train} train ·{' '}
               {result.valid} valid · {result.canary} canary ({result.total} total).
             </div>
@@ -393,14 +393,14 @@ export default function SynthesizeModal({
               <button
                 type="button"
                 onClick={handleClose}
-                className="rounded-md border border-zinc-800 px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-900"
+                className="rounded-md border border-hcl-light-blue px-3 py-1.5 text-sm text-hcl-dark/80 hover:bg-hcl-tech-grey"
               >
                 Close
               </button>
               <Link
                 to={`/datasets/${encodeURIComponent(result.new_dataset)}`}
                 onClick={handleClose}
-                className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500"
+                className="rounded-md bg-hcl-dark-teal px-3 py-1.5 text-sm font-medium text-white hover:bg-hcl-teal"
               >
                 Open dataset →
               </Link>
@@ -410,21 +410,21 @@ export default function SynthesizeModal({
 
         {phase === 'error' && (
           <div className="space-y-3">
-            <div className="rounded-md border border-rose-900/60 bg-rose-950/40 p-3 text-sm text-rose-200">
+            <div className="rounded-md border border-hcl-error/40 bg-red-50 p-3 text-sm text-red-500">
               {errorMsg ?? 'Synthesis failed.'}
             </div>
             <div className="flex items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setPhase('configure')}
-                className="rounded-md border border-zinc-800 px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-900"
+                className="rounded-md border border-hcl-light-blue px-3 py-1.5 text-sm text-hcl-dark/80 hover:bg-hcl-tech-grey"
               >
                 Try again
               </button>
               <button
                 type="button"
                 onClick={handleClose}
-                className="rounded-md bg-zinc-800 px-3 py-1.5 text-sm text-zinc-200 hover:bg-zinc-700"
+                className="rounded-md bg-hcl-tech-grey px-3 py-1.5 text-sm text-hcl-dark hover:bg-hcl-tech-grey"
               >
                 Close
               </button>
@@ -447,11 +447,11 @@ function Field({
 }) {
   return (
     <label className="block">
-      <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-zinc-500">
+      <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-hcl-dark/50">
         {label}
       </div>
       {children}
-      {hint && <div className="mt-1 font-mono text-[10px] text-zinc-600">{hint}</div>}
+      {hint && <div className="mt-1 font-mono text-[10px] text-hcl-dark/40">{hint}</div>}
     </label>
   );
 }
@@ -479,9 +479,9 @@ function RatioSlider({
         step={0.01}
         value={value}
         onChange={(e) => onChange(Number.parseFloat(e.target.value))}
-        className="flex-1 accent-emerald-500"
+        className="flex-1 accent-hcl-teal"
       />
-      <div className="w-24 text-right font-mono text-[11px] tabular-nums text-zinc-400">
+      <div className="w-24 text-right font-mono text-[11px] tabular-nums text-hcl-dark/60">
         {(value * 100).toFixed(0)}% · {rows} rows
       </div>
     </div>
@@ -490,7 +490,7 @@ function RatioSlider({
 
 function Spinner() {
   return (
-    <svg className="h-4 w-4 animate-spin text-emerald-400" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <svg className="h-4 w-4 animate-spin text-hcl-teal" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
       <path
         className="opacity-75"

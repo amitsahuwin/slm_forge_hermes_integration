@@ -204,8 +204,8 @@ export default function ChatTemplates({ onPick }: { onPick: (text: string) => vo
   return (
     <div className="space-y-3 text-xs">
       <div>
-        <h3 className="text-sm font-medium text-zinc-300">Templates</h3>
-        <p className="mt-1 text-[11px] text-zinc-500">
+        <h3 className="text-sm font-medium text-hcl-dark/80">Templates</h3>
+        <p className="mt-1 text-[11px] text-hcl-dark/50">
           Click any prompt to drop it into the chat box. Edit before sending.
         </p>
       </div>
@@ -216,34 +216,34 @@ export default function ChatTemplates({ onPick }: { onPick: (text: string) => vo
           return (
             <div
               key={g.name}
-              className="rounded-md border border-zinc-800 bg-zinc-900/40"
+              className="rounded-md border border-hcl-light-blue bg-white"
             >
               <button
                 type="button"
                 onClick={() => toggle(g.name)}
                 aria-expanded={isOpen}
-                className="flex w-full items-center justify-between gap-2 px-2.5 py-2 text-left text-zinc-200 hover:bg-zinc-800/50"
+                className="flex w-full items-center justify-between gap-2 px-2.5 py-2 text-left text-hcl-dark hover:bg-hcl-tech-grey/50"
               >
                 <span className="flex items-center gap-2">
                   <span aria-hidden>{g.emoji}</span>
                   <span className="font-medium">{g.name}</span>
-                  <span className="text-[10px] text-zinc-500">
+                  <span className="text-[10px] text-hcl-dark/50">
                     {g.templates.length}
                   </span>
                 </span>
-                <span className="font-mono text-zinc-500">{isOpen ? '−' : '+'}</span>
+                <span className="font-mono text-hcl-dark/50">{isOpen ? '−' : '+'}</span>
               </button>
               {isOpen && (
-                <ul className="border-t border-zinc-800 px-1.5 py-1.5 space-y-0.5">
+                <ul className="border-t border-hcl-light-blue px-1.5 py-1.5 space-y-0.5">
                   {g.templates.map((t) => (
                     <li key={t.title}>
                       <button
                         type="button"
                         onClick={() => onPick(t.prompt)}
-                        className="block w-full rounded px-2 py-1.5 text-left text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-100"
+                        className="block w-full rounded px-2 py-1.5 text-left text-hcl-dark/60 hover:bg-hcl-tech-grey/50 hover:text-hcl-dark"
                       >
-                        <div className="font-medium text-zinc-300">{t.title}</div>
-                        <div className="mt-0.5 line-clamp-2 text-[11px] text-zinc-500">
+                        <div className="font-medium text-hcl-dark/80">{t.title}</div>
+                        <div className="mt-0.5 line-clamp-2 text-[11px] text-hcl-dark/50">
                           {t.prompt}
                         </div>
                       </button>

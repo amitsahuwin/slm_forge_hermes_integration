@@ -41,7 +41,7 @@ const TABS: TabFeature[] = [
       'Click a tile to see its tail log',
     ],
     hermes: 'Pings Ollama, verifies the model is pulled, surfaces fix-it hints.',
-    accent: 'from-emerald-500/15 via-emerald-500/5 to-transparent',
+    accent: 'from-hcl-teal/15 via-hcl-teal/5 to-transparent',
   },
   {
     emoji: '🧪',
@@ -71,7 +71,7 @@ const TABS: TabFeature[] = [
     ],
     hermes:
       '4xx errors get a plain-English remedy (PR-3). Failed runs auto-generate a post-mortem (PR-2).',
-    accent: 'from-sky-500/15 via-sky-500/5 to-transparent',
+    accent: 'from-hcl-info/15 via-hcl-info/5 to-transparent',
   },
   {
     emoji: '📦',
@@ -85,7 +85,7 @@ const TABS: TabFeature[] = [
       'Download the .gguf when done',
     ],
     hermes: '`recommend_export_quants` picks the right quant level for your target device.',
-    accent: 'from-amber-500/15 via-amber-500/5 to-transparent',
+    accent: 'from-hcl-warning/15 via-hcl-warning/5 to-transparent',
   },
   {
     emoji: '📚',
@@ -114,7 +114,7 @@ const TABS: TabFeature[] = [
       'Execute if happy',
     ],
     hermes: 'Deterministic file-system tool — no LLM here.',
-    accent: 'from-zinc-500/15 via-zinc-500/5 to-transparent',
+    accent: 'from-hcl-mid-blue/15 via-hcl-mid-blue/5 to-transparent',
   },
   {
     emoji: '💬',
@@ -189,7 +189,7 @@ const TABS: TabFeature[] = [
     ],
     hermes:
       'Prod: dedup-by-fingerprint GitHub issues. Dev: Claude SDK proposes a fix on a sandbox branch, never touches main.',
-    accent: 'from-rose-500/15 via-rose-500/5 to-transparent',
+    accent: 'from-red-500/15 via-hcl-error/5 to-transparent',
     admin: true,
   },
 ];
@@ -395,14 +395,14 @@ function SectionHeading({
 }) {
   return (
     <header id={id} className="mb-6 scroll-mt-20">
-      <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-400/80">
+      <div className="text-[11px] uppercase tracking-[0.18em] text-hcl-teal/80">
         {eyebrow}
       </div>
-      <h2 className="mt-1 text-2xl font-semibold tracking-tight text-zinc-100 sm:text-3xl">
+      <h2 className="mt-1 text-2xl font-semibold tracking-tight text-hcl-dark sm:text-3xl">
         {title}
       </h2>
       {subtitle && (
-        <p className="mt-2 max-w-3xl text-sm leading-relaxed text-zinc-400">{subtitle}</p>
+        <p className="mt-2 max-w-3xl text-sm leading-relaxed text-hcl-dark/60">{subtitle}</p>
       )}
     </header>
   );
@@ -419,7 +419,7 @@ function GradientCard({
 }) {
   return (
     <div
-      className={`group relative overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 transition hover:border-zinc-700 hover:bg-zinc-900/60 hover:shadow-lg hover:shadow-black/40 ${className}`}
+      className={`group relative overflow-hidden rounded-xl border border-hcl-light-blue bg-white p-5 transition hover:border-hcl-teal/30 hover:bg-hcl-tech-grey/60 hover:shadow-lg hover:shadow-black/40 ${className}`}
     >
       <div
         aria-hidden
@@ -438,9 +438,9 @@ function Pill({
   tone?: 'zinc' | 'emerald' | 'rose';
 }) {
   const tones: Record<string, string> = {
-    zinc: 'border-zinc-700 bg-zinc-800/60 text-zinc-300',
-    emerald: 'border-emerald-700 bg-emerald-500/10 text-emerald-300',
-    rose: 'border-rose-700 bg-rose-500/10 text-rose-300',
+    zinc: 'border-hcl-teal/30 bg-hcl-tech-grey/60 text-hcl-dark/80',
+    emerald: 'border-hcl-teal/30 bg-hcl-teal/10 text-hcl-teal',
+    rose: 'border-hcl-error/50 bg-red-50 text-red-600',
   };
   return (
     <span
@@ -487,15 +487,15 @@ export default function Product() {
   const skillsSorted = useMemo(() => SKILLS.slice().sort((a, b) => a.name.localeCompare(b.name)), []);
 
   return (
-    <div className="mx-auto max-w-7xl text-zinc-100">
+    <div className="mx-auto max-w-7xl text-hcl-dark">
       {/* ─── Hero ───────────────────────────────────────────────── */}
       <section
         id="overview"
-        className="relative scroll-mt-20 overflow-hidden rounded-2xl border border-zinc-800 bg-gradient-to-br from-emerald-500/15 via-indigo-500/10 to-zinc-900 p-8 sm:p-12"
+        className="relative scroll-mt-20 overflow-hidden rounded-2xl border border-hcl-light-blue bg-gradient-to-br from-hcl-teal/15 via-indigo-500/10 to-hcl-bg p-8 sm:p-12"
       >
         <div
           aria-hidden
-          className="absolute -right-24 -top-24 h-72 w-72 rounded-full bg-emerald-500/20 blur-3xl"
+          className="absolute -right-24 -top-24 h-72 w-72 rounded-full bg-hcl-teal/20 blur-3xl"
         />
         <div
           aria-hidden
@@ -506,11 +506,11 @@ export default function Product() {
           <h1 className="mt-3 text-3xl font-semibold leading-tight tracking-tight sm:text-5xl">
             Fine-tune small LLMs in your lab.
             <br />
-            <span className="text-emerald-300">
+            <span className="text-hcl-teal">
               Let Hermes do the research.
             </span>
           </h1>
-          <p className="mt-4 max-w-2xl text-base leading-relaxed text-zinc-300 sm:text-lg">
+          <p className="mt-4 max-w-2xl text-base leading-relaxed text-hcl-dark/80 sm:text-lg">
             A local-first lab for fine-tuning, evaluating, and exporting small
             language models — driven by a local Hermes / Ollama agent that
             picks methods, proposes hyperparameters, writes post-mortems, and
@@ -520,13 +520,13 @@ export default function Product() {
           <div className="mt-6 flex flex-wrap gap-2">
             <a
               href="#features"
-              className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-medium text-emerald-950 hover:bg-emerald-400"
+              className="rounded-md bg-hcl-teal px-4 py-2 text-sm font-medium text-hcl-dark-teal hover:bg-hcl-teal"
             >
               Tour the tabs ↓
             </a>
             <a
               href="#hermes"
-              className="rounded-md border border-zinc-700 bg-zinc-900/60 px-4 py-2 text-sm font-medium text-zinc-200 hover:bg-zinc-800"
+              className="rounded-md border border-hcl-teal/30 bg-hcl-tech-grey/60 px-4 py-2 text-sm font-medium text-hcl-dark hover:bg-hcl-tech-grey"
             >
               Where Hermes helps
             </a>
@@ -534,7 +534,7 @@ export default function Product() {
               href="/docs/SLM_FORGE_PRODUCT_GUIDE.md"
               target="_blank"
               rel="noopener noreferrer"
-              className="rounded-md border border-zinc-700 bg-zinc-900/60 px-4 py-2 text-sm font-medium text-zinc-200 hover:bg-zinc-800"
+              className="rounded-md border border-hcl-teal/30 bg-hcl-tech-grey/60 px-4 py-2 text-sm font-medium text-hcl-dark hover:bg-hcl-tech-grey"
             >
               Open the written guide
             </a>
@@ -548,10 +548,10 @@ export default function Product() {
             ].map(([n, label]) => (
               <div
                 key={label}
-                className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3"
+                className="rounded-lg border border-hcl-light-blue bg-hcl-bg/60 p-3"
               >
-                <div className="text-2xl font-semibold text-emerald-300">{n}</div>
-                <div className="text-[11px] uppercase tracking-wide text-zinc-500">
+                <div className="text-2xl font-semibold text-hcl-teal">{n}</div>
+                <div className="text-[11px] uppercase tracking-wide text-hcl-dark/50">
                   {label}
                 </div>
               </div>
@@ -570,8 +570,8 @@ export default function Product() {
                 href={`#${s.id}`}
                 className={`block rounded-md px-3 py-1.5 transition ${
                   active === s.id
-                    ? 'bg-emerald-500/10 text-emerald-300'
-                    : 'text-zinc-400 hover:text-zinc-100'
+                    ? 'bg-hcl-teal/10 text-hcl-teal'
+                    : 'text-hcl-dark/60 hover:text-hcl-dark'
                 }`}
               >
                 {s.label}
@@ -598,20 +598,20 @@ export default function Product() {
                       <div className="flex items-center gap-2">
                         <a
                           href={t.path}
-                          className="text-lg font-semibold text-zinc-100 hover:text-emerald-300"
+                          className="text-lg font-semibold text-hcl-dark hover:text-hcl-teal"
                         >
                           {t.name}
                         </a>
                         {t.admin && <Pill tone="rose">admin</Pill>}
                       </div>
-                      <p className="mt-1 text-sm leading-snug text-zinc-300">{t.purpose}</p>
-                      <ol className="mt-3 list-decimal space-y-0.5 pl-5 text-[12px] text-zinc-400">
+                      <p className="mt-1 text-sm leading-snug text-hcl-dark/80">{t.purpose}</p>
+                      <ol className="mt-3 list-decimal space-y-0.5 pl-5 text-[12px] text-hcl-dark/60">
                         {t.golden.map((step) => (
                           <li key={step}>{step}</li>
                         ))}
                       </ol>
-                      <p className="mt-3 rounded-md border border-emerald-700/30 bg-emerald-500/5 p-2 text-[11px] leading-snug text-emerald-200">
-                        <span className="font-semibold text-emerald-300">Hermes here:</span>{' '}
+                      <p className="mt-3 rounded-md border border-hcl-teal/20 bg-hcl-teal/5 p-2 text-[11px] leading-snug text-hcl-dark-teal">
+                        <span className="font-semibold text-hcl-teal">Hermes here:</span>{' '}
                         {t.hermes}
                       </p>
                     </div>
@@ -636,7 +636,7 @@ export default function Product() {
                   title: 'Browser',
                   body: 'React 19 + Vite + Tailwind. Connects via HTTPS + SSE.',
                   items: ['UI on :5173'],
-                  border: 'border-emerald-700/40',
+                  border: 'border-hcl-teal/30',
                 },
                 {
                   emoji: '🐳',
@@ -650,20 +650,20 @@ export default function Product() {
                   title: 'Host',
                   body: 'Anything that needs the GPU + Ollama. Long-lived processes.',
                   items: ['Trainer (MLX / CUDA)', 'Ratchet', 'Exporter', 'Ollama :11434'],
-                  border: 'border-amber-700/40',
+                  border: 'border-hcl-warning/40',
                 },
               ].map((stack) => (
                 <div
                   key={stack.title}
-                  className={`rounded-xl border ${stack.border} bg-zinc-900/40 p-5`}
+                  className={`rounded-xl border ${stack.border} bg-white p-5`}
                 >
                   <div className="text-3xl">{stack.emoji}</div>
                   <h3 className="mt-2 text-lg font-semibold">{stack.title}</h3>
-                  <p className="mt-1 text-sm text-zinc-400">{stack.body}</p>
-                  <ul className="mt-3 space-y-1 text-[12px] text-zinc-300">
+                  <p className="mt-1 text-sm text-hcl-dark/60">{stack.body}</p>
+                  <ul className="mt-3 space-y-1 text-[12px] text-hcl-dark/80">
                     {stack.items.map((it) => (
                       <li key={it} className="flex items-center gap-2">
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                        <span className="h-1.5 w-1.5 rounded-full bg-hcl-teal" />
                         {it}
                       </li>
                     ))}
@@ -685,18 +685,18 @@ export default function Product() {
               {SERVICES.map((svc) => (
                 <div
                   key={svc.name}
-                  className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 transition hover:border-zinc-700 hover:bg-zinc-900/60"
+                  className="rounded-xl border border-hcl-light-blue bg-white p-4 transition hover:border-hcl-teal/30 hover:bg-hcl-tech-grey/60"
                 >
                   <div className="flex items-center gap-2">
                     <div className="text-2xl">{svc.emoji}</div>
                     <div>
-                      <div className="text-sm font-semibold text-zinc-100">{svc.name}</div>
-                      <div className="text-[11px] uppercase tracking-wide text-emerald-300">
+                      <div className="text-sm font-semibold text-hcl-dark">{svc.name}</div>
+                      <div className="text-[11px] uppercase tracking-wide text-hcl-teal">
                         {svc.tagline}
                       </div>
                     </div>
                   </div>
-                  <p className="mt-2 text-[12px] leading-snug text-zinc-400">{svc.detail}</p>
+                  <p className="mt-2 text-[12px] leading-snug text-hcl-dark/60">{svc.detail}</p>
                 </div>
               ))}
             </div>
@@ -710,9 +710,9 @@ export default function Product() {
               title="Hermes / Ollama integration map."
               subtitle="Every place a Hermes skill earns its keep, in one table. Sorted by tab order."
             />
-            <div className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/40">
+            <div className="overflow-hidden rounded-xl border border-hcl-light-blue bg-white">
               <table className="w-full table-fixed text-left text-[12px]">
-                <thead className="bg-zinc-900 text-[10px] uppercase tracking-wide text-zinc-500">
+                <thead className="bg-hcl-dark-blue text-[10px] uppercase tracking-wide text-white">
                   <tr>
                     <th className="w-[22%] px-3 py-2">Where</th>
                     <th className="w-[20%] px-3 py-2">Skill</th>
@@ -724,12 +724,12 @@ export default function Product() {
                   {HERMES_MAP.map((row) => (
                     <tr
                       key={row.where}
-                      className="border-t border-zinc-800 align-top text-zinc-300 hover:bg-zinc-900/60"
+                      className="border-t border-hcl-light-blue align-top text-hcl-dark/80 hover:bg-hcl-tech-grey/60"
                     >
-                      <td className="px-3 py-2 font-medium text-emerald-200">{row.where}</td>
-                      <td className="px-3 py-2 font-mono text-[11px] text-amber-200">{row.skill}</td>
+                      <td className="px-3 py-2 font-medium text-hcl-dark-teal">{row.where}</td>
+                      <td className="px-3 py-2 font-mono text-[11px] text-hcl-warning">{row.skill}</td>
                       <td className="px-3 py-2">{row.user}</td>
-                      <td className="px-3 py-2 text-zinc-400">{row.backend}</td>
+                      <td className="px-3 py-2 text-hcl-dark/60">{row.backend}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -749,10 +749,10 @@ export default function Product() {
               {skillsSorted.map((s) => (
                 <div
                   key={s.name}
-                  className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3 transition hover:border-emerald-700/40 hover:bg-zinc-900/60"
+                  className="rounded-lg border border-hcl-light-blue bg-white p-3 transition hover:border-hcl-teal/30 hover:bg-hcl-tech-grey/60"
                 >
-                  <div className="font-mono text-[12px] text-amber-200">{s.name}</div>
-                  <p className="mt-1 text-[12px] text-zinc-400">{s.purpose}</p>
+                  <div className="font-mono text-[12px] text-hcl-warning">{s.name}</div>
+                  <p className="mt-1 text-[12px] text-hcl-dark/60">{s.purpose}</p>
                 </div>
               ))}
             </div>
@@ -783,21 +783,21 @@ export default function Product() {
               ].map((step, idx) => (
                 <li
                   key={step}
-                  className="flex items-start gap-3 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3"
+                  className="flex items-start gap-3 rounded-lg border border-hcl-light-blue bg-white p-3"
                 >
-                  <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-[11px] font-semibold text-emerald-300">
+                  <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-hcl-teal/15 text-[11px] font-semibold text-hcl-teal">
                     {idx + 1}
                   </span>
-                  <span className="text-[13px] text-zinc-300">{step}</span>
+                  <span className="text-[13px] text-hcl-dark/80">{step}</span>
                 </li>
               ))}
             </ol>
           </section>
 
           {/* ─── Footer ─────────────────────────────────────── */}
-          <footer className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 text-[12px] text-zinc-500">
-            Written guide: <code className="text-emerald-300">docs/SLM_FORGE_PRODUCT_GUIDE.md</code>.
-            Ultraplan: <code className="text-emerald-300">docs/ultra_plan_Hermes_hardning.md</code>.
+          <footer className="rounded-xl border border-hcl-light-blue bg-white p-5 text-[12px] text-hcl-dark/50">
+            Written guide: <code className="text-hcl-teal">docs/SLM_FORGE_PRODUCT_GUIDE.md</code>.
+            Ultraplan: <code className="text-hcl-teal">docs/ultra_plan_Hermes_hardning.md</code>.
             This page mirrors the guide section-for-section; the Markdown is the source of truth for
             anything in conflict.
           </footer>

@@ -3,9 +3,27 @@
 @tailwind utilities;
 
 :root {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
-    Ubuntu, Cantarell, sans-serif;
-  color-scheme: dark;
+  /* ── HCLSW Brand Colors ─────────────────────────────────────── */
+  --hcl-dark-teal: #17707F;
+  --hcl-software-teal: #2EC0CB;
+  --hcl-mid-teal: #36D6D9;
+  --hcl-light-teal: #AAFFFF;
+  --hcl-dark-blue: #0F5FDC;
+  --hcl-tech-blue: #3C91FF;
+  --hcl-mid-blue: #8AC6F8;
+  --hcl-light-blue: #DCE6F0;
+  --hcl-software-blue: #000032;
+  --hcl-tech-grey: #ECF3F8;
+  --hcl-dark: #14142B;
+  --hcl-bg: #F7F7FC;
+  --hcl-bg-alt: #F4F4F4;
+  --hcl-navy: #0B1D3A;
+  --hcl-gradient: linear-gradient(135deg, #0B1D3A 0%, #17707F 45%, #2EC0CB 85%, #36D6D9 100%);
+  --hcl-gradient-dark: linear-gradient(135deg, #0B1D3A 0%, #17707F 40%, #2EC0CB 70%, #36D6D9 100%);
+
+  /* ── Typography ─────────────────────────────────────────────── */
+  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+  color-scheme: light;
 }
 
 html, body, #root {
@@ -14,10 +32,31 @@ html, body, #root {
 
 body {
   margin: 0;
-  background: #09090b; /* zinc-950 */
-  color: #fafafa;      /* zinc-50  */
+  background: var(--hcl-bg);
+  color: var(--hcl-dark);
 }
 
 * {
   box-sizing: border-box;
+}
+
+/* ── Scrollbar styling ──────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--hcl-tech-grey);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--hcl-mid-blue);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--hcl-dark-teal);
+}
+
+/* ── Nav bar text shadow for legibility on gradient ────────────── */
+.nav-text-shadow {
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }

@@ -30,42 +30,42 @@ export default function LiveLossChart({ metrics }: Props) {
 
   if (data.length === 0) {
     return (
-      <div className="flex h-64 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900/40 text-sm text-zinc-500">
+      <div className="flex h-64 items-center justify-center rounded-lg border border-hcl-light-blue bg-white text-sm text-hcl-dark/50">
         Waiting for first metric…
       </div>
     );
   }
 
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
-      <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
+    <div className="rounded-lg border border-hcl-light-blue bg-white p-4">
+      <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-hcl-dark/50">
         Live loss
       </h3>
       <div className="h-72">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data} margin={{ top: 10, right: 16, left: 0, bottom: 8 }}>
-            <CartesianGrid stroke="#27272a" strokeDasharray="3 3" />
-            <XAxis dataKey="step" stroke="#71717a" tick={{ fontSize: 11, fontFamily: 'monospace' }} />
+            <CartesianGrid stroke="#DCE6F0" strokeDasharray="3 3" />
+            <XAxis dataKey="step" stroke="#17707F" tick={{ fontSize: 11, fontFamily: 'monospace' }} />
             <YAxis
-              stroke="#71717a"
+              stroke="#17707F"
               tick={{ fontSize: 11, fontFamily: 'monospace' }}
               domain={['auto', 'auto']}
             />
             <Tooltip
               contentStyle={{
-                backgroundColor: '#18181b',
-                border: '1px solid #3f3f46',
+                backgroundColor: '#F7F7FC',
+                border: '1px solid #DCE6F0',
                 fontSize: 12,
                 fontFamily: 'monospace',
               }}
-              labelStyle={{ color: '#a1a1aa' }}
+              labelStyle={{ color: '#17707F' }}
             />
             <Legend wrapperStyle={{ fontSize: 12, fontFamily: 'monospace' }} />
             <Line
               type="monotone"
               dataKey="train_loss"
               name="train"
-              stroke="#34d399"
+              stroke="#2EC0CB"
               dot={false}
               strokeWidth={2}
               isAnimationActive={false}

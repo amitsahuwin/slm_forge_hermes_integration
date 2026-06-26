@@ -31,10 +31,10 @@ type Props = {
 };
 
 const TONE: Record<NonNullable<Props['tone']>, string> = {
-  emerald: 'border-emerald-700 bg-emerald-900/40 text-emerald-200 hover:bg-emerald-800/50',
-  amber: 'border-amber-700 bg-amber-900/40 text-amber-100 hover:bg-amber-800/50',
-  rose: 'border-rose-700 bg-rose-900/40 text-rose-100 hover:bg-rose-800/50',
-  zinc: 'border-zinc-700 text-zinc-200 hover:bg-zinc-800',
+  emerald: 'border-hcl-teal/30 bg-hcl-teal/10 text-hcl-dark-teal hover:bg-hcl-dark-teal/30',
+  amber: 'border-hcl-warning/50 bg-hcl-warning/10 text-hcl-warning hover:bg-hcl-warning/10',
+  rose: 'border-hcl-error/50 bg-red-50 text-red-600 hover:bg-hcl-error/10',
+  zinc: 'border-hcl-teal/30 text-hcl-dark hover:bg-hcl-tech-grey',
 };
 
 /**
@@ -91,7 +91,7 @@ export default function HermesSkillButton({
       >
         {running ? 'Asking Hermes…' : `${emoji ? emoji + ' ' : ''}${label}`}
       </button>
-      {error && <span className="text-[11px] text-rose-400">{error}</span>}
+      {error && <span className="text-[11px] text-red-600">{error}</span>}
     </span>
   );
 }

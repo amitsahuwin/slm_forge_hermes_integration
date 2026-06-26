@@ -45,19 +45,19 @@ export default function Callback() {
   return (
     <div className="flex min-h-[60vh] items-center justify-center">
       {error ? (
-        <div className="max-w-md rounded-xl border border-red-900/60 bg-red-950/30 p-6 text-sm text-red-200">
+        <div className="max-w-md rounded-xl border border-hcl-error/30 bg-hcl-error/10 p-6 text-sm text-red-200">
           <div className="mb-2 font-semibold">Sign-in failed</div>
-          <div className="font-mono text-xs text-red-300/80">{error}</div>
+          <div className="font-mono text-xs text-hcl-error/80">{error}</div>
           <button
             onClick={() => navigate('/', { replace: true })}
-            className="mt-4 rounded-md border border-red-800 bg-red-900/40 px-3 py-1.5 text-xs hover:bg-red-900/60"
+            className="mt-4 rounded-md border border-hcl-error/40 bg-red-900/40 px-3 py-1.5 text-xs hover:bg-red-900/60"
           >
             Back to home
           </button>
         </div>
       ) : (
-        <div className="flex items-center gap-3 text-sm text-zinc-400">
-          <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-zinc-700 border-t-zinc-300" />
+        <div className="flex items-center gap-3 text-sm text-hcl-dark/60">
+          <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-hcl-teal/30 border-t-hcl-teal" />
           <span>Signing in…</span>
         </div>
       )}

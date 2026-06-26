@@ -230,14 +230,14 @@ export default function NewDatasetV2() {
     <div className="max-w-3xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">New Dataset</h1>
-        <p className="mt-1 text-sm text-zinc-500">
+        <p className="mt-1 text-sm text-hcl-dark/50">
           Pull data from any source. SLM-Forge will detect the format and, if
           needed, auto-convert it via Ollama into chat-style training records.
         </p>
       </div>
 
       {/* Source tabs */}
-      <div role="tablist" className="flex gap-1 rounded-xl border border-zinc-800 bg-zinc-900/40 p-1">
+      <div role="tablist" className="flex gap-1 rounded-xl border border-hcl-light-blue bg-white p-1">
         {(Object.keys(SOURCE_META) as SourceType[]).map((s) => {
           const active = s === source;
           return (
@@ -248,19 +248,19 @@ export default function NewDatasetV2() {
               onClick={() => setSource(s)}
               className={`flex-1 rounded-lg px-3 py-2 text-sm transition-colors ${
                 active
-                  ? 'bg-zinc-800 text-zinc-100'
-                  : 'text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200'
+                  ? 'bg-hcl-tech-grey text-hcl-dark'
+                  : 'text-hcl-dark/60 hover:bg-hcl-tech-grey/50 hover:text-hcl-dark'
               }`}
             >
               <div className="font-medium">{SOURCE_META[s].label}</div>
-              <div className="text-[10px] text-zinc-500">{SOURCE_META[s].sub}</div>
+              <div className="text-[10px] text-hcl-dark/50">{SOURCE_META[s].sub}</div>
             </button>
           );
         })}
       </div>
 
       {error && (
-        <div className="rounded-xl bg-rose-950/50 px-3 py-2 font-mono text-xs text-rose-300">
+        <div className="rounded-xl bg-red-50 px-3 py-2 font-mono text-xs text-red-600">
           {error}
         </div>
       )}
@@ -277,8 +277,8 @@ export default function NewDatasetV2() {
             onDrop={onDrop}
             className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-8 text-sm transition-colors ${
               dragOver
-                ? 'border-emerald-500 bg-emerald-950/30 text-emerald-200'
-                : 'border-zinc-800 bg-zinc-900/40 text-zinc-400 hover:border-zinc-700'
+                ? 'border-hcl-teal bg-hcl-teal/10 text-hcl-dark-teal'
+                : 'border-hcl-light-blue bg-white text-hcl-dark/60 hover:border-hcl-teal/30'
             }`}
           >
             <input
@@ -288,15 +288,15 @@ export default function NewDatasetV2() {
             />
             {file ? (
               <>
-                <span className="font-mono text-zinc-300">{file.name}</span>
-                <span className="mt-1 text-xs text-zinc-500">
+                <span className="font-mono text-hcl-dark/80">{file.name}</span>
+                <span className="mt-1 text-xs text-hcl-dark/50">
                   {(file.size / 1024).toFixed(1)} KB · click or drop to replace
                 </span>
               </>
             ) : (
               <>
                 <span>Drag a file here, or click to choose</span>
-                <span className="mt-1 text-xs text-zinc-500">10 MB max</span>
+                <span className="mt-1 text-xs text-hcl-dark/50">10 MB max</span>
               </>
             )}
           </label>
@@ -310,9 +310,9 @@ export default function NewDatasetV2() {
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://example.com/data.jsonl"
-            className="w-full rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm focus:border-emerald-600 focus:outline-none"
+            className="w-full rounded-xl border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-sm focus:border-hcl-teal focus:outline-none"
           />
-          <p className="mt-1 text-xs text-zinc-500">
+          <p className="mt-1 text-xs text-hcl-dark/50">
             10 MB max. Follows redirects. Use scrape mode for HTML pages.
           </p>
         </Field>
@@ -325,9 +325,9 @@ export default function NewDatasetV2() {
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://blog.example.com/post/title"
-            className="w-full rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm focus:border-emerald-600 focus:outline-none"
+            className="w-full rounded-xl border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-sm focus:border-hcl-teal focus:outline-none"
           />
-          <p className="mt-1 text-xs text-zinc-500">
+          <p className="mt-1 text-xs text-hcl-dark/50">
             Static HTML only. JS-rendered SPAs won't work — save the rendered
             page locally and use File upload instead.
           </p>
@@ -342,7 +342,7 @@ export default function NewDatasetV2() {
               value={s3Path}
               onChange={(e) => setS3Path(e.target.value)}
               placeholder="s3://my-bucket/path/to/data.jsonl"
-              className="w-full rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm focus:border-emerald-600 focus:outline-none"
+              className="w-full rounded-xl border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-sm focus:border-hcl-teal focus:outline-none"
             />
           </Field>
           <div className="grid grid-cols-2 gap-3">
@@ -352,7 +352,7 @@ export default function NewDatasetV2() {
                 value={s3Key}
                 onChange={(e) => setS3Key(e.target.value)}
                 placeholder="AKIA…"
-                className="w-full rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-xs focus:border-emerald-600 focus:outline-none"
+                className="w-full rounded-xl border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-xs focus:border-hcl-teal focus:outline-none"
               />
             </Field>
             <Field label="AWS secret key">
@@ -361,7 +361,7 @@ export default function NewDatasetV2() {
                 value={s3Secret}
                 onChange={(e) => setS3Secret(e.target.value)}
                 placeholder="••••••"
-                className="w-full rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-xs focus:border-emerald-600 focus:outline-none"
+                className="w-full rounded-xl border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-xs focus:border-hcl-teal focus:outline-none"
               />
             </Field>
           </div>
@@ -371,7 +371,7 @@ export default function NewDatasetV2() {
               value={s3Region}
               onChange={(e) => setS3Region(e.target.value)}
               placeholder="us-east-1"
-              className="w-full rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-xs focus:border-emerald-600 focus:outline-none"
+              className="w-full rounded-xl border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-xs focus:border-hcl-teal focus:outline-none"
             />
           </Field>
         </div>
@@ -383,10 +383,10 @@ export default function NewDatasetV2() {
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="my-domain-qa"
-          className="w-full rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm focus:border-emerald-600 focus:outline-none"
+          className="w-full rounded-xl border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-sm focus:border-hcl-teal focus:outline-none"
         />
         {name && !nameValid && (
-          <p className="mt-1 text-xs text-rose-400">
+          <p className="mt-1 text-xs text-red-600">
             Must start alphanumeric and contain only [a-z0-9-_].
           </p>
         )}
@@ -398,7 +398,7 @@ export default function NewDatasetV2() {
           <button
             onClick={() => void runPreview(forceOllama)}
             disabled={!canPreview}
-            className="rounded-xl border border-zinc-700 px-4 py-2 text-sm text-zinc-200 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-xl border border-hcl-teal/30 px-4 py-2 text-sm text-hcl-dark hover:bg-hcl-tech-grey disabled:cursor-not-allowed disabled:opacity-50"
           >
             {previewing ? 'Previewing…' : 'Preview'}
           </button>
@@ -407,7 +407,7 @@ export default function NewDatasetV2() {
 
       {sourceReady && (
         <Field label="Conversion">
-          <label className="flex items-center gap-2 text-sm text-zinc-300">
+          <label className="flex items-center gap-2 text-sm text-hcl-dark/80">
             <input
               type="checkbox"
               checked={forceOllama}
@@ -415,11 +415,11 @@ export default function NewDatasetV2() {
                 setForceOllama(e.target.checked);
                 if (preview) void runPreview(e.target.checked);
               }}
-              className="h-4 w-4 rounded border-zinc-700 bg-zinc-900 accent-emerald-500"
+              className="h-4 w-4 rounded border-hcl-teal/30 bg-hcl-tech-grey accent-hcl-teal"
             />
             <span>Force auto-convert via Ollama</span>
           </label>
-          <p className="mt-1 text-xs text-zinc-500">
+          <p className="mt-1 text-xs text-hcl-dark/50">
             On for messy text. Off when the source is already a known chat /
             prompt-completion format.
           </p>
@@ -427,19 +427,19 @@ export default function NewDatasetV2() {
       )}
 
       {status && (
-        <div className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/40 px-3 py-2 text-sm text-zinc-300">
-          <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
+        <div className="flex items-center gap-2 rounded-xl border border-hcl-light-blue bg-white px-3 py-2 text-sm text-hcl-dark/80">
+          <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-hcl-teal" />
           {status}
         </div>
       )}
 
       {preview && (
-        <section className="space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
+        <section className="space-y-3 rounded-xl border border-hcl-light-blue bg-white p-4">
           <div className="flex items-baseline justify-between">
-            <h3 className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+            <h3 className="text-xs font-medium uppercase tracking-wider text-hcl-dark/50">
               Preview
             </h3>
-            <div className="font-mono text-xs text-zinc-500">
+            <div className="font-mono text-xs text-hcl-dark/50">
               {preview.total_records} record
               {preview.total_records === 1 ? '' : 's'} · {preview.format} ·{' '}
               {preview.conversion}
@@ -453,7 +453,7 @@ export default function NewDatasetV2() {
           </div>
 
           {preview.warnings.length > 0 && (
-            <ul className="space-y-1 rounded-md bg-amber-950/30 px-3 py-2 text-xs text-amber-300">
+            <ul className="space-y-1 rounded-md bg-hcl-warning/10 px-3 py-2 text-xs text-hcl-warning">
               {preview.warnings.map((w, i) => (
                 <li key={i}>{w}</li>
               ))}
@@ -462,9 +462,9 @@ export default function NewDatasetV2() {
 
           {/* Phase N.4 — auto_label_unlabeled hint for raw text */}
           {(preview.format === 'plain_text' || preview.format === 'markdown') && (
-            <div className="rounded-md bg-sky-950/30 px-3 py-2 text-xs text-sky-300">
+            <div className="rounded-md bg-hcl-info/10 px-3 py-2 text-xs text-hcl-info">
               💡 This is raw text. For chat-style fine-tuning, the{' '}
-              <code className="rounded bg-zinc-800 px-1 py-0.5 font-mono text-[10px]">
+              <code className="rounded bg-hcl-tech-grey px-1 py-0.5 font-mono text-[10px]">
                 auto_label_unlabeled
               </code>{' '}
               Hermes skill invents plausible user prompts and pairs them with each
@@ -475,11 +475,11 @@ export default function NewDatasetV2() {
 
           {preview.sample_records.length > 0 && (
             <div>
-              <p className="mb-1 text-xs uppercase tracking-wider text-zinc-500">
+              <p className="mb-1 text-xs uppercase tracking-wider text-hcl-dark/50">
                 First {preview.sample_records.length} record
                 {preview.sample_records.length === 1 ? '' : 's'}
               </p>
-              <pre className="max-h-64 overflow-auto rounded-md bg-zinc-950 p-3 font-mono text-xs text-zinc-300">
+              <pre className="max-h-64 overflow-auto rounded-md bg-hcl-bg p-3 font-mono text-xs text-hcl-dark/80">
                 {preview.sample_records
                   .map((r) => JSON.stringify(r, null, 2))
                   .join('\n\n')}
@@ -492,14 +492,14 @@ export default function NewDatasetV2() {
       <div className="flex items-center gap-3">
         <button
           onClick={() => navigate('/datasets')}
-          className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800"
+          className="rounded-xl border border-hcl-light-blue bg-hcl-tech-grey px-4 py-2 text-sm text-hcl-dark/80 hover:bg-hcl-tech-grey"
         >
           ← Cancel
         </button>
         <button
           onClick={onCreate}
           disabled={!canSubmit}
-          className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-zinc-700"
+          className="rounded-xl bg-hcl-dark-teal px-4 py-2 text-sm font-medium text-white hover:bg-hcl-teal disabled:cursor-not-allowed disabled:bg-hcl-light-blue"
         >
           {submitting ? 'Creating…' : 'Create dataset'}
         </button>
@@ -519,7 +519,7 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-zinc-500">
+      <span className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-hcl-dark/50">
         {label}
       </span>
       {children}
@@ -529,9 +529,9 @@ function Field({
 
 function Stat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2">
-      <div className="font-mono text-lg text-zinc-100">{value}</div>
-      <div className="text-xs uppercase tracking-wider text-zinc-500">{label}</div>
+    <div className="rounded-md border border-hcl-light-blue bg-hcl-bg px-3 py-2">
+      <div className="font-mono text-lg text-hcl-dark">{value}</div>
+      <div className="text-xs uppercase tracking-wider text-hcl-dark/50">{label}</div>
     </div>
   );
 }

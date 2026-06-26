@@ -65,20 +65,20 @@ export default function RatchetTimeline({ iterations, targetMetric }: Props) {
 
   if (data.length === 0) {
     return (
-      <div className="flex h-72 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900/40 text-sm text-zinc-500">
+      <div className="flex h-72 items-center justify-center rounded-lg border border-hcl-light-blue bg-white text-sm text-hcl-dark/50">
         Ratchet graph appears once iteration 0 completes…
       </div>
     );
   }
 
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
+    <div className="rounded-lg border border-hcl-light-blue bg-white p-4">
       <div className="mb-3 flex items-baseline justify-between">
-        <h3 className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+        <h3 className="text-xs font-medium uppercase tracking-wider text-hcl-dark/50">
           Ratchet timeline
         </h3>
         <div className="flex items-center gap-4 font-mono text-xs">
-          <span className="text-zinc-500">Y: {targetMetric}</span>
+          <span className="text-hcl-dark/50">Y: {targetMetric}</span>
           <Legend dot="emerald" label="accepted" />
           <Legend dot="rose" label="rejected" />
           <Legend dot="amber" label="error" />
@@ -87,17 +87,17 @@ export default function RatchetTimeline({ iterations, targetMetric }: Props) {
       <div className="h-80">
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={data} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
-            <CartesianGrid stroke="#27272a" strokeDasharray="3 3" />
+            <CartesianGrid stroke="#DCE6F0" strokeDasharray="3 3" />
             <XAxis
               dataKey="iter"
               type="number"
               domain={[0, 'dataMax']}
-              stroke="#71717a"
+              stroke="#17707F"
               tick={{ fontSize: 11, fontFamily: 'monospace' }}
-              label={{ value: 'iteration', position: 'insideBottom', offset: -5, fontSize: 11, fill: '#71717a' }}
+              label={{ value: 'iteration', position: 'insideBottom', offset: -5, fontSize: 11, fill: '#17707F' }}
             />
             <YAxis
-              stroke="#71717a"
+              stroke="#17707F"
               tick={{ fontSize: 11, fontFamily: 'monospace' }}
               domain={['auto', 'auto']}
             />
@@ -105,13 +105,13 @@ export default function RatchetTimeline({ iterations, targetMetric }: Props) {
             <Line
               type="stepAfter"
               dataKey="ratchet"
-              stroke="#34d399"
+              stroke="#2EC0CB"
               strokeWidth={2.5}
               dot={false}
               connectNulls
               isAnimationActive={false}
             />
-            <Scatter dataKey="accepted" fill="#34d399" shape="circle" />
+            <Scatter dataKey="accepted" fill="#2EC0CB" shape="circle" />
             <Scatter dataKey="rejected" fill="#fb7185" shape="cross" />
             <Scatter dataKey="errored" fill="#fbbf24" shape="triangle" />
           </ComposedChart>
@@ -123,9 +123,9 @@ export default function RatchetTimeline({ iterations, targetMetric }: Props) {
 
 function Legend({ dot, label }: { dot: string; label: string }) {
   const color =
-    dot === 'emerald' ? 'bg-emerald-400' : dot === 'rose' ? 'bg-rose-400' : 'bg-amber-400';
+    dot === 'emerald' ? 'bg-hcl-teal' : dot === 'rose' ? 'bg-red-400' : 'bg-hcl-warning';
   return (
-    <span className="flex items-center gap-1.5 text-zinc-400">
+    <span className="flex items-center gap-1.5 text-hcl-dark/60">
       <span className={`inline-block h-2 w-2 rounded-full ${color}`} />
       {label}
     </span>
@@ -138,12 +138,12 @@ function RatchetTooltip({ active, payload }: { active?: boolean; payload?: { pay
   const status =
     p.accepted !== null ? 'accepted' : p.rejected !== null ? 'rejected' : 'errored';
   return (
-    <div className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 font-mono text-xs">
-      <div className="text-zinc-100">iter #{p.iter} · {status}</div>
-      <div className="mt-1 text-zinc-400">metric = {p.metric?.toFixed(4) ?? '—'}</div>
-      <div className="text-zinc-500">lr={p.lr.toExponential(1)} · bs={p.batch_size} · layers={p.num_layers} · it={p.iters}</div>
+    <div className="rounded-md border border-hcl-teal/30 bg-hcl-tech-grey px-3 py-2 font-mono text-xs">
+      <div className="text-hcl-dark">iter #{p.iter} · {status}</div>
+      <div className="mt-1 text-hcl-dark/60">metric = {p.metric?.toFixed(4) ?? '—'}</div>
+      <div className="text-hcl-dark/50">lr={p.lr.toExponential(1)} · bs={p.batch_size} · layers={p.num_layers} · it={p.iters}</div>
       {p.reasoning && (
-        <div className="mt-2 max-w-xs whitespace-normal text-zinc-300">"{p.reasoning}"</div>
+        <div className="mt-2 max-w-xs whitespace-normal text-hcl-dark/80">"{p.reasoning}"</div>
       )}
     </div>
   );

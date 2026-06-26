@@ -91,7 +91,7 @@ export default function NewRun() {
   }
 
   if (loadError) {
-    return <div className="rounded-md bg-rose-950/50 px-3 py-2 text-sm text-rose-300">{loadError}</div>;
+    return <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">{loadError}</div>;
   }
 
   const backendTip = BACKEND_OPTIONS.find((b) => b.value === backend)?.tip ?? '';
@@ -100,7 +100,7 @@ export default function NewRun() {
     <div className="max-w-2xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">New Run</h1>
-        <p className="mt-1 text-sm text-zinc-500">{backendTip}</p>
+        <p className="mt-1 text-sm text-hcl-dark/50">{backendTip}</p>
       </div>
 
       <form onSubmit={onSubmit} className="space-y-5">
@@ -108,7 +108,7 @@ export default function NewRun() {
           <select
             value={backend ?? ''}
             onChange={(e) => onBackendChange(e.target.value as TrainerBackendName)}
-            className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm"
+            className="w-full rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-sm"
           >
             {BACKEND_OPTIONS.map((b) => (
               <option key={b.value} value={b.value}>
@@ -122,7 +122,7 @@ export default function NewRun() {
           <select
             value={dataset}
             onChange={(e) => setDataset(e.target.value)}
-            className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm"
+            className="w-full rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-sm"
           >
             {datasets.length === 0 ? (
               <option value="">— none found; run `make seed-data` —</option>
@@ -140,7 +140,7 @@ export default function NewRun() {
           <select
             value={baseModel}
             onChange={(e) => setBaseModel(e.target.value)}
-            className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm"
+            className="w-full rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-sm"
           >
             {backendModels.map((m) => {
               const v = m.backends[backend!]!;
@@ -154,15 +154,15 @@ export default function NewRun() {
             })}
           </select>
           {selected && (
-            <div className="mt-1.5 space-y-0.5 text-xs text-zinc-500">
+            <div className="mt-1.5 space-y-0.5 text-xs text-hcl-dark/50">
               <p>
-                <span className="font-mono text-zinc-400">{selected.variant.model_id}</span>
+                <span className="font-mono text-hcl-dark/60">{selected.variant.model_id}</span>
                 {' · needs ≥ '}
                 {selected.variant.min_memory_gb} GB
                 {' · '}
                 <StatusBadge status={selected.variant.status} />
                 {selected.variant.gated && (
-                  <span className="ml-1.5 rounded bg-amber-950/60 px-1.5 py-0.5 text-[10px] font-medium uppercase text-amber-400">
+                  <span className="ml-1.5 rounded bg-hcl-warning/10 px-1.5 py-0.5 text-[10px] font-medium uppercase text-hcl-warning">
                     🔒 gated
                   </span>
                 )}
@@ -177,7 +177,7 @@ export default function NewRun() {
             <select
               value={method}
               onChange={(e) => setMethod(e.target.value as RunMethod)}
-              className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm"
+              className="w-full rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-sm"
             >
               <option value="lora">LoRA</option>
               <option value="dora">DoRA</option>
@@ -199,7 +199,7 @@ export default function NewRun() {
         </div>
 
         {submitError && (
-          <div className="rounded-md bg-rose-950/50 px-3 py-2 text-sm text-rose-300">
+          <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">
             {submitError}
           </div>
         )}
@@ -207,7 +207,7 @@ export default function NewRun() {
         <button
           type="submit"
           disabled={submitting || !dataset || !baseModel}
-          className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-zinc-700"
+          className="rounded-md bg-hcl-dark-teal px-4 py-2 text-sm font-medium text-white hover:bg-hcl-teal disabled:cursor-not-allowed disabled:bg-hcl-light-blue"
         >
           {submitting ? 'Starting…' : 'Start training'}
         </button>
@@ -218,9 +218,9 @@ export default function NewRun() {
 
 function StatusBadge({ status }: { status: 'stable' | 'untested' | 'broken' }) {
   const styles: Record<string, string> = {
-    stable: 'bg-emerald-950/60 text-emerald-400',
-    untested: 'bg-amber-950/60 text-amber-400',
-    broken: 'bg-rose-950/60 text-rose-400',
+    stable: 'bg-hcl-teal/10 text-hcl-teal',
+    untested: 'bg-hcl-warning/10 text-hcl-warning',
+    broken: 'bg-red-50 text-red-600',
   };
   return (
     <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium uppercase ${styles[status]}`}>
@@ -232,7 +232,7 @@ function StatusBadge({ status }: { status: 'stable' | 'untested' | 'broken' }) {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-zinc-500">
+      <span className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-hcl-dark/50">
         {label}
       </span>
       {children}
@@ -253,7 +253,7 @@ function Number({
       type="number"
       value={value}
       onChange={(e) => onChange(parseFloat(e.target.value))}
-      className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm"
+      className="w-full rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-sm"
       {...rest}
     />
   );

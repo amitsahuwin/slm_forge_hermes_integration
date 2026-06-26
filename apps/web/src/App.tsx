@@ -28,7 +28,7 @@ export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <div className="min-h-screen bg-zinc-950 text-zinc-100">
+        <div className="min-h-screen bg-hcl-bg text-hcl-dark">
           <Nav />
           <main className="mx-auto max-w-7xl px-8 py-10">
             <Routes>

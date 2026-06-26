@@ -117,8 +117,8 @@ export default function DatasetDetail() {
   }
 
   if (error)
-    return <div className="rounded-md bg-rose-950/50 px-3 py-2 text-sm text-rose-300">{error}</div>;
-  if (!detail) return <div className="text-sm text-zinc-500">Loading dataset {name}…</div>;
+    return <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>;
+  if (!detail) return <div className="text-sm text-hcl-dark/50">Loading dataset {name}…</div>;
 
   const showFrom = rows ? (rows.total === 0 ? 0 : rows.offset + 1) : 0;
   const showTo = rows ? Math.min(rows.offset + rows.rows.length, rows.total) : 0;
@@ -130,14 +130,14 @@ export default function DatasetDetail() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <Link to="/datasets" className="text-xs text-zinc-500 hover:text-emerald-400">
+          <Link to="/datasets" className="text-xs text-hcl-dark/50 hover:text-hcl-teal">
             ← all datasets
           </Link>
           <h1 className="mt-2 font-mono text-2xl font-semibold tracking-tight">
             {detail.name}
           </h1>
           {detail.description && (
-            <p className="mt-1 text-sm text-zinc-400">{detail.description}</p>
+            <p className="mt-1 text-sm text-hcl-dark/60">{detail.description}</p>
           )}
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <HermesSkillButton
@@ -183,19 +183,19 @@ export default function DatasetDetail() {
 
       {/* Phase N.4 — quality report */}
       {(quality || qualityRaw) && (
-        <section className="rounded-lg border border-amber-700/40 bg-amber-950/20 p-4 space-y-3 text-xs">
+        <section className="rounded-lg border border-hcl-warning/40 bg-hcl-warning/10 p-4 space-y-3 text-xs">
           <div className="flex items-baseline justify-between">
-            <h3 className="font-medium uppercase tracking-wider text-amber-300">
+            <h3 className="font-medium uppercase tracking-wider text-hcl-warning">
               🔬 Data quality review
             </h3>
             {quality?.overall_health && (
               <span
                 className={`rounded-full px-2 py-0.5 font-mono ${
                   quality.overall_health === 'good'
-                    ? 'bg-emerald-900/40 text-emerald-300'
+                    ? 'bg-hcl-teal/10 text-hcl-teal'
                     : quality.overall_health === 'fair'
-                    ? 'bg-amber-900/40 text-amber-300'
-                    : 'bg-rose-900/40 text-rose-300'
+                    ? 'bg-hcl-warning/10 text-hcl-warning'
+                    : 'bg-red-50 text-red-600'
                 }`}
               >
                 {quality.overall_health}
@@ -203,54 +203,54 @@ export default function DatasetDetail() {
             )}
           </div>
           {quality?.summary && (
-            <p className="italic text-zinc-300">{quality.summary}</p>
+            <p className="italic text-hcl-dark/80">{quality.summary}</p>
           )}
           {quality?.issues?.length ? (
             <ul className="space-y-2">
               {quality.issues.map((it, i) => (
                 <li
                   key={i}
-                  className="rounded-md bg-zinc-950 px-3 py-2"
+                  className="rounded-md bg-hcl-bg px-3 py-2"
                 >
                   <div className="flex items-baseline gap-2">
                     <span
                       className={`rounded px-1.5 py-0.5 font-mono text-[10px] ${
                         it.severity === 'high'
-                          ? 'bg-rose-900/50 text-rose-300'
+                          ? 'bg-red-50 text-red-600'
                           : it.severity === 'medium'
-                          ? 'bg-amber-900/50 text-amber-300'
-                          : 'bg-zinc-800 text-zinc-400'
+                          ? 'bg-hcl-warning/10 text-hcl-warning'
+                          : 'bg-hcl-tech-grey text-hcl-dark/60'
                       }`}
                     >
                       {it.severity}
                     </span>
-                    <span className="font-mono text-zinc-400">{it.kind}</span>
+                    <span className="font-mono text-hcl-dark/60">{it.kind}</span>
                     {it.affected_count != null && (
-                      <span className="text-zinc-500">· {it.affected_count} affected</span>
+                      <span className="text-hcl-dark/50">· {it.affected_count} affected</span>
                     )}
                   </div>
-                  <div className="mt-1 text-zinc-300">{it.description}</div>
+                  <div className="mt-1 text-hcl-dark/80">{it.description}</div>
                   {it.fix && (
-                    <div className="mt-1 text-emerald-300">→ {it.fix}</div>
+                    <div className="mt-1 text-hcl-teal">→ {it.fix}</div>
                   )}
                 </li>
               ))}
             </ul>
           ) : qualityRaw ? (
-            <pre className="whitespace-pre-wrap font-mono text-[11px] text-zinc-300">
+            <pre className="whitespace-pre-wrap font-mono text-[11px] text-hcl-dark/80">
               {qualityRaw}
             </pre>
           ) : (
-            <p className="text-zinc-500">No issues reported.</p>
+            <p className="text-hcl-dark/50">No issues reported.</p>
           )}
         </section>
       )}
 
       {/* Phase N.4 — proposed canary set */}
       {(canary || canaryRaw) && (
-        <section className="rounded-lg border border-emerald-700/40 bg-emerald-950/15 p-4 space-y-3 text-xs">
+        <section className="rounded-lg border border-hcl-teal/30 bg-hcl-teal/5 p-4 space-y-3 text-xs">
           <div className="flex items-baseline justify-between">
-            <h3 className="font-medium uppercase tracking-wider text-emerald-300">
+            <h3 className="font-medium uppercase tracking-wider text-hcl-teal">
               🎯 Proposed canary set
             </h3>
             {canary?.canary?.length ? (
@@ -258,7 +258,7 @@ export default function DatasetDetail() {
                 type="button"
                 onClick={saveCanary}
                 disabled={savingCanary}
-                className="rounded border border-emerald-700 bg-emerald-900/40 px-2 py-1 text-emerald-100 hover:bg-emerald-800/50 disabled:opacity-50"
+                className="rounded border border-hcl-teal/30 bg-hcl-teal/10 px-2 py-1 text-hcl-dark-teal hover:bg-hcl-dark-teal/30 disabled:opacity-50"
               >
                 {savingCanary
                   ? 'Saving…'
@@ -270,8 +270,8 @@ export default function DatasetDetail() {
             <div
               className={`rounded px-3 py-2 ${
                 canarySaveResult.startsWith('Save failed')
-                  ? 'bg-rose-950/50 text-rose-300'
-                  : 'bg-emerald-950/50 text-emerald-200'
+                  ? 'bg-red-50 text-red-600'
+                  : 'bg-hcl-teal/10 text-hcl-dark-teal'
               }`}
             >
               {canarySaveResult}
@@ -280,18 +280,18 @@ export default function DatasetDetail() {
           {canary?.canary?.length ? (
             <ol className="space-y-2">
               {canary.canary.map((r, i) => (
-                <li key={i} className="rounded-md bg-zinc-950 px-3 py-2">
-                  <pre className="max-h-32 overflow-auto whitespace-pre-wrap font-mono text-[11px] text-zinc-300">
+                <li key={i} className="rounded-md bg-hcl-bg px-3 py-2">
+                  <pre className="max-h-32 overflow-auto whitespace-pre-wrap font-mono text-[11px] text-hcl-dark/80">
                     {JSON.stringify(r, null, 2)}
                   </pre>
                   {canary.rationale?.[i] && (
-                    <p className="mt-1 italic text-zinc-400">{canary.rationale[i]}</p>
+                    <p className="mt-1 italic text-hcl-dark/60">{canary.rationale[i]}</p>
                   )}
                 </li>
               ))}
             </ol>
           ) : canaryRaw ? (
-            <pre className="whitespace-pre-wrap font-mono text-[11px] text-zinc-300">
+            <pre className="whitespace-pre-wrap font-mono text-[11px] text-hcl-dark/80">
               {canaryRaw}
             </pre>
           ) : null}
@@ -313,8 +313,8 @@ export default function DatasetDetail() {
       </section>
 
       {detail.readme_markdown && (
-        <section className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
-          <h2 className="mb-3 font-mono text-xs uppercase tracking-wider text-zinc-500">
+        <section className="rounded-lg border border-hcl-light-blue bg-white p-4">
+          <h2 className="mb-3 font-mono text-xs uppercase tracking-wider text-hcl-dark/50">
             README
           </h2>
           <div className="prose prose-invert prose-sm max-w-none">
@@ -324,7 +324,7 @@ export default function DatasetDetail() {
       )}
 
       <section>
-        <div className="flex items-center gap-6 border-b border-zinc-800">
+        <div className="flex items-center gap-6 border-b border-hcl-light-blue">
           <TabButton active={split === 'train'} onClick={() => switchSplit('train')}>
             Train ({detail.train_count})
           </TabButton>
@@ -340,15 +340,15 @@ export default function DatasetDetail() {
 
         <div className="mt-4 space-y-3">
           {rowsError && (
-            <div className="rounded-md bg-rose-950/50 px-3 py-2 text-sm text-rose-300">
+            <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">
               {rowsError}
             </div>
           )}
           {rows === null && !rowsError && (
-            <div className="text-sm text-zinc-500">Loading rows…</div>
+            <div className="text-sm text-hcl-dark/50">Loading rows…</div>
           )}
           {rows && rows.rows.length === 0 && (
-            <div className="rounded-lg border border-dashed border-zinc-800 px-6 py-10 text-center text-sm text-zinc-500">
+            <div className="rounded-lg border border-dashed border-hcl-light-blue px-6 py-10 text-center text-sm text-hcl-dark/50">
               No rows in this split.
             </div>
           )}
@@ -360,7 +360,7 @@ export default function DatasetDetail() {
 
         {rows && rows.total > 0 && (
           <div className="mt-5 flex items-center justify-between">
-            <div className="font-mono text-xs text-zinc-500">
+            <div className="font-mono text-xs text-hcl-dark/50">
               Showing {showFrom.toLocaleString()}–{showTo.toLocaleString()} of{' '}
               {total.toLocaleString()}
             </div>
@@ -369,7 +369,7 @@ export default function DatasetDetail() {
                 type="button"
                 disabled={!canPrev}
                 onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
-                className="rounded-md border border-zinc-800 bg-zinc-900/40 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+                className="rounded-md border border-hcl-light-blue bg-white px-3 py-1.5 text-xs text-hcl-dark/80 hover:bg-hcl-tech-grey disabled:cursor-not-allowed disabled:opacity-40"
               >
                 ← Prev
               </button>
@@ -377,7 +377,7 @@ export default function DatasetDetail() {
                 type="button"
                 disabled={!canNext}
                 onClick={() => setOffset(offset + PAGE_SIZE)}
-                className="rounded-md border border-zinc-800 bg-zinc-900/40 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+                className="rounded-md border border-hcl-light-blue bg-white px-3 py-1.5 text-xs text-hcl-dark/80 hover:bg-hcl-tech-grey disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Next →
               </button>
@@ -401,10 +401,10 @@ function Stat({
   hint?: string;
 }) {
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 px-3 py-2.5">
-      <div className="font-mono text-xs text-zinc-500">{label}</div>
-      <div className="mt-1 font-mono text-lg tabular-nums text-zinc-100">{value}</div>
-      {hint && <div className="mt-0.5 font-mono text-[10px] text-zinc-600">{hint}</div>}
+    <div className="rounded-lg border border-hcl-light-blue bg-white px-3 py-2.5">
+      <div className="font-mono text-xs text-hcl-dark/50">{label}</div>
+      <div className="mt-1 font-mono text-lg tabular-nums text-hcl-dark">{value}</div>
+      {hint && <div className="mt-0.5 font-mono text-[10px] text-hcl-dark/40">{hint}</div>}
     </div>
   );
 }
@@ -424,8 +424,8 @@ function TabButton({
       onClick={onClick}
       className={`-mb-px border-b-2 px-1 pb-2.5 font-mono text-sm transition-colors ${
         active
-          ? 'border-emerald-500 text-emerald-300'
-          : 'border-transparent text-zinc-500 hover:text-zinc-300'
+          ? 'border-hcl-teal text-hcl-teal'
+          : 'border-transparent text-hcl-dark/50 hover:text-hcl-dark/80'
       }`}
     >
       {children}
@@ -448,10 +448,10 @@ function isChatRow(row: Record<string, unknown>): row is { messages: ChatMessage
 }
 
 function roleColor(role: string): string {
-  if (role === 'user') return 'text-emerald-400';
-  if (role === 'assistant') return 'text-sky-400';
-  if (role === 'system') return 'text-zinc-400';
-  return 'text-zinc-500';
+  if (role === 'user') return 'text-hcl-teal';
+  if (role === 'assistant') return 'text-hcl-info';
+  if (role === 'system') return 'text-hcl-dark/60';
+  return 'text-hcl-dark/50';
 }
 
 function RowCard({ row, index }: { row: Record<string, unknown>; index: number }) {
@@ -459,15 +459,15 @@ function RowCard({ row, index }: { row: Record<string, unknown>; index: number }
   const chat = isChatRow(row) ? row.messages : null;
 
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
+    <div className="rounded-lg border border-hcl-light-blue bg-white p-3">
       <div className="mb-2 flex items-center justify-between">
-        <div className="font-mono text-[10px] uppercase tracking-wider text-zinc-600">
+        <div className="font-mono text-[10px] uppercase tracking-wider text-hcl-dark/40">
           #{index}
         </div>
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="font-mono text-[10px] text-zinc-500 hover:text-emerald-400"
+          className="font-mono text-[10px] text-hcl-dark/50 hover:text-hcl-teal"
         >
           {expanded ? 'show less' : 'show more'}
         </button>
@@ -477,13 +477,13 @@ function RowCard({ row, index }: { row: Record<string, unknown>; index: number }
           {chat.map((m, i) => (
             <div key={i} className="font-mono text-xs">
               <span className={`font-semibold ${roleColor(m.role)}`}>{m.role}: </span>
-              <span className="whitespace-pre-wrap text-zinc-300">{m.content}</span>
+              <span className="whitespace-pre-wrap text-hcl-dark/80">{m.content}</span>
             </div>
           ))}
         </div>
       ) : (
         <pre
-          className={`whitespace-pre-wrap font-mono text-xs text-zinc-300 ${
+          className={`whitespace-pre-wrap font-mono text-xs text-hcl-dark/80 ${
             expanded ? '' : 'max-h-32 overflow-hidden'
           }`}
         >
@@ -508,7 +508,7 @@ function MiniMarkdown({ source }: { source: string }) {
           return (
             <pre
               key={i}
-              className="overflow-x-auto rounded-md border border-zinc-800 bg-zinc-950/60 p-3 font-mono text-xs text-zinc-300"
+              className="overflow-x-auto rounded-md border border-hcl-light-blue bg-hcl-bg/60 p-3 font-mono text-xs text-hcl-dark/80"
             >
               {b.text}
             </pre>
@@ -516,7 +516,7 @@ function MiniMarkdown({ source }: { source: string }) {
         }
         if (b.type === 'heading') {
           const sizes = ['text-xl', 'text-lg', 'text-base', 'text-sm', 'text-sm', 'text-sm'];
-          const cls = `mt-3 mb-2 font-semibold text-zinc-100 ${sizes[b.level - 1] ?? 'text-sm'}`;
+          const cls = `mt-3 mb-2 font-semibold text-hcl-dark ${sizes[b.level - 1] ?? 'text-sm'}`;
           if (b.level === 1) return <h1 key={i} className={cls}>{renderInline(b.text)}</h1>;
           if (b.level === 2) return <h2 key={i} className={cls}>{renderInline(b.text)}</h2>;
           if (b.level === 3) return <h3 key={i} className={cls}>{renderInline(b.text)}</h3>;
@@ -526,7 +526,7 @@ function MiniMarkdown({ source }: { source: string }) {
         }
         // paragraph
         return (
-          <p key={i} className="my-2 text-sm leading-relaxed text-zinc-300">
+          <p key={i} className="my-2 text-sm leading-relaxed text-hcl-dark/80">
             {b.lines.map((ln, j) => (
               <span key={j}>
                 {renderInline(ln)}
@@ -603,7 +603,7 @@ function renderInline(text: string): React.ReactNode[] {
     const tok = m[0];
     if (tok.startsWith('**')) {
       nodes.push(
-        <strong key={`k${key++}`} className="font-semibold text-zinc-100">
+        <strong key={`k${key++}`} className="font-semibold text-hcl-dark">
           {tok.slice(2, -2)}
         </strong>,
       );
@@ -611,7 +611,7 @@ function renderInline(text: string): React.ReactNode[] {
       nodes.push(
         <code
           key={`k${key++}`}
-          className="rounded bg-zinc-800 px-1 py-0.5 font-mono text-xs text-emerald-300"
+          className="rounded bg-hcl-tech-grey px-1 py-0.5 font-mono text-xs text-hcl-teal"
         >
           {tok.slice(1, -1)}
         </code>,

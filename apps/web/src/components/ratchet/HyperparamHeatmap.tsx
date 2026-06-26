@@ -12,7 +12,7 @@ const PARAMS: { key: keyof Run; label: string; format: (v: number) => string }[]
 ];
 
 function colorForChange(prev: number | undefined, curr: number): string {
-  if (prev === undefined || prev === curr) return '#27272a'; // zinc-800 (unchanged)
+  if (prev === undefined || prev === curr) return '#DCE6F0'; // hcl-light-blue (unchanged)
   const ratio = curr / prev;
   if (ratio > 1) {
     // increased — blue intensity
@@ -43,8 +43,8 @@ export default function HyperparamHeatmap({ iterations }: Props) {
   const height = headerH + PARAMS.length * cellH;
 
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
-      <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
+    <div className="rounded-lg border border-hcl-light-blue bg-white p-4">
+      <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-hcl-dark/50">
         Hyperparameter changes per iteration
       </h3>
       <div className="overflow-x-auto">
@@ -57,7 +57,7 @@ export default function HyperparamHeatmap({ iterations }: Props) {
               y={headerH - 6}
               textAnchor="middle"
               fontSize="11"
-              fill="#71717a"
+              fill="#17707F"
             >
               #{it.iteration_number ?? i}
             </text>
@@ -66,7 +66,7 @@ export default function HyperparamHeatmap({ iterations }: Props) {
           {/* Rows */}
           {PARAMS.map((param, rowIdx) => (
             <g key={param.key as string} transform={`translate(0, ${headerH + rowIdx * cellH})`}>
-              <text x={labelW - 8} y={cellH / 2 + 4} textAnchor="end" fontSize="11" fill="#a1a1aa">
+              <text x={labelW - 8} y={cellH / 2 + 4} textAnchor="end" fontSize="11" fill="#17707F">
                 {param.label}
               </text>
               {sorted.map((it, colIdx) => {
@@ -75,13 +75,13 @@ export default function HyperparamHeatmap({ iterations }: Props) {
                 const fill = colorForChange(prev, curr);
                 return (
                   <g key={colIdx} transform={`translate(${labelW + colIdx * cellW}, 0)`}>
-                    <rect width={cellW - 2} height={cellH - 2} fill={fill} stroke="#18181b" />
+                    <rect width={cellW - 2} height={cellH - 2} fill={fill} stroke="#F7F7FC" />
                     <text
                       x={cellW / 2 - 1}
                       y={cellH / 2 + 4}
                       textAnchor="middle"
                       fontSize="10"
-                      fill="#fafafa"
+                      fill="#14142B"
                     >
                       {param.format(curr)}
                     </text>
@@ -92,7 +92,7 @@ export default function HyperparamHeatmap({ iterations }: Props) {
           ))}
         </svg>
       </div>
-      <div className="mt-2 flex items-center gap-4 font-mono text-xs text-zinc-500">
+      <div className="mt-2 flex items-center gap-4 font-mono text-xs text-hcl-dark/50">
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-3 w-3 rounded-sm" style={{ background: 'rgba(96, 165, 250, 0.7)' }} />
           increased
@@ -102,7 +102,7 @@ export default function HyperparamHeatmap({ iterations }: Props) {
           decreased
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="inline-block h-3 w-3 rounded-sm bg-zinc-800" />
+          <span className="inline-block h-3 w-3 rounded-sm bg-hcl-tech-grey" />
           unchanged
         </span>
       </div>

@@ -22,11 +22,11 @@ export default function PlatformBadge() {
 
   return (
     <div
-      className="flex items-center gap-1.5 rounded-md bg-zinc-900/50 px-2 py-1 text-[11px] text-zinc-400"
+      className="flex items-center gap-1.5 rounded-md bg-white/10 px-2 py-1 text-[11px] text-white/70"
       title={`${platform.platform_label} · Default: ${backendLabel}`}
     >
       <span>{icon}</span>
-      <span className="font-medium text-zinc-300">{backendLabel}</span>
+      <span className="font-medium text-white">{backendLabel}</span>
     </div>
   );
 }

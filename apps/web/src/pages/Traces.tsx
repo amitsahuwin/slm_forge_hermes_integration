@@ -239,26 +239,26 @@ export default function Traces() {
           <h1 className="text-2xl font-semibold tracking-tight">
             Hermes &middot; Ollama Traces
           </h1>
-          <p className="mt-1 text-sm text-zinc-500">
+          <p className="mt-1 text-sm text-hcl-dark/50">
             Every request / response between SLM-Forge and Ollama, plus
             per-skill activity. Admin only — bodies can contain prompts,
             dataset rows, and model metadata.
           </p>
         </div>
         <div className="flex items-center gap-2 text-xs">
-          <label className="flex items-center gap-1.5 text-zinc-400">
+          <label className="flex items-center gap-1.5 text-hcl-dark/60">
             <input
               type="checkbox"
               checked={autoRefresh}
               onChange={(e) => setAutoRefresh(e.target.checked)}
-              className="h-3.5 w-3.5 accent-emerald-500"
+              className="h-3.5 w-3.5 accent-hcl-teal"
             />
             Auto-refresh
           </label>
           <button
             onClick={clearAll}
             disabled={clearing}
-            className="rounded-md border border-rose-900/60 bg-rose-950/40 px-2.5 py-1 text-rose-200 hover:bg-rose-900/40 disabled:opacity-50"
+            className="rounded-md border border-hcl-error/40 bg-red-50 px-2.5 py-1 text-red-500 hover:bg-red-50 disabled:opacity-50"
           >
             {clearing ? 'Clearing…' : 'Clear all'}
           </button>
@@ -266,31 +266,31 @@ export default function Traces() {
       </div>
 
       {error && (
-        <div className="rounded-md bg-rose-950/40 px-3 py-2 text-sm text-rose-300">
+        <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">
           {error}
         </div>
       )}
 
       {/* Filter bar */}
-      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3 text-xs">
-        <label className="flex items-center gap-2 text-zinc-400">
+      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-hcl-light-blue bg-white p-3 text-xs">
+        <label className="flex items-center gap-2 text-hcl-dark/60">
           Status
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-            className="rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 font-mono text-xs"
+            className="rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-2 py-1 font-mono text-xs"
           >
             <option value="">all</option>
             <option value="success">success</option>
             <option value="error">error</option>
           </select>
         </label>
-        <label className="flex items-center gap-2 text-zinc-400">
+        <label className="flex items-center gap-2 text-hcl-dark/60">
           Time
           <select
             value={timeRange}
             onChange={(e) => setTimeRange(e.target.value as TimeRange)}
-            className="rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 font-mono text-xs"
+            className="rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-2 py-1 font-mono text-xs"
           >
             <option value="all">all</option>
             <option value="1h">1h</option>
@@ -298,7 +298,7 @@ export default function Traces() {
             <option value="7d">7d</option>
           </select>
         </label>
-        <label className="flex items-center gap-2 text-zinc-400">
+        <label className="flex items-center gap-2 text-hcl-dark/60">
           Min ms
           <input
             type="number"
@@ -306,10 +306,10 @@ export default function Traces() {
             value={minDuration}
             onChange={(e) => setMinDuration(e.target.value)}
             placeholder="0"
-            className="w-20 rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 font-mono text-xs"
+            className="w-20 rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-2 py-1 font-mono text-xs"
           />
         </label>
-        <label className="flex items-center gap-2 text-zinc-400">
+        <label className="flex items-center gap-2 text-hcl-dark/60">
           Run #
           <input
             type="number"
@@ -317,10 +317,10 @@ export default function Traces() {
             value={runIdFilter}
             onChange={(e) => setRunIdFilter(e.target.value)}
             placeholder=""
-            className="w-20 rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 font-mono text-xs"
+            className="w-20 rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-2 py-1 font-mono text-xs"
           />
         </label>
-        <label className="flex items-center gap-2 text-zinc-400">
+        <label className="flex items-center gap-2 text-hcl-dark/60">
           Session #
           <input
             type="number"
@@ -328,15 +328,15 @@ export default function Traces() {
             value={sessionIdFilter}
             onChange={(e) => setSessionIdFilter(e.target.value)}
             placeholder=""
-            className="w-20 rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 font-mono text-xs"
+            className="w-20 rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-2 py-1 font-mono text-xs"
           />
         </label>
-        <label className="flex items-center gap-2 text-zinc-400">
+        <label className="flex items-center gap-2 text-hcl-dark/60">
           Source contains
           <select
             value={sourceFilter}
             onChange={(e) => setSourceFilter(e.target.value)}
-            className="rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 font-mono text-xs"
+            className="rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-2 py-1 font-mono text-xs"
           >
             <option value="">all ({sources.reduce((s, x) => s + x.count, 0)})</option>
             {sources.map((s) => (
@@ -346,12 +346,12 @@ export default function Traces() {
             ))}
           </select>
         </label>
-        <label className="flex items-center gap-2 text-zinc-400">
+        <label className="flex items-center gap-2 text-hcl-dark/60">
           Limit
           <select
             value={limit}
             onChange={(e) => setLimit(Number(e.target.value))}
-            className="rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 font-mono text-xs"
+            className="rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-2 py-1 font-mono text-xs"
           >
             <option value={20}>20</option>
             <option value={50}>50</option>
@@ -363,13 +363,13 @@ export default function Traces() {
         {activeFilterCount > 0 && (
           <button
             onClick={clearAllFilters}
-            className="rounded-md border border-zinc-700 bg-zinc-800/50 px-2 py-1 text-zinc-300 hover:bg-zinc-800"
+            className="rounded-md border border-hcl-teal/30 bg-hcl-tech-grey/50 px-2 py-1 text-hcl-dark/80 hover:bg-hcl-tech-grey"
           >
             Clear filters ({activeFilterCount})
           </button>
         )}
         {rows && (
-          <span className="ml-auto text-zinc-500">
+          <span className="ml-auto text-hcl-dark/50">
             {rows.length} row{rows.length === 1 ? '' : 's'}
           </span>
         )}
@@ -380,12 +380,12 @@ export default function Traces() {
         style={{ minHeight: '70vh' }}
       >
         {/* Left: skill activity */}
-        <aside className="overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-900/40">
-          <div className="border-b border-zinc-800 px-3 py-2 text-[10px] uppercase tracking-wider text-zinc-500">
+        <aside className="overflow-y-auto rounded-lg border border-hcl-light-blue bg-white">
+          <div className="border-b border-hcl-light-blue px-3 py-2 text-[10px] uppercase tracking-wider text-hcl-dark/50">
             Skill Activity
           </div>
           {summary.length === 0 ? (
-            <div className="p-3 text-xs text-zinc-500">
+            <div className="p-3 text-xs text-hcl-dark/50">
               No skill traces yet. Trigger a Hermes skill from chat,
               experiments, or run-detail pages to populate.
             </div>
@@ -399,21 +399,21 @@ export default function Traces() {
                   <li key={s.skill_name}>
                     <button
                       onClick={() => toggleSkill(s.skill_name)}
-                      className={`block w-full border-b border-zinc-800/60 px-3 py-2 text-left transition-colors ${
+                      className={`block w-full border-b border-hcl-light-blue/60 px-3 py-2 text-left transition-colors ${
                         active
-                          ? 'bg-emerald-950/30 text-emerald-200'
-                          : 'text-zinc-300 hover:bg-zinc-800/40'
+                          ? 'bg-hcl-teal/10 text-hcl-dark-teal'
+                          : 'text-hcl-dark/80 hover:bg-hcl-tech-grey/40'
                       }`}
                       title={`current sha256: ${s.current_sha256 ?? '(none)'}`}
                     >
                       <div className="truncate font-mono text-[11px]">
                         {s.skill_name}
                       </div>
-                      <div className="mt-0.5 flex items-baseline justify-between gap-2 text-[10px] text-zinc-500">
+                      <div className="mt-0.5 flex items-baseline justify-between gap-2 text-[10px] text-hcl-dark/50">
                         <span>{s.calls} call{s.calls === 1 ? '' : 's'}</span>
                         <span
                           className={
-                            errPct > 0 ? 'text-rose-400' : 'text-zinc-500'
+                            errPct > 0 ? 'text-red-600' : 'text-hcl-dark/50'
                           }
                         >
                           {errPct}% err
@@ -434,11 +434,11 @@ export default function Traces() {
         </aside>
 
         {/* Middle: list */}
-        <aside className="overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-900/40">
+        <aside className="overflow-y-auto rounded-lg border border-hcl-light-blue bg-white">
           {rows === null ? (
-            <div className="p-4 text-sm text-zinc-500">Loading…</div>
+            <div className="p-4 text-sm text-hcl-dark/50">Loading…</div>
           ) : rows.length === 0 ? (
-            <div className="p-4 text-sm text-zinc-500">
+            <div className="p-4 text-sm text-hcl-dark/50">
               No traces match the current filters.
             </div>
           ) : (
@@ -447,10 +447,10 @@ export default function Traces() {
                 <li key={r.id}>
                   <button
                     onClick={() => setSelectedId(r.id)}
-                    className={`block w-full border-b border-zinc-800/60 px-3 py-2 text-left transition-colors ${
+                    className={`block w-full border-b border-hcl-light-blue/60 px-3 py-2 text-left transition-colors ${
                       selectedId === r.id
-                        ? 'bg-emerald-950/30 text-emerald-200'
-                        : 'text-zinc-300 hover:bg-zinc-800/40'
+                        ? 'bg-hcl-teal/10 text-hcl-dark-teal'
+                        : 'text-hcl-dark/80 hover:bg-hcl-tech-grey/40'
                     }`}
                   >
                     <div className="flex items-baseline justify-between gap-2 font-mono text-[11px]">
@@ -458,16 +458,16 @@ export default function Traces() {
                       <span
                         className={
                           r.error
-                            ? 'text-rose-400'
+                            ? 'text-red-600'
                             : r.duration_ms > 5000
-                              ? 'text-amber-300'
-                              : 'text-zinc-500'
+                              ? 'text-hcl-warning'
+                              : 'text-hcl-dark/50'
                         }
                       >
                         {r.duration_ms}ms
                       </span>
                     </div>
-                    <div className="mt-0.5 flex items-baseline justify-between gap-2 text-[10px] text-zinc-500">
+                    <div className="mt-0.5 flex items-baseline justify-between gap-2 text-[10px] text-hcl-dark/50">
                       <span>#{r.id}</span>
                       <span>{relativeTime(r.created_at)}</span>
                     </div>
@@ -478,18 +478,18 @@ export default function Traces() {
                         </span>
                       )}
                       {r.run_id != null && (
-                        <span className="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] text-zinc-300">
+                        <span className="rounded bg-hcl-tech-grey px-1.5 py-0.5 font-mono text-[10px] text-hcl-dark/80">
                           run #{r.run_id}
                         </span>
                       )}
                       {r.session_id != null && (
-                        <span className="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] text-zinc-300">
+                        <span className="rounded bg-hcl-tech-grey px-1.5 py-0.5 font-mono text-[10px] text-hcl-dark/80">
                           sess #{r.session_id}
                         </span>
                       )}
                     </div>
                     {r.error && (
-                      <div className="mt-1 truncate text-[11px] text-rose-400">
+                      <div className="mt-1 truncate text-[11px] text-red-600">
                         {r.error}
                       </div>
                     )}
@@ -501,7 +501,7 @@ export default function Traces() {
         </aside>
 
         {/* Right: detail */}
-        <main className="overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
+        <main className="overflow-y-auto rounded-lg border border-hcl-light-blue bg-white p-4">
           {selected ? (
             <div className="space-y-4">
               <div className="grid grid-cols-4 gap-2 text-xs">
@@ -540,8 +540,8 @@ export default function Traces() {
                 </div>
               )}
               {selected.error && (
-                <div className="rounded-md bg-rose-950/30 px-3 py-2 font-mono text-xs text-rose-300">
-                  <div className="mb-1 font-medium text-rose-200">Error</div>
+                <div className="rounded-md bg-red-50 px-3 py-2 font-mono text-xs text-red-600">
+                  <div className="mb-1 font-medium text-red-500">Error</div>
                   {selected.error}
                 </div>
               )}
@@ -549,7 +549,7 @@ export default function Traces() {
               <BodyBlock title="Response body" body={selected.response_body} />
             </div>
           ) : (
-            <div className="text-sm text-zinc-500">
+            <div className="text-sm text-hcl-dark/50">
               Pick a trace on the left.
             </div>
           )}
@@ -561,11 +561,11 @@ export default function Traces() {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-zinc-800 bg-zinc-950 px-2.5 py-1.5">
-      <div className="font-mono text-[10px] uppercase tracking-wider text-zinc-500">
+    <div className="rounded-md border border-hcl-light-blue bg-hcl-bg px-2.5 py-1.5">
+      <div className="font-mono text-[10px] uppercase tracking-wider text-hcl-dark/50">
         {label}
       </div>
-      <div className="truncate font-mono text-xs text-zinc-100">{value}</div>
+      <div className="truncate font-mono text-xs text-hcl-dark">{value}</div>
     </div>
   );
 }
@@ -574,19 +574,19 @@ function BodyBlock({ title, body }: { title: string; body: string }) {
   const pretty = useMemo(() => tryPretty(body), [body]);
   const [open, setOpen] = useState(true);
   return (
-    <div className="rounded-md border border-zinc-800 bg-zinc-950">
+    <div className="rounded-md border border-hcl-light-blue bg-hcl-bg">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-baseline justify-between border-b border-zinc-800 px-3 py-2 text-left text-xs text-zinc-300 hover:bg-zinc-900/60"
+        className="flex w-full items-baseline justify-between border-b border-hcl-light-blue px-3 py-2 text-left text-xs text-hcl-dark/80 hover:bg-hcl-tech-grey/60"
       >
         <span className="font-medium">{title}</span>
-        <span className="font-mono text-zinc-500">
+        <span className="font-mono text-hcl-dark/50">
           {open ? '−' : '+'} {body.length.toLocaleString()} chars
         </span>
       </button>
       {open && (
-        <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-all px-3 py-2 font-mono text-[11px] leading-relaxed text-zinc-300">
+        <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-all px-3 py-2 font-mono text-[11px] leading-relaxed text-hcl-dark/80">
           {pretty || '(empty)'}
         </pre>
       )}

@@ -32,8 +32,8 @@ export default function SynthesizeButton({
 
   const base =
     variant === 'header'
-      ? 'rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500'
-      : 'rounded-md border border-emerald-700/60 bg-emerald-950/40 px-2.5 py-1 font-mono text-[11px] text-emerald-300 hover:border-emerald-500 hover:bg-emerald-900/40';
+      ? 'rounded-md bg-hcl-dark-teal px-3 py-1.5 text-sm font-medium text-white hover:bg-hcl-teal'
+      : 'rounded-md border border-hcl-teal/30 bg-hcl-teal/10 px-2.5 py-1 font-mono text-[11px] text-hcl-teal hover:border-hcl-teal hover:bg-hcl-teal/10';
 
   return (
     <>

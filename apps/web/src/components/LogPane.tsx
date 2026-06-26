@@ -22,10 +22,10 @@ type LogPaneProps = {
 const MAX_LINES = 2000;
 
 function classifyLine(line: string): string {
-  if (/error|fail|✗/i.test(line)) return 'text-rose-400';
-  if (/warn/i.test(line)) return 'text-amber-300';
-  if (line.includes('Iter ')) return 'text-emerald-300';
-  return 'text-zinc-300';
+  if (/error|fail|✗/i.test(line)) return 'text-red-600';
+  if (/warn/i.test(line)) return 'text-hcl-warning';
+  if (line.includes('Iter ')) return 'text-hcl-dark-teal';
+  return 'text-hcl-dark/80';
 }
 
 /**
@@ -191,13 +191,13 @@ export default function LogPane({ runId, worker, ratchet, height = '24rem' }: Lo
     : 'logs';
 
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/40">
-      <div className="flex items-center justify-between gap-2 border-b border-zinc-800 px-3 py-2">
+    <div className="rounded-lg border border-hcl-light-blue bg-hcl-tech-grey">
+      <div className="flex items-center justify-between gap-2 border-b border-hcl-light-blue px-3 py-2">
         <div className="flex items-center gap-3">
-          <span className="text-xs font-medium text-zinc-200">{label}</span>
-          <span className="text-xs text-zinc-500">{lines.length} lines</span>
+          <span className="text-xs font-medium text-hcl-dark">{label}</span>
+          <span className="text-xs text-hcl-dark/50">{lines.length} lines</span>
           {streamError && (
-            <span className="text-xs text-amber-400" title={streamError}>
+            <span className="text-xs text-hcl-warning" title={streamError}>
               {streamError}
             </span>
           )}
@@ -206,21 +206,21 @@ export default function LogPane({ runId, worker, ratchet, height = '24rem' }: Lo
           <button
             type="button"
             onClick={() => setPaused((p) => !p)}
-            className="rounded border border-zinc-700 px-2 py-0.5 text-xs text-zinc-200 hover:bg-zinc-800"
+            className="rounded border border-hcl-light-blue px-2 py-0.5 text-xs text-hcl-dark-teal hover:bg-hcl-light-blue"
           >
             {paused ? 'Resume' : 'Pause'}
           </button>
           <button
             type="button"
             onClick={copyAll}
-            className="rounded border border-zinc-700 px-2 py-0.5 text-xs text-zinc-200 hover:bg-zinc-800"
+            className="rounded border border-hcl-light-blue px-2 py-0.5 text-xs text-hcl-dark-teal hover:bg-hcl-light-blue"
           >
             Copy all
           </button>
           <button
             type="button"
             onClick={downloadLog}
-            className="rounded border border-zinc-700 px-2 py-0.5 text-xs text-zinc-200 hover:bg-zinc-800"
+            className="rounded border border-hcl-light-blue px-2 py-0.5 text-xs text-hcl-dark-teal hover:bg-hcl-light-blue"
           >
             Download .log
           </button>
@@ -235,7 +235,7 @@ export default function LogPane({ runId, worker, ratchet, height = '24rem' }: Lo
         style={{ height }}
       >
         {lines.length === 0 ? (
-          <div className="text-zinc-500">
+          <div className="text-hcl-dark/40">
             {statusMsg ?? 'Waiting for log output…'}
           </div>
         ) : (

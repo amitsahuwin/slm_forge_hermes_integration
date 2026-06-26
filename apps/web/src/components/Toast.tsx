@@ -10,11 +10,11 @@ import { toast, type ToastMessage } from '../lib/toast';
 function kindClasses(kind: ToastMessage['kind']): string {
   switch (kind) {
     case 'error':
-      return 'border-red-800 bg-red-950/80 text-red-100';
+      return 'border-hcl-error/50 bg-red-50 text-red-800';
     case 'success':
-      return 'border-emerald-800 bg-emerald-950/80 text-emerald-100';
+      return 'border-hcl-teal bg-hcl-teal/10 text-hcl-dark-teal';
     default:
-      return 'border-zinc-700 bg-zinc-900/90 text-zinc-100';
+      return 'border-hcl-light-blue bg-white text-hcl-dark';
   }
 }
 

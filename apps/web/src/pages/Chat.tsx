@@ -337,10 +337,10 @@ export default function Chat() {
      */
     <div className="grid grid-cols-[16rem_1fr_20rem] gap-4 h-[calc(100dvh-9rem)] overflow-hidden">
       {/* Left: conversations */}
-      <aside className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 flex flex-col min-h-0">
+      <aside className="rounded-xl border border-hcl-light-blue bg-hcl-bg p-3 flex flex-col min-h-0">
         <button
           onClick={() => void newConversation()}
-          className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 shrink-0"
+          className="rounded-md bg-hcl-dark-teal px-3 py-1.5 text-sm font-medium text-white hover:bg-hcl-teal shrink-0"
         >
           + New chat
         </button>
@@ -351,8 +351,8 @@ export default function Chat() {
               onClick={() => setActiveId(c.id)}
               className={`block w-full truncate rounded-md px-2 py-1.5 text-left text-xs ${
                 c.id === activeId
-                  ? 'bg-zinc-800 text-zinc-100'
-                  : 'text-zinc-400 hover:bg-zinc-900'
+                  ? 'bg-hcl-tech-grey text-hcl-dark'
+                  : 'text-hcl-dark/60 hover:bg-hcl-tech-grey'
               }`}
               title={c.title}
             >
@@ -360,13 +360,13 @@ export default function Chat() {
             </button>
           ))}
           {conversations.length === 0 && (
-            <p className="text-xs text-zinc-600 px-2">No conversations yet.</p>
+            <p className="text-xs text-hcl-dark/40 px-2">No conversations yet.</p>
           )}
         </div>
       </aside>
 
       {/* Center: thread — the ONLY column that should scroll on the page */}
-      <section className="flex flex-col rounded-xl border border-zinc-800 bg-zinc-950 min-h-0">
+      <section className="flex flex-col rounded-xl border border-hcl-light-blue bg-hcl-bg min-h-0">
         <ChatBanner
           health={health}
           streamError={streamError}
@@ -382,7 +382,7 @@ export default function Chat() {
             messages.map((m) => <MessageRow key={m.id} message={m} />)
           )}
         </div>
-        <div className="border-t border-zinc-800 p-3">
+        <div className="border-t border-hcl-light-blue p-3">
           <textarea
             ref={inputRef}
             value={input}
@@ -391,9 +391,9 @@ export default function Chat() {
             rows={2}
             disabled={streaming}
             placeholder="Ask about your runs, datasets, or kick off an experiment…"
-            className="w-full resize-none rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-emerald-600 focus:outline-none"
+            className="w-full resize-none rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 text-sm text-hcl-dark placeholder:text-hcl-dark/50 focus:border-hcl-teal focus:outline-none"
           />
-          <div className="mt-1 flex items-center justify-between text-[10px] text-zinc-600">
+          <div className="mt-1 flex items-center justify-between text-[10px] text-hcl-dark/40">
             <span>Enter to send · Shift+Enter for newline</span>
             <span>{streaming ? 'streaming…' : 'ready'}</span>
           </div>
@@ -401,7 +401,7 @@ export default function Chat() {
       </section>
 
       {/* Right: templates panel */}
-      <aside className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 min-h-0 overflow-y-auto">
+      <aside className="rounded-xl border border-hcl-light-blue bg-hcl-bg p-3 min-h-0 overflow-y-auto">
         <ChatTemplates
           onPick={(text) => {
             setInput(text);
@@ -434,13 +434,13 @@ function ChatBanner({
   // most specific signal; otherwise surface a static health hint.
   if (streamError) {
     return (
-      <div className="m-3 mb-0 rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-2 text-sm text-rose-200">
+      <div className="m-3 mb-0 rounded-md border border-hcl-error/40 bg-red-50 px-3 py-2 text-sm text-red-500">
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1">
             <div className="font-medium">Chat backend error</div>
-            <div className="mt-0.5 text-rose-300/90">{streamError.message}</div>
+            <div className="mt-0.5 text-red-600/90">{streamError.message}</div>
             {streamError.imports_error && (
-              <div className="mt-1 font-mono text-[11px] text-rose-400/80">
+              <div className="mt-1 font-mono text-[11px] text-red-600/80">
                 {streamError.imports_error}
               </div>
             )}
@@ -448,7 +448,7 @@ function ChatBanner({
           <button
             type="button"
             onClick={onDismiss}
-            className="text-rose-300/70 hover:text-rose-100"
+            className="text-red-600/70 hover:text-red-600"
             aria-label="dismiss"
           >
             ×
@@ -459,9 +459,9 @@ function ChatBanner({
   }
   if (health && health.hint) {
     return (
-      <div className="m-3 mb-0 rounded-md border border-amber-700/40 bg-amber-950/30 px-3 py-2 text-sm text-amber-200">
+      <div className="m-3 mb-0 rounded-md border border-hcl-warning/40 bg-hcl-warning/10 px-3 py-2 text-sm text-hcl-warning">
         <div className="font-medium">Chat not fully ready</div>
-        <div className="mt-0.5 text-amber-300/90">{health.hint}</div>
+        <div className="mt-0.5 text-hcl-warning/90">{health.hint}</div>
       </div>
     );
   }
@@ -470,7 +470,7 @@ function ChatBanner({
 
 function EmptyState() {
   return (
-    <div className="text-center text-zinc-500 mt-20">
+    <div className="text-center text-hcl-dark/50 mt-20">
       <p className="text-sm">No messages yet — say hi to the SLM-Forge copilot.</p>
     </div>
   );
@@ -480,7 +480,7 @@ function MessageRow({ message }: { message: Message }) {
   if (message.role === 'user') {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[80%] rounded-xl bg-emerald-600/90 px-3 py-2 text-sm text-white whitespace-pre-wrap">
+        <div className="max-w-[80%] rounded-xl bg-hcl-dark-teal/90 px-3 py-2 text-sm text-white whitespace-pre-wrap">
           {message.content}
         </div>
       </div>
@@ -492,7 +492,7 @@ function MessageRow({ message }: { message: Message }) {
     <div className="flex">
       <div className="max-w-[90%] space-y-2">
         {message.content && (
-          <div className="rounded-xl bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-100">
+          <div className="rounded-xl bg-hcl-tech-grey border border-hcl-light-blue px-3 py-2 text-sm text-hcl-dark">
             <MarkdownLite text={message.content} />
           </div>
         )}
@@ -503,7 +503,7 @@ function MessageRow({ message }: { message: Message }) {
           <ToolCard key={`tr-${i}`} toolResult={tr} />
         ))}
         {message.pending && !message.content && (
-          <div className="text-xs text-zinc-500 italic">thinking…</div>
+          <div className="text-xs text-hcl-dark/50 italic">thinking…</div>
         )}
       </div>
     </div>
@@ -534,14 +534,14 @@ function ToolChip({
   detail?: string;
 }) {
   return (
-    <div className="inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-[11px] text-zinc-400">
+    <div className="inline-flex items-center gap-2 rounded-full border border-hcl-light-blue bg-hcl-tech-grey px-3 py-1 text-[11px] text-hcl-dark/60">
       <span
         className={`h-1.5 w-1.5 rounded-full ${
-          state === 'running' ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'
+          state === 'running' ? 'bg-hcl-warning animate-pulse' : 'bg-hcl-teal'
         }`}
       />
       <span className="font-mono">{name}</span>
-      {detail && <span className="text-zinc-500">· {detail}</span>}
+      {detail && <span className="text-hcl-dark/50">· {detail}</span>}
     </div>
   );
 }
@@ -564,7 +564,7 @@ function ToolCard({ toolResult }: { toolResult: ToolResult }) {
   // generic fallback
   return (
     <CardShell title={tool}>
-      <pre className="text-[11px] font-mono text-zinc-400 whitespace-pre-wrap break-all">
+      <pre className="text-[11px] font-mono text-hcl-dark/60 whitespace-pre-wrap break-all">
         {JSON.stringify(result, null, 2)}
       </pre>
     </CardShell>
@@ -581,12 +581,12 @@ function CardShell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
+    <div className="rounded-xl border border-hcl-light-blue bg-hcl-tech-grey/60 p-3">
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-500">
+        <span className="text-[11px] font-mono uppercase tracking-wider text-hcl-dark/50">
           {title}
         </span>
-        {meta && <span className="text-[11px] text-zinc-500">{meta}</span>}
+        {meta && <span className="text-[11px] text-hcl-dark/50">{meta}</span>}
       </div>
       {children}
     </div>
@@ -610,7 +610,7 @@ function RunsCard({ data }: { data: unknown }) {
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
-            <tr className="text-zinc-500 border-b border-zinc-800">
+            <tr className="bg-hcl-dark-blue text-white border-b border-hcl-light-blue">
               <th className="text-left py-1 pr-2">ID</th>
               <th className="text-left py-1 pr-2">Dataset</th>
               <th className="text-left py-1 pr-2">Status</th>
@@ -620,14 +620,14 @@ function RunsCard({ data }: { data: unknown }) {
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.id} className="border-b border-zinc-900">
-                <td className="py-1 pr-2 font-mono text-zinc-300">#{r.id}</td>
-                <td className="py-1 pr-2 text-zinc-200">{r.dataset}</td>
+              <tr key={r.id} className="border-b border-hcl-light-blue">
+                <td className="py-1 pr-2 font-mono text-hcl-dark/80">#{r.id}</td>
+                <td className="py-1 pr-2 text-hcl-dark">{r.dataset}</td>
                 <td className="py-1 pr-2">
                   <StatusBadge status={r.status} />
                 </td>
-                <td className="py-1 pr-2 text-right text-zinc-300">{r.iters}</td>
-                <td className="py-1 pr-2 text-right font-mono text-zinc-300">
+                <td className="py-1 pr-2 text-right text-hcl-dark/80">{r.iters}</td>
+                <td className="py-1 pr-2 text-right font-mono text-hcl-dark/80">
                   {r.final_val_loss != null ? r.final_val_loss.toFixed(4) : '—'}
                 </td>
               </tr>
@@ -642,12 +642,12 @@ function RunsCard({ data }: { data: unknown }) {
 function StatusBadge({ status }: { status: string }) {
   const cls =
     status === 'completed'
-      ? 'bg-emerald-900/60 text-emerald-300'
+      ? 'bg-hcl-teal/10 text-hcl-teal'
       : status === 'failed'
-        ? 'bg-rose-900/60 text-rose-300'
+        ? 'bg-red-50 text-red-600'
         : status === 'running'
-          ? 'bg-amber-900/60 text-amber-300'
-          : 'bg-zinc-800 text-zinc-400';
+          ? 'bg-hcl-warning/10 text-hcl-warning'
+          : 'bg-hcl-tech-grey text-hcl-dark/60';
   return (
     <span className={`rounded px-1.5 py-0.5 text-[10px] font-mono ${cls}`}>
       {status}
@@ -669,12 +669,12 @@ function MetricsCard({ data }: { data: unknown }) {
       meta={`run #${d.run_id} · ${d.metric_count ?? 0} pts`}
     >
       {names.length === 0 ? (
-        <p className="text-xs text-zinc-500">No metrics yet.</p>
+        <p className="text-xs text-hcl-dark/50">No metrics yet.</p>
       ) : (
         <div className="grid grid-cols-1 gap-3">
           {names.map((name) => (
             <div key={name}>
-              <div className="text-[11px] text-zinc-400 mb-1 font-mono">{name}</div>
+              <div className="text-[11px] text-hcl-dark/60 mb-1 font-mono">{name}</div>
               <div className="h-24">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={series[name]}>
@@ -682,15 +682,15 @@ function MetricsCard({ data }: { data: unknown }) {
                     <YAxis hide domain={['auto', 'auto']} />
                     <Tooltip
                       contentStyle={{
-                        background: '#18181b',
-                        border: '1px solid #27272a',
+                        background: '#F7F7FC',
+                        border: '1px solid #DCE6F0',
                         fontSize: 11,
                       }}
                     />
                     <Line
                       type="monotone"
                       dataKey="value"
-                      stroke="#10b981"
+                      stroke="#2EC0CB"
                       strokeWidth={1.5}
                       dot={false}
                       isAnimationActive={false}
@@ -724,8 +724,8 @@ function DatasetsCard({ data }: { data: unknown }) {
             key={d.name}
             className="flex items-baseline justify-between text-xs"
           >
-            <span className="font-mono text-zinc-200">{d.name}</span>
-            <span className="text-zinc-500">
+            <span className="font-mono text-hcl-dark">{d.name}</span>
+            <span className="text-hcl-dark/50">
               {d.train_count} train · {d.valid_count} valid
               {d.has_canary ? ' · canary' : ''}
             </span>
@@ -756,10 +756,10 @@ function ExperimentsCard({ data }: { data: unknown }) {
             key={s.id}
             className="flex items-baseline justify-between text-xs gap-2"
           >
-            <span className="font-mono text-zinc-300 shrink-0">#{s.id}</span>
-            <span className="flex-1 truncate text-zinc-200">{s.name}</span>
+            <span className="font-mono text-hcl-dark/80 shrink-0">#{s.id}</span>
+            <span className="flex-1 truncate text-hcl-dark">{s.name}</span>
             <StatusBadge status={s.status} />
-            <span className="text-zinc-500">
+            <span className="text-hcl-dark/50">
               {s.current_round}/{s.max_rounds}
             </span>
           </li>
@@ -824,7 +824,7 @@ function StartExperimentCard({ data }: { data: unknown }) {
 
   return (
     <CardShell title="start_experiment" meta="confirmation required">
-      <p className="text-sm text-zinc-200">{d.summary ?? 'Start this experiment?'}</p>
+      <p className="text-sm text-hcl-dark">{d.summary ?? 'Start this experiment?'}</p>
       {editing ? (
         <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2 text-[11px] font-mono">
           {Object.entries(initialPayload).map(([k, original]) => {
@@ -832,14 +832,14 @@ function StartExperimentCard({ data }: { data: unknown }) {
             const current = editPayload[k];
             return (
               <label key={k} className="flex flex-col gap-0.5">
-                <span className="text-zinc-500">{k}</span>
+                <span className="text-hcl-dark/50">{k}</span>
                 <input
                   type={isNumber ? 'number' : 'text'}
                   step={isNumber && String(original).includes('.') ? 'any' : undefined}
                   value={current == null ? '' : String(current)}
                   onChange={(e) => setField(k, e.target.value, isNumber)}
                   disabled={confirming || done?.id != null}
-                  className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-100 focus:border-emerald-600 focus:outline-none"
+                  className="rounded-md border border-hcl-teal/30 bg-hcl-tech-grey px-2 py-1 text-[11px] text-hcl-dark focus:border-hcl-teal focus:outline-none"
                 />
               </label>
             );
@@ -849,8 +849,8 @@ function StartExperimentCard({ data }: { data: unknown }) {
         <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] font-mono">
           {Object.entries(editPayload).map(([k, v]) => (
             <div key={k} className="flex justify-between">
-              <dt className="text-zinc-500">{k}</dt>
-              <dd className="text-zinc-300 truncate ml-2">{String(v)}</dd>
+              <dt className="text-hcl-dark/50">{k}</dt>
+              <dd className="text-hcl-dark/80 truncate ml-2">{String(v)}</dd>
             </div>
           ))}
         </dl>
@@ -859,14 +859,14 @@ function StartExperimentCard({ data }: { data: unknown }) {
         <button
           disabled={confirming || done?.id != null}
           onClick={confirm}
-          className="rounded-md bg-emerald-600 px-3 py-1 text-xs font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+          className="rounded-md bg-hcl-dark-teal px-3 py-1 text-xs font-medium text-white hover:bg-hcl-teal disabled:opacity-50"
         >
           {done?.id ? 'Started' : confirming ? 'Starting…' : 'Start'}
         </button>
         <button
           disabled={confirming || done?.id != null}
           onClick={() => setEditing((v) => !v)}
-          className="rounded-md border border-zinc-700 px-3 py-1 text-xs text-zinc-300 hover:bg-zinc-800 disabled:opacity-50"
+          className="rounded-md border border-hcl-teal/30 px-3 py-1 text-xs text-hcl-dark/80 hover:bg-hcl-tech-grey disabled:opacity-50"
         >
           {editing ? 'Done editing' : 'Edit'}
         </button>
@@ -874,7 +874,7 @@ function StartExperimentCard({ data }: { data: unknown }) {
           <button
             disabled={confirming}
             onClick={() => setEditPayload({ ...initialPayload })}
-            className="rounded-md border border-zinc-700 px-3 py-1 text-xs text-zinc-400 hover:bg-zinc-800 disabled:opacity-50"
+            className="rounded-md border border-hcl-teal/30 px-3 py-1 text-xs text-hcl-dark/60 hover:bg-hcl-tech-grey disabled:opacity-50"
           >
             Reset
           </button>
@@ -882,21 +882,21 @@ function StartExperimentCard({ data }: { data: unknown }) {
         <button
           disabled={confirming}
           onClick={() => setDone({ error: 'cancelled' })}
-          className="rounded-md border border-zinc-700 px-3 py-1 text-xs text-zinc-400 hover:bg-zinc-800"
+          className="rounded-md border border-hcl-teal/30 px-3 py-1 text-xs text-hcl-dark/60 hover:bg-hcl-tech-grey"
         >
           Cancel
         </button>
         {dirty && (
-          <span className="text-[10px] text-emerald-400">edited</span>
+          <span className="text-[10px] text-hcl-teal">edited</span>
         )}
       </div>
       {done?.id != null && (
-        <p className="mt-2 text-[11px] text-emerald-400">
+        <p className="mt-2 text-[11px] text-hcl-teal">
           Started experiment #{done.id}.
         </p>
       )}
       {done?.error && (
-        <p className="mt-2 text-[11px] text-rose-400">{done.error}</p>
+        <p className="mt-2 text-[11px] text-red-600">{done.error}</p>
       )}
     </CardShell>
   );
@@ -911,7 +911,7 @@ function ProposeHyperparamsCard({ data }: { data: unknown }) {
   if (d.error) {
     return (
       <CardShell title="propose_hyperparams">
-        <p className="text-xs text-rose-400">{d.error}</p>
+        <p className="text-xs text-red-600">{d.error}</p>
       </CardShell>
     );
   }
@@ -925,7 +925,7 @@ function ProposeHyperparamsCard({ data }: { data: unknown }) {
     <CardShell title="propose_hyperparams">
       <table className="w-full text-[11px] font-mono">
         <thead>
-          <tr className="text-zinc-500">
+          <tr className="bg-hcl-dark-blue text-white">
             <th className="text-left py-1">key</th>
             <th className="text-right py-1">current</th>
             <th className="text-right py-1">proposed</th>
@@ -937,14 +937,14 @@ function ProposeHyperparamsCard({ data }: { data: unknown }) {
             const prop = proposal[k];
             const changed = prop != null && prop !== cur;
             return (
-              <tr key={k} className="border-t border-zinc-800">
-                <td className="py-1 text-zinc-400">{k}</td>
-                <td className="py-1 text-right text-zinc-400">
+              <tr key={k} className="border-t border-hcl-light-blue">
+                <td className="py-1 text-hcl-dark/60">{k}</td>
+                <td className="py-1 text-right text-hcl-dark/60">
                   {cur != null ? String(cur) : '—'}
                 </td>
                 <td
                   className={`py-1 text-right ${
-                    changed ? 'text-emerald-400' : 'text-zinc-500'
+                    changed ? 'text-hcl-teal' : 'text-hcl-dark/50'
                   }`}
                 >
                   {prop != null ? String(prop) : '—'}
@@ -955,10 +955,10 @@ function ProposeHyperparamsCard({ data }: { data: unknown }) {
         </tbody>
       </table>
       {reasoning && (
-        <p className="mt-2 text-[11px] text-zinc-400 italic">{reasoning}</p>
+        <p className="mt-2 text-[11px] text-hcl-dark/60 italic">{reasoning}</p>
       )}
       {expected && (
-        <p className="mt-1 text-[11px] text-zinc-500">→ {expected}</p>
+        <p className="mt-1 text-[11px] text-hcl-dark/50">→ {expected}</p>
       )}
     </CardShell>
   );
@@ -976,12 +976,12 @@ function RunStatusCard({ data }: { data: unknown }) {
     <CardShell title="get_run_status" meta={`run #${d.id}`}>
       <div className="flex items-center gap-2 text-xs">
         <StatusBadge status={d.status ?? 'unknown'} />
-        <span className="text-zinc-400">{d.dataset}</span>
-        <span className="text-zinc-600">·</span>
-        <span className="text-zinc-500 font-mono truncate">{d.base_model}</span>
+        <span className="text-hcl-dark/60">{d.dataset}</span>
+        <span className="text-hcl-dark/40">·</span>
+        <span className="text-hcl-dark/50 font-mono truncate">{d.base_model}</span>
       </div>
       {d.final_val_loss != null && (
-        <p className="mt-2 text-[11px] text-zinc-400 font-mono">
+        <p className="mt-2 text-[11px] text-hcl-dark/60 font-mono">
           val_loss = {d.final_val_loss.toFixed(4)}
         </p>
       )}
@@ -1002,11 +1002,11 @@ function ExportStatusCard({ data }: { data: unknown }) {
       <div className="flex items-center gap-2 text-xs">
         <StatusBadge status={d.status ?? 'none'} />
         {d.quant_levels && (
-          <span className="font-mono text-zinc-500">{d.quant_levels}</span>
+          <span className="font-mono text-hcl-dark/50">{d.quant_levels}</span>
         )}
       </div>
       {d.progress_text && (
-        <p className="mt-1 text-[11px] text-zinc-400">{d.progress_text}</p>
+        <p className="mt-1 text-[11px] text-hcl-dark/60">{d.progress_text}</p>
       )}
     </CardShell>
   );
@@ -1021,10 +1021,10 @@ function DocsCard({ data }: { data: unknown }) {
       <ul className="space-y-2">
         {rows.map((r, i) => (
           <li key={i} className="text-[11px]">
-            <span className="font-mono text-emerald-400">
+            <span className="font-mono text-hcl-teal">
               {r.file.split('/').slice(-2).join('/')}:{r.line}
             </span>
-            <p className="text-zinc-400 mt-0.5">{r.text}</p>
+            <p className="text-hcl-dark/60 mt-0.5">{r.text}</p>
           </li>
         ))}
       </ul>

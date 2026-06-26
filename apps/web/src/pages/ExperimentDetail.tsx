@@ -20,11 +20,11 @@ type HermesDriftAnalysis = {
 };
 
 const STATUS_STYLES: Record<SessionStatus, string> = {
-  queued: 'text-zinc-400',
-  running: 'text-emerald-400',
-  completed: 'text-sky-400',
-  failed: 'text-rose-400',
-  cancelled: 'text-zinc-500',
+  queued: 'text-hcl-dark/60',
+  running: 'text-hcl-teal',
+  completed: 'text-hcl-info',
+  failed: 'text-red-600',
+  cancelled: 'text-hcl-dark/50',
 };
 
 export default function ExperimentDetail() {
@@ -122,15 +122,15 @@ export default function ExperimentDetail() {
   }, [sid]);
 
   if (error)
-    return <div className="rounded-md bg-rose-950/50 px-3 py-2 text-sm text-rose-300">{error}</div>;
-  if (!experiment) return <div className="text-sm text-zinc-500">Loading experiment #{id}…</div>;
+    return <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>;
+  if (!experiment) return <div className="text-sm text-hcl-dark/50">Loading experiment #{id}…</div>;
 
   return (
     <div className="space-y-6">
       <div className="flex items-end justify-between">
         <div>
           <h1 className="font-mono text-2xl font-semibold tracking-tight">{experiment.name}</h1>
-          <p className="mt-1 text-sm text-zinc-500">
+          <p className="mt-1 text-sm text-hcl-dark/50">
             Experiment #{experiment.id} · {experiment.dataset} ·{' '}
             {experiment.base_model.replace(/^mlx-community\//, '')} · {experiment.method}
           </p>
@@ -143,7 +143,7 @@ export default function ExperimentDetail() {
               type="button"
               onClick={rerun}
               disabled={rerunning}
-              className="rounded border border-emerald-700 bg-emerald-900/40 px-3 py-1.5 text-xs font-medium text-emerald-100 hover:bg-emerald-900/70 disabled:opacity-50"
+              className="rounded border border-hcl-teal/30 bg-hcl-teal/10 px-3 py-1.5 text-xs font-medium text-hcl-dark-teal hover:bg-hcl-teal/15 disabled:opacity-50"
               title="Clone this experiment's config into a new queued experiment"
             >
               {rerunning ? 'Rerunning…' : '↻ Rerun'}
@@ -156,13 +156,13 @@ export default function ExperimentDetail() {
       </div>
 
       {rerunError && (
-        <div className="rounded-md bg-rose-950/40 px-3 py-2 font-mono text-xs text-rose-300">
+        <div className="rounded-md bg-red-50 px-3 py-2 font-mono text-xs text-red-600">
           Rerun failed: {rerunError}
         </div>
       )}
 
       {experiment.error_message && (
-        <div className="rounded-md bg-rose-950/40 px-3 py-2 font-mono text-xs text-rose-300">
+        <div className="rounded-md bg-red-50 px-3 py-2 font-mono text-xs text-red-600">
           {experiment.error_message}
         </div>
       )}
@@ -186,7 +186,7 @@ export default function ExperimentDetail() {
             experiment.best_run_id !== null ? (
               <Link
                 to={`/runs/${experiment.best_run_id}`}
-                className="text-emerald-400 hover:underline"
+                className="text-hcl-teal hover:underline"
               >
                 #{experiment.best_run_id}
               </Link>
@@ -211,17 +211,17 @@ export default function ExperimentDetail() {
             threshold={experiment.canary_drift_threshold}
           />
           {hasAnyCanary && (
-            <div className="flex items-center justify-between gap-3 rounded-md border border-zinc-800 bg-zinc-900/40 px-3 py-2 text-xs">
-              <div className="text-zinc-400">
+            <div className="flex items-center justify-between gap-3 rounded-md border border-hcl-light-blue bg-white px-3 py-2 text-xs">
+              <div className="text-hcl-dark/60">
                 Max observed drift:{' '}
                 <span
                   className={`font-mono ${
-                    exceedsThreshold ? 'text-amber-300' : 'text-emerald-400'
+                    exceedsThreshold ? 'text-hcl-warning' : 'text-hcl-teal'
                   }`}
                 >
                   {maxDrift!.toFixed(3)}
                 </span>{' '}
-                <span className="text-zinc-500">
+                <span className="text-hcl-dark/50">
                   / threshold {experiment.canary_drift_threshold.toFixed(2)}
                 </span>
               </div>
@@ -229,10 +229,10 @@ export default function ExperimentDetail() {
                 type="button"
                 onClick={analyzeDrift}
                 disabled={analyzing}
-                className={`rounded border px-2.5 py-1 text-xs hover:bg-zinc-800 disabled:opacity-50 ${
+                className={`rounded border px-2.5 py-1 text-xs hover:bg-hcl-tech-grey disabled:opacity-50 ${
                   exceedsThreshold
-                    ? 'border-amber-700 bg-amber-900/40 text-amber-100'
-                    : 'border-zinc-700 text-zinc-200'
+                    ? 'border-hcl-warning/50 bg-hcl-warning/10 text-hcl-warning'
+                    : 'border-hcl-teal/30 text-hcl-dark'
                 }`}
               >
                 {analyzing ? 'Analyzing…' : '🔬 Analyze drift'}
@@ -240,13 +240,13 @@ export default function ExperimentDetail() {
             </div>
           )}
           {analysisError && (
-            <div className="rounded-md bg-rose-950/40 px-3 py-2 text-xs text-rose-300">
+            <div className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-600">
               {analysisError}
             </div>
           )}
           {(analysis || analysisRaw) && (
-            <div className="rounded-md border border-amber-700/50 bg-amber-950/20 p-3 text-xs space-y-2">
-              <h4 className="font-medium uppercase tracking-wider text-amber-300">
+            <div className="rounded-md border border-hcl-warning/40 bg-hcl-warning/10 p-3 text-xs space-y-2">
+              <h4 className="font-medium uppercase tracking-wider text-hcl-warning">
                 🔬 Hermes drift analysis
               </h4>
               {analysis ? (
@@ -254,31 +254,31 @@ export default function ExperimentDetail() {
                   <div className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono">
                     {analysis.learning_rate != null && (
                       <>
-                        <span className="text-zinc-500">learning_rate</span>
-                        <span className="text-zinc-100">
+                        <span className="text-hcl-dark/50">learning_rate</span>
+                        <span className="text-hcl-dark">
                           {analysis.learning_rate.toExponential(2)}
                         </span>
                       </>
                     )}
                     {analysis.num_layers != null && (
                       <>
-                        <span className="text-zinc-500">num_layers</span>
-                        <span className="text-zinc-100">{analysis.num_layers}</span>
+                        <span className="text-hcl-dark/50">num_layers</span>
+                        <span className="text-hcl-dark">{analysis.num_layers}</span>
                       </>
                     )}
                   </div>
                   {analysis.reasoning && (
-                    <p className="italic text-zinc-300">{analysis.reasoning}</p>
+                    <p className="italic text-hcl-dark/80">{analysis.reasoning}</p>
                   )}
                   {analysis.expected_outcome && (
-                    <p className="text-zinc-400">
-                      <span className="font-medium text-zinc-300">Expected:</span>{' '}
+                    <p className="text-hcl-dark/60">
+                      <span className="font-medium text-hcl-dark/80">Expected:</span>{' '}
                       {analysis.expected_outcome}
                     </p>
                   )}
                 </>
               ) : (
-                <pre className="whitespace-pre-wrap font-mono text-[11px] text-zinc-300">
+                <pre className="whitespace-pre-wrap font-mono text-[11px] text-hcl-dark/80">
                   {analysisRaw}
                 </pre>
               )}
@@ -288,9 +288,9 @@ export default function ExperimentDetail() {
       </div>
 
       <section className="space-y-3">
-        <h3 className="text-xs font-medium uppercase tracking-wider text-zinc-500">Iterations</h3>
+        <h3 className="text-xs font-medium uppercase tracking-wider text-hcl-dark/50">Iterations</h3>
         {iterations.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-zinc-800 px-6 py-8 text-center text-sm text-zinc-500">
+          <div className="rounded-lg border border-dashed border-hcl-light-blue px-6 py-8 text-center text-sm text-hcl-dark/50">
             Waiting for ratchet worker to create the first iteration.
           </div>
         ) : (
@@ -298,8 +298,8 @@ export default function ExperimentDetail() {
         )}
       </section>
 
-      <details className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
-        <summary className="cursor-pointer text-xs font-medium uppercase tracking-wider text-zinc-500">
+      <details className="rounded-lg border border-hcl-light-blue bg-white p-4">
+        <summary className="cursor-pointer text-xs font-medium uppercase tracking-wider text-hcl-dark/50">
           Experiment configuration
         </summary>
         <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 font-mono text-xs md:grid-cols-3">
@@ -326,9 +326,9 @@ export default function ExperimentDetail() {
 
 function Stat({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 px-3 py-2.5">
-      <div className="font-mono text-xs text-zinc-500">{label}</div>
-      <div className="mt-1 font-mono text-lg tabular-nums text-zinc-100">{value}</div>
+    <div className="rounded-lg border border-hcl-light-blue bg-white px-3 py-2.5">
+      <div className="font-mono text-xs text-hcl-dark/50">{label}</div>
+      <div className="mt-1 font-mono text-lg tabular-nums text-hcl-dark">{value}</div>
     </div>
   );
 }
@@ -336,8 +336,8 @@ function Stat({ label, value }: { label: string; value: React.ReactNode }) {
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <>
-      <dt className="text-zinc-500">{label}</dt>
-      <dd className="truncate text-zinc-300">{value}</dd>
+      <dt className="text-hcl-dark/50">{label}</dt>
+      <dd className="truncate text-hcl-dark/80">{value}</dd>
     </>
   );
 }

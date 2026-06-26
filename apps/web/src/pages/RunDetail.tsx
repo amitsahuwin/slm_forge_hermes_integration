@@ -39,11 +39,11 @@ type QuantsResp = {
 };
 
 const STATUS_STYLES: Record<RunStatus, string> = {
-  queued: 'text-zinc-400',
-  running: 'text-emerald-400',
-  completed: 'text-sky-400',
-  failed: 'text-rose-400',
-  cancelled: 'text-zinc-500',
+  queued: 'text-hcl-dark/60',
+  running: 'text-hcl-teal',
+  completed: 'text-hcl-info',
+  failed: 'text-red-600',
+  cancelled: 'text-hcl-dark/50',
 };
 
 export default function RunDetail() {
@@ -124,8 +124,8 @@ export default function RunDetail() {
     return ratio > 1.5 || ratio < 0.6;
   }, [latestTrain, latestVal]);
 
-  if (error) return <div className="rounded-md bg-rose-950/50 px-3 py-2 text-sm text-rose-300">{error}</div>;
-  if (!run) return <div className="text-sm text-zinc-500">Loading run #{id}…</div>;
+  if (error) return <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>;
+  if (!run) return <div className="text-sm text-hcl-dark/50">Loading run #{id}…</div>;
 
   const effectiveStatus = status ?? run.status;
 
@@ -134,7 +134,7 @@ export default function RunDetail() {
       <div className="flex items-end justify-between">
         <div>
           <h1 className="font-mono text-2xl font-semibold tracking-tight">Run #{run.id}</h1>
-          <p className="mt-1 text-sm text-zinc-500">
+          <p className="mt-1 text-sm text-hcl-dark/50">
             {run.dataset} · {run.base_model.replace(/^mlx-community\//, '')} · {run.method}
           </p>
         </div>
@@ -175,7 +175,7 @@ export default function RunDetail() {
                     alert(`Failed to queue export: ${e instanceof Error ? e.message : String(e)}`);
                   }
                 }}
-                className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500"
+                className="rounded-md bg-hcl-dark-teal px-3 py-1.5 text-sm font-medium text-white hover:bg-hcl-teal"
               >
                 Export to GGUF →
               </button>
@@ -186,8 +186,8 @@ export default function RunDetail() {
       </div>
 
       {(quants || quantsRaw) && (
-        <section className="rounded-lg border border-emerald-700/40 bg-emerald-950/15 p-4 text-xs space-y-2">
-          <h3 className="font-medium uppercase tracking-wider text-emerald-300">
+        <section className="rounded-lg border border-hcl-teal/30 bg-hcl-teal/5 p-4 text-xs space-y-2">
+          <h3 className="font-medium uppercase tracking-wider text-hcl-teal">
             💡 Hermes quant recommendation
           </h3>
           {quants ? (
@@ -198,8 +198,8 @@ export default function RunDetail() {
                     key={q}
                     className={`rounded border px-2 py-0.5 font-mono ${
                       q === quants.primary
-                        ? 'border-emerald-500 bg-emerald-900/50 text-emerald-100'
-                        : 'border-zinc-700 text-zinc-200'
+                        ? 'border-hcl-teal bg-hcl-teal/10 text-hcl-dark-teal'
+                        : 'border-hcl-teal/30 text-hcl-dark'
                     }`}
                   >
                     {q}
@@ -207,34 +207,34 @@ export default function RunDetail() {
                 ))}
               </div>
               {quants.rationale && (
-                <p className="italic text-zinc-300">{quants.rationale}</p>
+                <p className="italic text-hcl-dark/80">{quants.rationale}</p>
               )}
               {quants.estimated_sizes_mb && (
                 <div className="grid grid-cols-4 gap-2 text-center font-mono text-[11px]">
                   {Object.entries(quants.estimated_sizes_mb).map(([k, v]) => (
                     <div
                       key={k}
-                      className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1"
+                      className="rounded border border-hcl-light-blue bg-hcl-bg px-2 py-1"
                     >
-                      <div className="text-zinc-100">{Math.round(v)} MB</div>
-                      <div className="text-zinc-500">{k}</div>
+                      <div className="text-hcl-dark">{Math.round(v)} MB</div>
+                      <div className="text-hcl-dark/50">{k}</div>
                     </div>
                   ))}
                 </div>
               )}
               {quants.warnings?.length ? (
-                <ul className="rounded bg-amber-950/30 px-3 py-2 text-amber-200">
+                <ul className="rounded bg-hcl-warning/10 px-3 py-2 text-hcl-warning">
                   {quants.warnings.map((w, i) => (
                     <li key={i}>⚠ {w}</li>
                   ))}
                 </ul>
               ) : null}
-              <p className="text-[11px] text-zinc-500">
+              <p className="text-[11px] text-hcl-dark/50">
                 The "Export to GGUF" button on the right will use these quants.
               </p>
             </>
           ) : (
-            <pre className="whitespace-pre-wrap font-mono text-[11px] text-zinc-300">
+            <pre className="whitespace-pre-wrap font-mono text-[11px] text-hcl-dark/80">
               {quantsRaw}
             </pre>
           )}
@@ -242,7 +242,7 @@ export default function RunDetail() {
       )}
 
       {run.error_message && (
-        <div className="rounded-md bg-rose-950/40 px-3 py-2 font-mono text-xs text-rose-300">
+        <div className="rounded-md bg-red-50 px-3 py-2 font-mono text-xs text-red-600">
           <div className="flex items-start justify-between gap-3">
             <div className="flex-1 whitespace-pre-wrap">{run.error_message}</div>
             {run.status === 'failed' && (
@@ -251,7 +251,7 @@ export default function RunDetail() {
                   type="button"
                   onClick={diagnoseWithHermes}
                   disabled={diagnosing}
-                  className="rounded border border-rose-700/60 bg-rose-900/40 px-2 py-1 font-sans text-xs text-rose-100 hover:bg-rose-800/50 disabled:opacity-50"
+                  className="rounded border border-hcl-error/40 bg-red-50 px-2 py-1 font-sans text-xs text-red-600 hover:bg-hcl-error/10 disabled:opacity-50"
                 >
                   {diagnosing ? 'Asking Hermes…' : '🔬 Diagnose (OOM-focused)'}
                 </button>
@@ -268,25 +268,25 @@ export default function RunDetail() {
             )}
           </div>
           {diagnosisError && (
-            <div className="mt-2 text-amber-300">⚠ {diagnosisError}</div>
+            <div className="mt-2 text-hcl-warning">⚠ {diagnosisError}</div>
           )}
         </div>
       )}
 
       {postMortemRaw && (
-        <section className="rounded-lg border border-rose-700/40 bg-rose-950/15 p-4 text-xs">
-          <h3 className="mb-2 font-medium uppercase tracking-wider text-rose-300">
+        <section className="rounded-lg border border-hcl-error/40 bg-red-50 p-4 text-xs">
+          <h3 className="mb-2 font-medium uppercase tracking-wider text-red-600">
             📋 Failure post-mortem (also saved to runs/{runId}/post_mortem.md)
           </h3>
-          <pre className="whitespace-pre-wrap font-mono text-[12px] leading-relaxed text-zinc-200">
+          <pre className="whitespace-pre-wrap font-mono text-[12px] leading-relaxed text-hcl-dark">
             {postMortemRaw}
           </pre>
         </section>
       )}
 
       {(diagnosis || diagnosisRaw) && (
-        <section className="rounded-lg border border-amber-700/50 bg-amber-950/20 p-4 space-y-2">
-          <h3 className="text-xs font-medium uppercase tracking-wider text-amber-300">
+        <section className="rounded-lg border border-hcl-warning/40 bg-hcl-warning/10 p-4 space-y-2">
+          <h3 className="text-xs font-medium uppercase tracking-wider text-hcl-warning">
             🔬 Hermes diagnosis
           </h3>
           {diagnosis ? (
@@ -312,17 +312,17 @@ export default function RunDetail() {
                 )}
               </div>
               {diagnosis.reasoning && (
-                <p className="text-xs italic text-zinc-300">{diagnosis.reasoning}</p>
+                <p className="text-xs italic text-hcl-dark/80">{diagnosis.reasoning}</p>
               )}
               {diagnosis.expected_outcome && (
-                <p className="text-xs text-zinc-400">
-                  <span className="font-medium text-zinc-300">Expected:</span>{' '}
+                <p className="text-xs text-hcl-dark/60">
+                  <span className="font-medium text-hcl-dark/80">Expected:</span>{' '}
                   {diagnosis.expected_outcome}
                 </p>
               )}
             </>
           ) : (
-            <pre className="whitespace-pre-wrap font-mono text-[11px] text-zinc-300">
+            <pre className="whitespace-pre-wrap font-mono text-[11px] text-hcl-dark/80">
               {diagnosisRaw}
             </pre>
           )}
@@ -338,7 +338,7 @@ export default function RunDetail() {
 
       {/* Phase N.4 — anomaly chip when val/train ratio is out of band */}
       {anomalySuspected && (
-        <div className="flex items-center gap-2 rounded-md border border-amber-700/40 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">
+        <div className="flex items-center gap-2 rounded-md border border-hcl-warning/40 bg-hcl-warning/10 px-3 py-2 text-xs text-hcl-warning">
           <span>
             Heuristic flag: val/train ratio ={' '}
             <span className="font-mono">
@@ -367,54 +367,54 @@ export default function RunDetail() {
       )}
 
       {(anomaly || anomalyRaw) && (
-        <section className="rounded-lg border border-amber-700/40 bg-amber-950/20 p-4 space-y-2 text-xs">
+        <section className="rounded-lg border border-hcl-warning/40 bg-hcl-warning/10 p-4 space-y-2 text-xs">
           <div className="flex items-baseline justify-between">
-            <h3 className="font-medium uppercase tracking-wider text-amber-300">
+            <h3 className="font-medium uppercase tracking-wider text-hcl-warning">
               🔬 Anomaly explanation
             </h3>
             {anomaly?.severity && (
               <span
                 className={`rounded px-1.5 py-0.5 font-mono text-[10px] ${
                   anomaly.severity === 'critical'
-                    ? 'bg-rose-900/50 text-rose-300'
+                    ? 'bg-red-50 text-red-600'
                     : anomaly.severity === 'warning'
-                    ? 'bg-amber-900/50 text-amber-300'
-                    : 'bg-zinc-800 text-zinc-400'
+                    ? 'bg-hcl-warning/10 text-hcl-warning'
+                    : 'bg-hcl-tech-grey text-hcl-dark/60'
                 }`}
               >
                 {anomaly.anomaly_kind ?? anomaly.severity}
               </span>
             )}
           </div>
-          {anomaly?.summary && <p className="italic text-zinc-300">{anomaly.summary}</p>}
+          {anomaly?.summary && <p className="italic text-hcl-dark/80">{anomaly.summary}</p>}
           {anomaly?.evidence?.length ? (
-            <ul className="list-disc pl-5 text-zinc-400">
+            <ul className="list-disc pl-5 text-hcl-dark/60">
               {anomaly.evidence.map((e, i) => (
                 <li key={i}>{e}</li>
               ))}
             </ul>
           ) : null}
           {anomaly?.recommended_action && (
-            <div className="rounded bg-zinc-950 px-3 py-2">
-              <div className="font-mono text-[11px] text-zinc-300">
+            <div className="rounded bg-hcl-bg px-3 py-2">
+              <div className="font-mono text-[11px] text-hcl-dark/80">
                 {Object.entries(anomaly.recommended_action.config_changes ?? {}).map(
                   ([k, v]) => (
                     <div key={k}>
-                      <span className="text-zinc-500">{k}:</span>{' '}
-                      <span className="text-zinc-100">{String(v)}</span>
+                      <span className="text-hcl-dark/50">{k}:</span>{' '}
+                      <span className="text-hcl-dark">{String(v)}</span>
                     </div>
                   ),
                 )}
               </div>
               {anomaly.recommended_action.reasoning && (
-                <p className="mt-1 italic text-zinc-400">
+                <p className="mt-1 italic text-hcl-dark/60">
                   {anomaly.recommended_action.reasoning}
                 </p>
               )}
             </div>
           )}
           {!anomaly && anomalyRaw && (
-            <pre className="whitespace-pre-wrap font-mono text-[11px] text-zinc-300">
+            <pre className="whitespace-pre-wrap font-mono text-[11px] text-hcl-dark/80">
               {anomalyRaw}
             </pre>
           )}
@@ -423,17 +423,17 @@ export default function RunDetail() {
 
       <LiveLossChart metrics={metrics} />
 
-      {streamError && <div className="font-mono text-xs text-zinc-600">stream: {streamError}</div>}
+      {streamError && <div className="font-mono text-xs text-hcl-dark/40">stream: {streamError}</div>}
 
       <section>
-        <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
+        <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-hcl-dark/50">
           Training log
         </h3>
         <LogPane runId={runId} height="22rem" />
       </section>
 
-      <section className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
-        <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
+      <section className="rounded-lg border border-hcl-light-blue bg-white p-4">
+        <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-hcl-dark/50">
           Configuration
         </h3>
         <dl className="grid grid-cols-2 gap-x-6 gap-y-1 font-mono text-xs md:grid-cols-3">
@@ -462,9 +462,9 @@ function countSteps(metrics: { step: number; name: string }[]): number {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 px-3 py-2.5">
-      <div className="font-mono text-xs text-zinc-500">{label}</div>
-      <div className="mt-1 font-mono text-lg tabular-nums text-zinc-100">{value}</div>
+    <div className="rounded-lg border border-hcl-light-blue bg-white px-3 py-2.5">
+      <div className="font-mono text-xs text-hcl-dark/50">{label}</div>
+      <div className="mt-1 font-mono text-lg tabular-nums text-hcl-dark">{value}</div>
     </div>
   );
 }
@@ -472,8 +472,8 @@ function Stat({ label, value }: { label: string; value: string }) {
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <>
-      <dt className="text-zinc-500">{label}</dt>
-      <dd className="truncate text-zinc-300">{value}</dd>
+      <dt className="text-hcl-dark/50">{label}</dt>
+      <dd className="truncate text-hcl-dark/80">{value}</dd>
     </>
   );
 }
@@ -481,8 +481,8 @@ function Row({ label, value }: { label: string; value: string }) {
 function DiagRow({ label, value }: { label: string; value: string }) {
   return (
     <>
-      <span className="text-zinc-500">{label}</span>
-      <span className="text-zinc-100">{value}</span>
+      <span className="text-hcl-dark/50">{label}</span>
+      <span className="text-hcl-dark">{value}</span>
     </>
   );
 }

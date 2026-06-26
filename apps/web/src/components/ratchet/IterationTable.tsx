@@ -7,9 +7,9 @@ export default function IterationTable({ iterations }: { iterations: Run[] }) {
   );
 
   return (
-    <div className="overflow-hidden rounded-lg border border-zinc-800">
+    <div className="overflow-hidden rounded-lg border border-hcl-light-blue">
       <table className="w-full text-sm">
-        <thead className="bg-zinc-900/50 text-xs uppercase tracking-wider text-zinc-500">
+        <thead className="bg-hcl-dark-blue text-xs uppercase tracking-wider text-white">
           <tr>
             <th className="px-3 py-2 text-left">#</th>
             <th className="px-3 py-2 text-left">Run</th>
@@ -22,12 +22,12 @@ export default function IterationTable({ iterations }: { iterations: Run[] }) {
             <th className="px-3 py-2 text-left">Reasoning</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-zinc-800">
+        <tbody className="divide-y divide-hcl-light-blue">
           {sorted.map((r) => (
-            <tr key={r.id} className="font-mono text-zinc-300 hover:bg-zinc-900/30">
+            <tr key={r.id} className="font-mono text-hcl-dark/80 hover:bg-hcl-tech-grey">
               <td className="px-3 py-2">{r.iteration_number}</td>
               <td className="px-3 py-2">
-                <Link to={`/runs/${r.id}`} className="text-emerald-400 hover:underline">
+                <Link to={`/runs/${r.id}`} className="text-hcl-teal hover:underline">
                   #{r.id}
                 </Link>
               </td>
@@ -39,11 +39,11 @@ export default function IterationTable({ iterations }: { iterations: Run[] }) {
               <td className="px-3 py-2 text-right">{r.batch_size}</td>
               <td className="px-3 py-2 text-right">{r.num_layers}</td>
               <td className="px-3 py-2">
-                {r.was_accepted === true && <span className="text-emerald-400">● accepted</span>}
-                {r.was_accepted === false && <span className="text-rose-400">✗ rejected</span>}
-                {r.was_accepted === null && <span className="text-zinc-600">…</span>}
+                {r.was_accepted === true && <span className="text-hcl-teal">● accepted</span>}
+                {r.was_accepted === false && <span className="text-red-600">✗ rejected</span>}
+                {r.was_accepted === null && <span className="text-hcl-dark/40">…</span>}
               </td>
-              <td className="px-3 py-2 text-xs text-zinc-400">{r.mutation_reasoning ?? '—'}</td>
+              <td className="px-3 py-2 text-xs text-hcl-dark/60">{r.mutation_reasoning ?? '—'}</td>
             </tr>
           ))}
         </tbody>

@@ -52,9 +52,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   if (!ready) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-950 text-zinc-400">
+      <div className="flex min-h-screen items-center justify-center bg-hcl-bg text-hcl-dark/60">
         <div className="flex items-center gap-3 text-sm">
-          <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-zinc-700 border-t-zinc-300" />
+          <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-hcl-teal/30 border-t-hcl-teal" />
           <span>Initializing…</span>
         </div>
       </div>

@@ -213,14 +213,14 @@ export default function Agents() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Agents</h1>
-        <p className="mt-1 text-sm text-zinc-500">
+        <p className="mt-1 text-sm text-hcl-dark/50">
           Multi-step Hermes workflows. Each agent chains 2-4 skills into a
           single end-to-end recommendation.
         </p>
       </div>
 
       {catalogue.length === 0 ? (
-        <div className="text-sm text-zinc-500">Loading agents…</div>
+        <div className="text-sm text-hcl-dark/50">Loading agents…</div>
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {catalogue.map((a) => (
@@ -230,13 +230,13 @@ export default function Agents() {
               onClick={() => pickAgent(a.name)}
               className={`rounded-xl border p-4 text-left transition-colors ${
                 active === a.name
-                  ? 'border-emerald-700 bg-emerald-950/30'
-                  : 'border-zinc-800 bg-zinc-900/40 hover:border-zinc-700'
+                  ? 'border-hcl-teal/30 bg-hcl-teal/10'
+                  : 'border-hcl-light-blue bg-white hover:border-hcl-teal/30'
               }`}
             >
-              <h3 className="font-medium text-zinc-100">{a.title}</h3>
-              <p className="mt-1 text-xs text-zinc-400">{a.blurb}</p>
-              <p className="mt-2 font-mono text-[10px] text-zinc-500">
+              <h3 className="font-medium text-hcl-dark">{a.title}</h3>
+              <p className="mt-1 text-xs text-hcl-dark/60">{a.blurb}</p>
+              <p className="mt-2 font-mono text-[10px] text-hcl-dark/50">
                 inputs: {a.inputs.join(', ')}
               </p>
             </button>
@@ -245,8 +245,8 @@ export default function Agents() {
       )}
 
       {active && (
-        <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 space-y-4">
-          <h2 className="text-sm font-medium text-zinc-200">
+        <section className="rounded-xl border border-hcl-light-blue bg-white p-4 space-y-4">
+          <h2 className="text-sm font-medium text-hcl-dark">
             {meta?.title ?? active}
           </h2>
 
@@ -256,7 +256,7 @@ export default function Agents() {
               <select
                 value={dataset}
                 onChange={(e) => setDataset(e.target.value)}
-                className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm"
+                className="w-full rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-sm"
               >
                 <option value="">— pick a dataset —</option>
                 {datasets.map((d) => (
@@ -276,14 +276,14 @@ export default function Agents() {
                   onChange={(e) => setTaskDesc(e.target.value)}
                   rows={2}
                   placeholder="e.g. Stock-analyst Q&A in a terse, factual tone for iPhone deployment."
-                  className="w-full resize-none rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm placeholder:text-zinc-500"
+                  className="w-full resize-none rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 text-sm placeholder:text-hcl-dark/50"
                 />
               </Field>
               <Field label="Target device">
                 <select
                   value={targetDevice}
                   onChange={(e) => setTargetDevice(e.target.value)}
-                  className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm"
+                  className="w-full rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-sm"
                 >
                   <option value="mac_desktop">mac_desktop</option>
                   <option value="mac_laptop">mac_laptop</option>
@@ -300,7 +300,7 @@ export default function Agents() {
               <select
                 value={sessionId}
                 onChange={(e) => setSessionId(e.target.value ? Number(e.target.value) : '')}
-                className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm"
+                className="w-full rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-sm"
               >
                 <option value="">— pick a session —</option>
                 {experiments.map((s) => (
@@ -317,7 +317,7 @@ export default function Agents() {
               <select
                 value={runId}
                 onChange={(e) => setRunId(e.target.value ? Number(e.target.value) : '')}
-                className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm"
+                className="w-full rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 font-mono text-sm"
               >
                 <option value="">— pick a failed run —</option>
                 {failedRuns.map((r) => (
@@ -330,7 +330,7 @@ export default function Agents() {
           )}
 
           {error && (
-            <div className="rounded-md bg-rose-950/40 px-3 py-2 text-xs text-rose-300">
+            <div className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-600">
               {error}
             </div>
           )}
@@ -340,7 +340,7 @@ export default function Agents() {
               type="button"
               onClick={() => void run()}
               disabled={running}
-              className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-zinc-700"
+              className="rounded-md bg-hcl-dark-teal px-4 py-2 text-sm font-medium text-white hover:bg-hcl-teal disabled:cursor-not-allowed disabled:bg-hcl-light-blue"
             >
               {running ? 'Running…' : 'Run agent'}
             </button>
@@ -348,15 +348,15 @@ export default function Agents() {
 
           {/* Live event stream */}
           {events.length > 0 && (
-            <div className="rounded-md border border-zinc-800 bg-zinc-950 p-3 space-y-1">
-              <h3 className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+            <div className="rounded-md border border-hcl-light-blue bg-hcl-bg p-3 space-y-1">
+              <h3 className="text-xs font-medium uppercase tracking-wider text-hcl-dark/50">
                 Progress
               </h3>
-              <ol className="space-y-1 font-mono text-[11px] text-zinc-400">
+              <ol className="space-y-1 font-mono text-[11px] text-hcl-dark/60">
                 {events.map((ev, i) => (
                   <li key={i}>
-                    <span className="text-emerald-400">●</span>{' '}
-                    <span className="text-zinc-200">{ev.stage}</span>
+                    <span className="text-hcl-teal">●</span>{' '}
+                    <span className="text-hcl-dark">{ev.stage}</span>
                   </li>
                 ))}
               </ol>
@@ -365,8 +365,8 @@ export default function Agents() {
 
           {/* Final recommendation */}
           {complete && (
-            <div className="rounded-md border border-emerald-700/40 bg-emerald-950/15 p-4 text-xs space-y-2">
-              <h3 className="font-medium uppercase tracking-wider text-emerald-300">
+            <div className="rounded-md border border-hcl-teal/30 bg-hcl-teal/5 p-4 text-xs space-y-2">
+              <h3 className="font-medium uppercase tracking-wider text-hcl-teal">
                 ✓ Final recommendation
               </h3>
               <Recommendation
@@ -376,10 +376,10 @@ export default function Agents() {
                 }
               />
               <details className="mt-2">
-                <summary className="cursor-pointer text-zinc-500">
+                <summary className="cursor-pointer text-hcl-dark/50">
                   Raw steps
                 </summary>
-                <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap font-mono text-[10px] text-zinc-400">
+                <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap font-mono text-[10px] text-hcl-dark/60">
                   {JSON.stringify(complete.steps, null, 2)}
                 </pre>
               </details>
@@ -396,7 +396,7 @@ export default function Agents() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-zinc-500">
+      <span className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-hcl-dark/50">
         {label}
       </span>
       {children}
@@ -421,11 +421,11 @@ function Recommendation({
         <Row label="learning_rate" value={String(recommendation.learning_rate ?? '?')} />
         <Row label="iters" value={String(recommendation.iters ?? '?')} />
         {typeof recommendation.rationale === 'string' && (
-          <p className="mt-2 italic text-zinc-300">{recommendation.rationale}</p>
+          <p className="mt-2 italic text-hcl-dark/80">{recommendation.rationale}</p>
         )}
-        <p className="mt-2 text-zinc-500">
+        <p className="mt-2 text-hcl-dark/50">
           Apply manually on{' '}
-          <Link to="/experiments/new" className="text-emerald-400 underline">
+          <Link to="/experiments/new" className="text-hcl-teal underline">
             New Experiment
           </Link>
           .
@@ -444,20 +444,20 @@ function Recommendation({
           <span
             className={`font-mono uppercase ${
               tone === 'rose'
-                ? 'text-rose-300'
+                ? 'text-red-600'
                 : tone === 'amber'
-                ? 'text-amber-300'
-                : 'text-emerald-300'
+                ? 'text-hcl-warning'
+                : 'text-hcl-teal'
             }`}
           >
             {decision}
           </span>
         </div>
         {typeof recommendation.reason === 'string' && (
-          <p className="italic text-zinc-300">{recommendation.reason}</p>
+          <p className="italic text-hcl-dark/80">{recommendation.reason}</p>
         )}
         {recommendation.max_observed_drift != null && (
-          <div className="font-mono text-zinc-400">
+          <div className="font-mono text-hcl-dark/60">
             max drift {String(recommendation.max_observed_drift)} / threshold{' '}
             {String(recommendation.drift_threshold)}
           </div>
@@ -472,23 +472,23 @@ function Recommendation({
     return (
       <div className="space-y-3">
         <div>
-          <h4 className="text-zinc-300">Canary set ({canary.length} records)</h4>
-          <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap font-mono text-[10px] text-zinc-400">
+          <h4 className="text-hcl-dark/80">Canary set ({canary.length} records)</h4>
+          <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap font-mono text-[10px] text-hcl-dark/60">
             {JSON.stringify(canary, null, 2)}
           </pre>
         </div>
         {criteria.length > 0 && (
           <div>
-            <h4 className="text-zinc-300">Success criteria</h4>
-            <pre className="mt-1 whitespace-pre-wrap font-mono text-[10px] text-zinc-400">
+            <h4 className="text-hcl-dark/80">Success criteria</h4>
+            <pre className="mt-1 whitespace-pre-wrap font-mono text-[10px] text-hcl-dark/60">
               {JSON.stringify(criteria, null, 2)}
             </pre>
           </div>
         )}
         {benchmarks.length > 0 && (
           <div>
-            <h4 className="text-zinc-300">Benchmark questions</h4>
-            <ol className="mt-1 list-decimal pl-5 text-zinc-300">
+            <h4 className="text-hcl-dark/80">Benchmark questions</h4>
+            <ol className="mt-1 list-decimal pl-5 text-hcl-dark/80">
               {benchmarks.map((q, i) => (
                 <li key={i}>{String(q)}</li>
               ))}
@@ -504,7 +504,7 @@ function Recommendation({
       <div className="space-y-2">
         <div>
           Root cause:{' '}
-          <span className="font-mono text-rose-300">
+          <span className="font-mono text-red-600">
             {String(recommendation.root_cause ?? 'unknown')}
           </span>
           {' · '}
@@ -514,7 +514,7 @@ function Recommendation({
           </span>
         </div>
         {md && (
-          <pre className="max-h-96 overflow-auto whitespace-pre-wrap font-mono text-[11px] text-zinc-300">
+          <pre className="max-h-96 overflow-auto whitespace-pre-wrap font-mono text-[11px] text-hcl-dark/80">
             {md}
           </pre>
         )}
@@ -522,7 +522,7 @@ function Recommendation({
     );
   }
   return (
-    <pre className="whitespace-pre-wrap font-mono text-[11px] text-zinc-300">
+    <pre className="whitespace-pre-wrap font-mono text-[11px] text-hcl-dark/80">
       {JSON.stringify(recommendation, null, 2)}
     </pre>
   );
@@ -531,8 +531,8 @@ function Recommendation({
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline gap-3">
-      <span className="w-32 text-zinc-500">{label}</span>
-      <span className="text-zinc-100">{value}</span>
+      <span className="w-32 text-hcl-dark/50">{label}</span>
+      <span className="text-hcl-dark">{value}</span>
     </div>
   );
 }

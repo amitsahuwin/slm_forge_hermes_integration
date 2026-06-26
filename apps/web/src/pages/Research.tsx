@@ -95,21 +95,21 @@ export default function Research() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="font-mono text-2xl font-semibold tracking-tight">R&D</h1>
-          <p className="mt-1 text-sm text-zinc-400">
+          <p className="mt-1 text-sm text-hcl-dark/60">
             Ollama-generated market research reports. New reports appear here automatically.
           </p>
         </div>
         <button
           type="button"
           onClick={() => setModalOpen(true)}
-          className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500"
+          className="rounded-md bg-hcl-dark-teal px-3 py-1.5 text-sm font-medium text-white hover:bg-hcl-teal"
         >
           + New report
         </button>
       </div>
 
       {reportsError && (
-        <div className="rounded-md bg-rose-950/50 px-3 py-2 text-sm text-rose-300">
+        <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">
           {reportsError}
         </div>
       )}
@@ -120,11 +120,11 @@ export default function Research() {
         <div className="flex gap-6">
           {/* Left rail */}
           <aside className="w-72 shrink-0">
-            <div className="mb-2 font-mono text-[10px] uppercase tracking-wider text-zinc-500">
+            <div className="mb-2 font-mono text-[10px] uppercase tracking-wider text-hcl-dark/50">
               Reports {reports ? `(${reports.length})` : ''}
             </div>
             {reports === null && (
-              <div className="text-sm text-zinc-500">Loading…</div>
+              <div className="text-sm text-hcl-dark/50">Loading…</div>
             )}
             {reports && (
               <ul className="space-y-1.5">
@@ -145,17 +145,17 @@ export default function Research() {
           {/* Main pane */}
           <section className="min-w-0 flex-1">
             {!selected && (
-              <div className="rounded-lg border border-dashed border-zinc-800 px-6 py-12 text-center text-sm text-zinc-500">
+              <div className="rounded-lg border border-dashed border-hcl-light-blue px-6 py-12 text-center text-sm text-hcl-dark/50">
                 Pick a report on the left.
               </div>
             )}
             {selected && contentError && (
-              <div className="rounded-md bg-rose-950/50 px-3 py-2 text-sm text-rose-300">
+              <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">
                 {contentError}
               </div>
             )}
             {selected && !content && !contentError && (
-              <div className="text-sm text-zinc-500">Loading report…</div>
+              <div className="text-sm text-hcl-dark/50">Loading report…</div>
             )}
             {content && <ReportView content={content} />}
           </section>
@@ -178,21 +178,21 @@ export default function Research() {
 
 function EmptyState({ onCta }: { onCta: () => void }) {
   return (
-    <div className="rounded-lg border border-dashed border-zinc-800 bg-zinc-900/30 px-6 py-14 text-center">
-      <div className="mx-auto mb-3 inline-flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-400">
+    <div className="rounded-lg border border-dashed border-hcl-light-blue bg-hcl-tech-grey/30 px-6 py-14 text-center">
+      <div className="mx-auto mb-3 inline-flex h-10 w-10 items-center justify-center rounded-full bg-hcl-teal/10 text-hcl-teal">
         <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
           <path d="M9 2a1 1 0 011 1v6h6a1 1 0 110 2h-6v6a1 1 0 11-2 0v-6H2a1 1 0 110-2h6V3a1 1 0 011-1z" />
         </svg>
       </div>
-      <h2 className="text-base font-semibold text-zinc-100">No reports yet</h2>
-      <p className="mx-auto mt-1 max-w-md text-sm text-zinc-400">
+      <h2 className="text-base font-semibold text-hcl-dark">No reports yet</h2>
+      <p className="mx-auto mt-1 max-w-md text-sm text-hcl-dark/60">
         Trigger a market research run and the report will appear here. The local Ollama model
         builds an outline, drafts each section, and saves a markdown file you can browse.
       </p>
       <button
         type="button"
         onClick={onCta}
-        className="mt-4 rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500"
+        className="mt-4 rounded-md bg-hcl-dark-teal px-4 py-2 text-sm font-medium text-white hover:bg-hcl-teal"
       >
         Generate your first report
       </button>
@@ -215,8 +215,8 @@ function ReportRowCard({
     <div
       className={`group relative rounded-md border px-3 py-2 transition-colors ${
         active
-          ? 'border-emerald-700 bg-emerald-950/30'
-          : 'border-zinc-800 bg-zinc-900/40 hover:border-zinc-700'
+          ? 'border-hcl-teal/30 bg-hcl-teal/10'
+          : 'border-hcl-light-blue bg-white hover:border-hcl-teal/30'
       }`}
     >
       <button
@@ -224,18 +224,18 @@ function ReportRowCard({
         onClick={onSelect}
         className="block w-full text-left"
       >
-        <div className="line-clamp-2 text-sm font-medium text-zinc-100">{row.title}</div>
+        <div className="line-clamp-2 text-sm font-medium text-hcl-dark">{row.title}</div>
         <div className="mt-1 flex flex-wrap items-center gap-1.5">
           {row.tags.slice(0, 3).map((t) => (
             <span
               key={t}
-              className="rounded-sm bg-zinc-800/80 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-zinc-400"
+              className="rounded-sm bg-hcl-tech-grey/80 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-hcl-dark/60"
             >
               {t}
             </span>
           ))}
         </div>
-        <div className="mt-1 font-mono text-[10px] text-zinc-500">
+        <div className="mt-1 font-mono text-[10px] text-hcl-dark/50">
           {formatRelative(row.generated_at)} · {fmtBytes(row.bytes)}
         </div>
       </button>
@@ -245,7 +245,7 @@ function ReportRowCard({
           e.stopPropagation();
           onDelete();
         }}
-        className="absolute right-1.5 top-1.5 rounded-sm p-1 text-zinc-600 opacity-0 transition-opacity hover:bg-zinc-800 hover:text-rose-400 group-hover:opacity-100"
+        className="absolute right-1.5 top-1.5 rounded-sm p-1 text-hcl-dark/40 opacity-0 transition-opacity hover:bg-hcl-tech-grey hover:text-red-500 group-hover:opacity-100"
         aria-label={`Delete ${row.filename}`}
         title="Delete report"
       >
@@ -269,38 +269,38 @@ function ReportView({ content }: { content: ReportContent }) {
 
   return (
     <article className="space-y-4">
-      <header className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
-        <div className="font-mono text-[10px] uppercase tracking-wider text-zinc-500">
+      <header className="rounded-lg border border-hcl-light-blue bg-white p-4">
+        <div className="font-mono text-[10px] uppercase tracking-wider text-hcl-dark/50">
           {content.filename}
         </div>
         {frontmatter.topic && (
-          <div className="mt-1 font-mono text-xs text-zinc-400">
-            <span className="text-zinc-600">topic: </span>
+          <div className="mt-1 font-mono text-xs text-hcl-dark/60">
+            <span className="text-hcl-dark/40">topic: </span>
             {frontmatter.topic}
           </div>
         )}
-        <div className="mt-1 flex flex-wrap items-center gap-3 font-mono text-[10px] text-zinc-500">
+        <div className="mt-1 flex flex-wrap items-center gap-3 font-mono text-[10px] text-hcl-dark/50">
           {frontmatter.depth && (
             <span>
-              <span className="text-zinc-600">depth </span>
+              <span className="text-hcl-dark/40">depth </span>
               {frontmatter.depth}
             </span>
           )}
           {frontmatter.model && (
             <span>
-              <span className="text-zinc-600">model </span>
+              <span className="text-hcl-dark/40">model </span>
               {frontmatter.model}
             </span>
           )}
           {frontmatter.generated_at && (
             <span>
-              <span className="text-zinc-600">generated </span>
+              <span className="text-hcl-dark/40">generated </span>
               {formatRelative(frontmatter.generated_at)}
             </span>
           )}
         </div>
       </header>
-      <div className="prose prose-invert prose-sm max-w-none rounded-lg border border-zinc-800 bg-zinc-900/40 px-5 py-4">
+      <div className="prose prose-invert prose-sm max-w-none rounded-lg border border-hcl-light-blue bg-white px-5 py-4">
         <MiniMarkdown source={body} />
       </div>
     </article>
@@ -369,7 +369,7 @@ function MiniMarkdown({ source }: { source: string }) {
           return (
             <pre
               key={i}
-              className="overflow-x-auto rounded-md border border-zinc-800 bg-zinc-950/60 p-3 font-mono text-xs text-zinc-300"
+              className="overflow-x-auto rounded-md border border-hcl-light-blue bg-hcl-bg/60 p-3 font-mono text-xs text-hcl-dark/80"
             >
               {b.text}
             </pre>
@@ -377,7 +377,7 @@ function MiniMarkdown({ source }: { source: string }) {
         }
         if (b.type === 'heading') {
           const sizes = ['text-xl', 'text-lg', 'text-base', 'text-sm', 'text-sm', 'text-sm'];
-          const cls = `mt-4 mb-2 font-semibold text-zinc-100 ${sizes[b.level - 1] ?? 'text-sm'}`;
+          const cls = `mt-4 mb-2 font-semibold text-hcl-dark ${sizes[b.level - 1] ?? 'text-sm'}`;
           if (b.level === 1) return <h1 key={i} className={cls}>{renderInline(b.text)}</h1>;
           if (b.level === 2) return <h2 key={i} className={cls}>{renderInline(b.text)}</h2>;
           if (b.level === 3) return <h3 key={i} className={cls}>{renderInline(b.text)}</h3>;
@@ -387,7 +387,7 @@ function MiniMarkdown({ source }: { source: string }) {
         }
         if (b.type === 'list') {
           return (
-            <ul key={i} className="my-2 list-disc space-y-1 pl-5 text-sm text-zinc-300">
+            <ul key={i} className="my-2 list-disc space-y-1 pl-5 text-sm text-hcl-dark/80">
               {b.items.map((it, j) => (
                 <li key={j}>{renderInline(it)}</li>
               ))}
@@ -399,11 +399,11 @@ function MiniMarkdown({ source }: { source: string }) {
             <div key={i} className="my-3 overflow-x-auto">
               <table className="w-full border-collapse text-left text-sm">
                 <thead>
-                  <tr className="border-b border-zinc-800">
+                  <tr className="border-b border-hcl-light-blue">
                     {b.header.map((h, j) => (
                       <th
                         key={j}
-                        className="px-2 py-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-500"
+                        className="bg-hcl-dark-blue px-2 py-1.5 font-mono text-[10px] uppercase tracking-wider text-white"
                       >
                         {renderInline(h)}
                       </th>
@@ -412,9 +412,9 @@ function MiniMarkdown({ source }: { source: string }) {
                 </thead>
                 <tbody>
                   {b.rows.map((row, j) => (
-                    <tr key={j} className="border-b border-zinc-900">
+                    <tr key={j} className="border-b border-hcl-light-blue">
                       {row.map((cell, k) => (
-                        <td key={k} className="px-2 py-1.5 align-top text-xs text-zinc-300">
+                        <td key={k} className="px-2 py-1.5 align-top text-xs text-hcl-dark/80">
                           {renderInline(cell)}
                         </td>
                       ))}
@@ -426,7 +426,7 @@ function MiniMarkdown({ source }: { source: string }) {
           );
         }
         return (
-          <p key={i} className="my-2 text-sm leading-relaxed text-zinc-300">
+          <p key={i} className="my-2 text-sm leading-relaxed text-hcl-dark/80">
             {b.lines.map((ln, j) => (
               <span key={j}>
                 {renderInline(ln)}
@@ -533,7 +533,7 @@ function renderInline(text: string): React.ReactNode[] {
     const tok = m[0];
     if (tok.startsWith('**')) {
       nodes.push(
-        <strong key={`k${key++}`} className="font-semibold text-zinc-100">
+        <strong key={`k${key++}`} className="font-semibold text-hcl-dark">
           {tok.slice(2, -2)}
         </strong>,
       );
@@ -541,7 +541,7 @@ function renderInline(text: string): React.ReactNode[] {
       nodes.push(
         <code
           key={`k${key++}`}
-          className="rounded bg-zinc-800 px-1 py-0.5 font-mono text-xs text-emerald-300"
+          className="rounded bg-hcl-tech-grey px-1 py-0.5 font-mono text-xs text-hcl-teal"
         >
           {tok.slice(1, -1)}
         </code>,
@@ -555,7 +555,7 @@ function renderInline(text: string): React.ReactNode[] {
             href={linkMatch[2]}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-emerald-400 underline hover:text-emerald-300"
+            className="text-hcl-teal underline hover:text-hcl-teal"
           >
             {linkMatch[1]}
           </a>,

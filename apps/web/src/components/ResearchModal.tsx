@@ -188,15 +188,15 @@ export default function ResearchModal({ open, onClose, onDone }: ResearchModalPr
       onClick={handleBackdrop}
     >
       <div
-        className="w-full max-w-lg rounded-xl border border-zinc-800 bg-zinc-950 p-5 shadow-2xl"
+        className="w-full max-w-lg rounded-xl border border-hcl-light-blue bg-hcl-bg p-5 shadow-2xl"
         role="dialog"
         aria-modal="true"
         aria-label="Generate market research report"
       >
         <div className="mb-4 flex items-start justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-zinc-100">Market research</h2>
-            <p className="mt-0.5 text-xs text-zinc-500">
+            <h2 className="text-lg font-semibold text-hcl-dark">Market research</h2>
+            <p className="mt-0.5 text-xs text-hcl-dark/50">
               Generate a structured markdown report via local Ollama.
             </p>
           </div>
@@ -204,7 +204,7 @@ export default function ResearchModal({ open, onClose, onDone }: ResearchModalPr
             type="button"
             onClick={handleClose}
             disabled={phase === 'running'}
-            className="rounded-md p-1 text-zinc-500 hover:bg-zinc-900 hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-md p-1 text-hcl-dark/50 hover:bg-hcl-tech-grey hover:text-hcl-dark disabled:cursor-not-allowed disabled:opacity-40"
             aria-label="Close"
           >
             <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
@@ -221,13 +221,13 @@ export default function ResearchModal({ open, onClose, onDone }: ResearchModalPr
                 onChange={(e) => setTopic(e.target.value)}
                 rows={3}
                 autoFocus
-                className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-emerald-600 focus:outline-none"
+                className="w-full rounded-md border border-hcl-light-blue bg-hcl-tech-grey px-3 py-2 text-sm text-hcl-dark placeholder-hcl-dark/30 focus:border-hcl-teal focus:outline-none"
                 placeholder="e.g. On-device SLM fine-tuning vs hosted fine-tuning APIs"
               />
             </Field>
 
             <div>
-              <div className="mb-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-500">
+              <div className="mb-1.5 font-mono text-[10px] uppercase tracking-wider text-hcl-dark/50">
                 Depth
               </div>
               <div className="space-y-1.5">
@@ -236,8 +236,8 @@ export default function ResearchModal({ open, onClose, onDone }: ResearchModalPr
                     key={d}
                     className={`flex cursor-pointer items-start gap-3 rounded-md border px-3 py-2 transition-colors ${
                       depth === d
-                        ? 'border-emerald-700 bg-emerald-950/30'
-                        : 'border-zinc-800 bg-zinc-900/40 hover:border-zinc-700'
+                        ? 'border-hcl-teal/30 bg-hcl-teal/10'
+                        : 'border-hcl-light-blue bg-white hover:border-hcl-teal/30'
                     }`}
                   >
                     <input
@@ -246,11 +246,11 @@ export default function ResearchModal({ open, onClose, onDone }: ResearchModalPr
                       value={d}
                       checked={depth === d}
                       onChange={() => setDepth(d)}
-                      className="mt-1 accent-emerald-500"
+                      className="mt-1 accent-hcl-teal"
                     />
                     <div className="min-w-0">
-                      <div className="font-mono text-xs capitalize text-zinc-200">{d}</div>
-                      <div className="mt-0.5 font-mono text-[10px] text-zinc-500">
+                      <div className="font-mono text-xs capitalize text-hcl-dark">{d}</div>
+                      <div className="mt-0.5 font-mono text-[10px] text-hcl-dark/50">
                         {DEPTH_HINTS[d]}
                       </div>
                     </div>
@@ -263,7 +263,7 @@ export default function ResearchModal({ open, onClose, onDone }: ResearchModalPr
               <button
                 type="button"
                 onClick={handleClose}
-                className="rounded-md border border-zinc-800 px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-900"
+                className="rounded-md border border-hcl-light-blue px-3 py-1.5 text-sm text-hcl-dark/80 hover:bg-hcl-tech-grey"
               >
                 Cancel
               </button>
@@ -271,7 +271,7 @@ export default function ResearchModal({ open, onClose, onDone }: ResearchModalPr
                 type="button"
                 onClick={handleSubmit}
                 disabled={!canSubmit}
-                className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+                className="rounded-md bg-hcl-dark-teal px-3 py-1.5 text-sm font-medium text-white hover:bg-hcl-teal disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Generate
               </button>
@@ -283,14 +283,14 @@ export default function ResearchModal({ open, onClose, onDone }: ResearchModalPr
 
         {phase === 'done' && result && (
           <div className="space-y-3">
-            <div className="rounded-md border border-emerald-900/60 bg-emerald-950/30 p-3 text-sm text-emerald-200">
+            <div className="rounded-md border border-hcl-teal/30 bg-hcl-teal/10 p-3 text-sm text-hcl-dark-teal">
               Saved <span className="font-mono">{result.filename}</span> ({fmtBytes(result.bytes)}).
             </div>
             <div className="flex items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={handleClose}
-                className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500"
+                className="rounded-md bg-hcl-dark-teal px-3 py-1.5 text-sm font-medium text-white hover:bg-hcl-teal"
               >
                 View report
               </button>
@@ -300,21 +300,21 @@ export default function ResearchModal({ open, onClose, onDone }: ResearchModalPr
 
         {phase === 'error' && (
           <div className="space-y-3">
-            <div className="rounded-md border border-rose-900/60 bg-rose-950/40 p-3 text-sm text-rose-200">
+            <div className="rounded-md border border-hcl-error/40 bg-red-50 p-3 text-sm text-red-500">
               {errorMsg ?? 'Research run failed.'}
             </div>
             <div className="flex items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setPhase('configure')}
-                className="rounded-md border border-zinc-800 px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-900"
+                className="rounded-md border border-hcl-light-blue px-3 py-1.5 text-sm text-hcl-dark/80 hover:bg-hcl-tech-grey"
               >
                 Try again
               </button>
               <button
                 type="button"
                 onClick={handleClose}
-                className="rounded-md bg-zinc-800 px-3 py-1.5 text-sm text-zinc-200 hover:bg-zinc-700"
+                className="rounded-md bg-hcl-tech-grey px-3 py-1.5 text-sm text-hcl-dark hover:bg-hcl-tech-grey"
               >
                 Close
               </button>
@@ -342,15 +342,15 @@ function RunningView({ progress }: { progress: ProgressEvent | null }) {
     <div className="space-y-4">
       <div className="flex items-center gap-3">
         <Spinner />
-        <div className="font-mono text-xs text-zinc-300">{stageLabel}</div>
+        <div className="font-mono text-xs text-hcl-dark/80">{stageLabel}</div>
       </div>
 
       {progress?.title && (
-        <div className="rounded-md border border-zinc-800 bg-zinc-900/40 px-3 py-2 font-mono text-xs text-zinc-400">
-          <span className="text-zinc-600">section: </span>
-          <span className="text-zinc-200">{progress.title}</span>
+        <div className="rounded-md border border-hcl-light-blue bg-white px-3 py-2 font-mono text-xs text-hcl-dark/60">
+          <span className="text-hcl-dark/40">section: </span>
+          <span className="text-hcl-dark">{progress.title}</span>
           {total > 0 && (
-            <span className="ml-2 text-zinc-600">
+            <span className="ml-2 text-hcl-dark/40">
               ({Math.max(idx, 1)} / {total})
             </span>
           )}
@@ -360,19 +360,19 @@ function RunningView({ progress }: { progress: ProgressEvent | null }) {
       {showBar && (
         <div>
           <div className="mb-1 flex items-baseline justify-between font-mono text-xs">
-            <span className="text-zinc-400">section progress</span>
-            <span className="text-zinc-500">{pct.toFixed(0)}%</span>
+            <span className="text-hcl-dark/60">section progress</span>
+            <span className="text-hcl-dark/50">{pct.toFixed(0)}%</span>
           </div>
-          <div className="h-2 overflow-hidden rounded-full bg-zinc-900">
+          <div className="h-2 overflow-hidden rounded-full bg-hcl-tech-grey">
             <div
-              className="h-full bg-emerald-500 transition-[width] duration-300"
+              className="h-full bg-hcl-teal transition-[width] duration-300"
               style={{ width: `${pct}%` }}
             />
           </div>
         </div>
       )}
 
-      <p className="font-mono text-[10px] text-zinc-600">
+      <p className="font-mono text-[10px] text-hcl-dark/40">
         Close disabled while generating. Deep reports can take 6-10 minutes on small models.
       </p>
     </div>
@@ -398,7 +398,7 @@ function Field({
 }) {
   return (
     <label className="block">
-      <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-zinc-500">
+      <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-hcl-dark/50">
         {label}
       </div>
       {children}
@@ -408,7 +408,7 @@ function Field({
 
 function Spinner() {
   return (
-    <svg className="h-4 w-4 animate-spin text-emerald-400" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <svg className="h-4 w-4 animate-spin text-hcl-teal" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
       <path
         className="opacity-75"

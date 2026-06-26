@@ -3,11 +3,11 @@ import { Link } from 'react-router-dom';
 import { type Run, type RunStatus, api, deletes } from '../lib/api';
 
 const STATUS_STYLES: Record<RunStatus, string> = {
-  queued: 'text-zinc-400',
-  running: 'text-emerald-400',
-  completed: 'text-sky-400',
-  failed: 'text-rose-400',
-  cancelled: 'text-zinc-500',
+  queued: 'text-hcl-dark/60',
+  running: 'text-hcl-teal',
+  completed: 'text-hcl-info',
+  failed: 'text-red-600',
+  cancelled: 'text-hcl-dark/50',
 };
 
 export default function Runs() {
@@ -35,31 +35,31 @@ export default function Runs() {
       <div className="flex items-end justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Runs</h1>
-          <p className="mt-1 text-sm text-zinc-500">All fine-tuning jobs, newest first.</p>
+          <p className="mt-1 text-sm text-hcl-dark/50">All fine-tuning jobs, newest first.</p>
         </div>
         <Link
           to="/runs/new"
-          className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500"
+          className="rounded-md bg-hcl-dark-teal px-3 py-1.5 text-sm font-medium text-white hover:bg-hcl-teal"
         >
           + New Run
         </Link>
       </div>
 
-      {error && <div className="rounded-md bg-rose-950/50 px-3 py-2 text-sm text-rose-300">{error}</div>}
+      {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>}
 
       {runs === null ? (
-        <div className="text-sm text-zinc-500">Loading…</div>
+        <div className="text-sm text-hcl-dark/50">Loading…</div>
       ) : runs.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-zinc-800 px-6 py-10 text-center text-sm text-zinc-500">
+        <div className="rounded-lg border border-dashed border-hcl-light-blue px-6 py-10 text-center text-sm text-hcl-dark/50">
           No runs yet.{' '}
-          <Link to="/runs/new" className="text-emerald-400 hover:underline">
+          <Link to="/runs/new" className="text-hcl-teal hover:underline">
             Start your first run →
           </Link>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-zinc-800">
+        <div className="overflow-hidden rounded-lg border border-hcl-light-blue">
           <table className="w-full text-sm">
-            <thead className="bg-zinc-900/50 text-xs uppercase tracking-wider text-zinc-500">
+            <thead className="bg-hcl-dark-blue text-xs uppercase tracking-wider text-white">
               <tr>
                 <th className="px-4 py-2.5 text-left">#</th>
                 <th className="px-4 py-2.5 text-left">Dataset</th>
@@ -72,22 +72,22 @@ export default function Runs() {
                 <th className="px-4 py-2.5 text-right"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-800">
+            <tbody className="divide-y divide-hcl-light-blue">
               {runs.map((r) => (
-                <tr key={r.id} className="font-mono text-zinc-300 hover:bg-zinc-900/30">
+                <tr key={r.id} className="font-mono text-hcl-dark/80 even:bg-hcl-bg hover:bg-hcl-tech-grey/30">
                   <td className="px-4 py-2.5">
-                    <Link to={`/runs/${r.id}`} className="text-emerald-400 hover:underline">
+                    <Link to={`/runs/${r.id}`} className="text-hcl-teal hover:underline">
                       {r.id}
                     </Link>
                   </td>
                   <td className="px-4 py-2.5">{r.dataset}</td>
-                  <td className="px-4 py-2.5 text-xs text-zinc-500">
+                  <td className="px-4 py-2.5 text-xs text-hcl-dark/50">
                     {r.base_model.replace(/^mlx-community\//, '')}
                     <span
                       className={`ml-1.5 rounded px-1 py-0.5 text-[10px] font-medium uppercase ${
                         r.trainer_backend === 'cuda'
                           ? 'bg-violet-950/60 text-violet-400'
-                          : 'bg-zinc-800 text-zinc-400'
+                          : 'bg-hcl-tech-grey text-hcl-dark/60'
                       }`}
                     >
                       {r.trainer_backend ?? 'mlx'}
@@ -113,7 +113,7 @@ export default function Runs() {
                           alert(err instanceof Error ? err.message : String(err));
                         }
                       }}
-                      className="text-xs text-zinc-600 hover:text-rose-400"
+                      className="text-xs text-hcl-dark/40 hover:text-red-500"
                       title="Delete run"
                     >
                       delete

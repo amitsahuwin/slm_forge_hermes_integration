@@ -87,28 +87,28 @@ function AdminUsersInner() {
       <div className="mb-6 flex items-end justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Users</h1>
-          <p className="mt-1 text-sm text-zinc-400">Keycloak-managed users with access to SLM-Forge.</p>
+          <p className="mt-1 text-sm text-hcl-dark/60">Keycloak-managed users with access to SLM-Forge.</p>
         </div>
         <a
           href={keycloakAdminUrl()}
           target="_blank"
           rel="noreferrer"
-          className="rounded-md border border-zinc-800 px-3 py-1.5 text-sm text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900"
+          className="rounded-md border border-hcl-light-blue px-3 py-1.5 text-sm text-hcl-dark/80 hover:border-hcl-teal/30 hover:bg-hcl-tech-grey"
         >
           Open Keycloak Admin →
         </a>
       </div>
 
       {state.kind === 'loading' && (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-6 text-sm text-zinc-400">
+        <div className="rounded-xl border border-hcl-light-blue bg-white p-6 text-sm text-hcl-dark/60">
           Loading users…
         </div>
       )}
 
       {state.kind === 'not-configured' && (
-        <div className="rounded-xl border border-amber-900/60 bg-amber-950/30 p-6 text-sm text-amber-100">
+        <div className="rounded-xl border border-hcl-warning/30 bg-hcl-warning/10 p-6 text-sm text-hcl-warning">
           <div className="mb-2 text-base font-semibold">Keycloak admin API not configured</div>
-          <p className="text-amber-200/80">
+          <p className="text-hcl-warning/80">
             {state.detail ||
               'The backend does not have Keycloak admin credentials, so it cannot list users directly. Use the Keycloak Admin Console to manage users.'}
           </p>
@@ -116,7 +116,7 @@ function AdminUsersInner() {
             href={keycloakAdminUrl()}
             target="_blank"
             rel="noreferrer"
-            className="mt-4 inline-block rounded-md bg-amber-600/80 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-600"
+            className="mt-4 inline-block rounded-md bg-hcl-warning/80 px-3 py-1.5 text-sm font-medium text-white hover:bg-hcl-warning"
           >
             Open Keycloak Admin Console
           </a>
@@ -124,16 +124,16 @@ function AdminUsersInner() {
       )}
 
       {state.kind === 'error' && (
-        <div className="rounded-xl border border-red-900/60 bg-red-950/30 p-6 text-sm text-red-100">
+        <div className="rounded-xl border border-hcl-error/30 bg-hcl-error/10 p-6 text-sm text-red-100">
           <div className="mb-1 font-semibold">Failed to load users (HTTP {state.status})</div>
           <div className="font-mono text-xs text-red-200/80">{state.detail}</div>
         </div>
       )}
 
       {state.kind === 'ok' && (
-        <div className="overflow-hidden rounded-xl border border-zinc-800">
+        <div className="overflow-hidden rounded-xl border border-hcl-light-blue">
           <table className="w-full text-sm">
-            <thead className="bg-zinc-900/60 text-left text-xs uppercase tracking-wide text-zinc-400">
+            <thead className="bg-hcl-dark-blue text-left text-xs uppercase tracking-wide text-white">
               <tr>
                 <th className="px-4 py-3 font-medium">Email</th>
                 <th className="px-4 py-3 font-medium">Roles</th>
@@ -141,34 +141,34 @@ function AdminUsersInner() {
                 <th className="px-4 py-3 font-medium">Last login</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-800">
+            <tbody className="divide-y divide-hcl-light-blue">
               {state.users.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-4 py-6 text-center text-zinc-500">
+                  <td colSpan={4} className="px-4 py-6 text-center text-hcl-dark/50">
                     No users found.
                   </td>
                 </tr>
               )}
               {state.users.map((u) => (
-                <tr key={u.id} className="hover:bg-zinc-900/40">
-                  <td className="px-4 py-3 text-zinc-100">{u.email || u.username || u.id}</td>
+                <tr key={u.id} className="hover:bg-white">
+                  <td className="px-4 py-3 text-hcl-dark">{u.email || u.username || u.id}</td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-1">
                       {u.roles.map((r) => (
                         <span
                           key={r}
-                          className="rounded-full border border-zinc-700 bg-zinc-800/60 px-2 py-0.5 text-xs text-zinc-300"
+                          className="rounded-full border border-hcl-teal/30 bg-hcl-tech-grey/60 px-2 py-0.5 text-xs text-hcl-dark/80"
                         >
                           {r}
                         </span>
                       ))}
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-zinc-300">
-                    {u.groups.length === 0 ? <span className="text-zinc-500">—</span> : u.groups.join(', ')}
+                  <td className="px-4 py-3 text-hcl-dark/80">
+                    {u.groups.length === 0 ? <span className="text-hcl-dark/50">—</span> : u.groups.join(', ')}
                   </td>
-                  <td className="px-4 py-3 text-zinc-400">
-                    {u.last_login ? new Date(u.last_login).toLocaleString() : <span className="text-zinc-500">—</span>}
+                  <td className="px-4 py-3 text-hcl-dark/60">
+                    {u.last_login ? new Date(u.last_login).toLocaleString() : <span className="text-hcl-dark/50">—</span>}
                   </td>
                 </tr>
               ))}

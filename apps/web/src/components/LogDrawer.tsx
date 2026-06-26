@@ -56,25 +56,25 @@ export default function LogDrawer({ worker, onClose }: LogDrawerProps) {
     >
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-zinc-950/70 backdrop-blur-sm"
+        className="absolute inset-0 bg-hcl-navy/50 backdrop-blur-sm"
         onClick={onClose}
         aria-hidden
       />
 
       {/* Panel */}
-      <div className="absolute inset-y-0 right-0 flex w-full max-w-[640px] flex-col border-l border-zinc-800 bg-zinc-950 shadow-2xl">
-        <header className="flex items-center justify-between border-b border-zinc-800 px-5 py-4">
+      <div className="absolute inset-y-0 right-0 flex w-full max-w-[640px] flex-col border-l border-hcl-light-blue bg-white shadow-2xl">
+        <header className="flex items-center justify-between border-b border-hcl-light-blue bg-hcl-gradient px-5 py-4">
           <div>
-            <h2 className="text-base font-semibold tracking-tight text-zinc-100">
+            <h2 className="text-base font-bold tracking-tight text-white">
               {WORKER_TITLES[worker]}
             </h2>
-            <p className="mt-0.5 text-xs text-zinc-500">{WORKER_SUBTITLES[worker]}</p>
+            <p className="mt-0.5 text-xs text-white/70">{WORKER_SUBTITLES[worker]}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close log drawer"
-            className="rounded-lg border border-zinc-800 px-2.5 py-1 text-sm text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-600"
+            className="rounded-lg border border-white/30 px-2.5 py-1 text-sm text-white hover:border-white/50 hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/30"
           >
             ✕
           </button>

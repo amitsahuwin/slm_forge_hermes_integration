@@ -15,17 +15,17 @@ type HermesStatus = {
 type PillTone = 'ok' | 'warn' | 'down' | 'unknown';
 
 const TONE_CLASSES: Record<PillTone, string> = {
-  ok: 'border-emerald-700/40 bg-emerald-900/30 text-emerald-300',
-  warn: 'border-amber-700/40 bg-amber-900/30 text-amber-300',
-  down: 'border-rose-700/40 bg-rose-900/30 text-rose-300',
-  unknown: 'border-zinc-700/60 bg-zinc-800/40 text-zinc-400',
+  ok: 'border-hcl-teal/30 bg-hcl-teal/10 text-hcl-teal',
+  warn: 'border-hcl-warning/40 bg-hcl-warning/10 text-hcl-warning',
+  down: 'border-hcl-error/40 bg-red-50 text-red-600',
+  unknown: 'border-hcl-teal/30 bg-hcl-tech-grey text-hcl-dark/60',
 };
 
 const TONE_DOT: Record<PillTone, string> = {
-  ok: 'bg-emerald-400',
-  warn: 'bg-amber-400',
-  down: 'bg-rose-400',
-  unknown: 'bg-zinc-500',
+  ok: 'bg-hcl-teal',
+  warn: 'bg-hcl-warning',
+  down: 'bg-red-400',
+  unknown: 'bg-hcl-mid-blue',
 };
 
 function relativeTime(iso: string | null): string {
@@ -95,22 +95,22 @@ export default function HermesStatusCard() {
 
   // ── Render ──────────────────────────────────────────────────────────
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
+    <div className="rounded-xl border border-hcl-light-blue bg-white p-5">
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+        <h3 className="text-xs font-medium uppercase tracking-wider text-hcl-dark/50">
           Hermes Agent
         </h3>
         {status && (
-          <span className="font-mono text-[10px] text-zinc-600">
+          <span className="font-mono text-[10px] text-hcl-dark/40">
             {status.worker_last_seen ? `worker ${relativeTime(status.worker_last_seen)}` : 'no worker yet'}
           </span>
         )}
       </div>
 
       {error && !status ? (
-        <div className="font-mono text-sm text-rose-400">{error}</div>
+        <div className="font-mono text-sm text-red-600">{error}</div>
       ) : !status ? (
-        <span className="text-sm text-zinc-500">Connecting…</span>
+        <span className="text-sm text-hcl-dark/50">Connecting…</span>
       ) : (
         <>
           <div className="grid grid-cols-2 gap-2">
@@ -208,51 +208,51 @@ function SkillsModal({ onClose }: { onClose: () => void }) {
       onClick={onClose}
     >
       <div
-        className="flex h-[85vh] max-h-[800px] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 shadow-2xl"
+        className="flex h-[85vh] max-h-[800px] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-hcl-light-blue bg-hcl-bg shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+        <div className="flex items-center justify-between border-b border-hcl-light-blue px-4 py-3">
           <div>
-            <h2 className="text-sm font-semibold text-zinc-100">Hermes skills</h2>
-            <p className="text-xs text-zinc-500">
+            <h2 className="text-sm font-semibold text-hcl-dark">Hermes skills</h2>
+            <p className="text-xs text-hcl-dark/50">
               Installed skills available to the autoresearch ratchet + chat agent.
             </p>
           </div>
           <button
             onClick={onClose}
-            className="rounded-md border border-zinc-800 px-2.5 py-1 text-xs text-zinc-300 hover:bg-zinc-900"
+            className="rounded-md border border-hcl-light-blue px-2.5 py-1 text-xs text-hcl-dark/80 hover:bg-hcl-tech-grey"
           >
             Close ✕
           </button>
         </div>
 
         {err && (
-          <div className="border-b border-rose-900/50 bg-rose-950/30 px-4 py-2 font-mono text-xs text-rose-300">
+          <div className="border-b border-hcl-error/40 bg-red-50 px-4 py-2 font-mono text-xs text-red-600">
             {err}
           </div>
         )}
 
         <div className="grid flex-1 grid-cols-[16rem_1fr] overflow-hidden">
           {/* Left: skill list */}
-          <aside className="overflow-y-auto border-r border-zinc-800 bg-zinc-900/40">
+          <aside className="overflow-y-auto border-r border-hcl-light-blue bg-white">
             {list === null && !err ? (
-              <div className="p-4 text-sm text-zinc-500">Loading…</div>
+              <div className="p-4 text-sm text-hcl-dark/50">Loading…</div>
             ) : list && list.length === 0 ? (
-              <div className="p-4 text-sm text-zinc-500">No skills installed.</div>
+              <div className="p-4 text-sm text-hcl-dark/50">No skills installed.</div>
             ) : (
               <ul>
                 {(list ?? []).map((s) => (
                   <li key={s.name}>
                     <button
                       onClick={() => setSelected(s.name)}
-                      className={`block w-full border-b border-zinc-800/60 px-3 py-2 text-left text-sm transition-colors ${
+                      className={`block w-full border-b border-hcl-light-blue/60 px-3 py-2 text-left text-sm transition-colors ${
                         selected === s.name
-                          ? 'bg-emerald-950/30 text-emerald-200'
-                          : 'text-zinc-300 hover:bg-zinc-800/50'
+                          ? 'bg-hcl-teal/10 text-hcl-dark-teal'
+                          : 'text-hcl-dark/80 hover:bg-hcl-tech-grey/50'
                       }`}
                     >
                       <div className="font-medium">{s.title}</div>
-                      <div className="font-mono text-[10px] text-zinc-500">
+                      <div className="font-mono text-[10px] text-hcl-dark/50">
                         {s.name} · {Math.round(s.bytes / 1024)} KB
                       </div>
                     </button>
@@ -265,13 +265,13 @@ function SkillsModal({ onClose }: { onClose: () => void }) {
           {/* Right: markdown viewer */}
           <main className="overflow-y-auto p-4">
             {content === null ? (
-              <div className="text-sm text-zinc-500">Pick a skill on the left.</div>
+              <div className="text-sm text-hcl-dark/50">Pick a skill on the left.</div>
             ) : (
               <>
-                <div className="mb-2 font-mono text-[10px] text-zinc-500">
+                <div className="mb-2 font-mono text-[10px] text-hcl-dark/50">
                   {content.path}
                 </div>
-                <pre className="whitespace-pre-wrap font-mono text-[12px] leading-relaxed text-zinc-200">
+                <pre className="whitespace-pre-wrap font-mono text-[12px] leading-relaxed text-hcl-dark">
                   {content.content}
                 </pre>
               </>
@@ -298,8 +298,8 @@ function Pill({ tone, label, value }: { tone: PillTone; label: string; value: st
 function Hint({ cmd, reason }: { cmd: string; reason: string }) {
   return (
     <div>
-      <p className="text-xs text-zinc-500">{reason}</p>
-      <code className="mt-1 block rounded bg-zinc-800 px-2 py-1.5 font-mono text-xs text-zinc-200">
+      <p className="text-xs text-hcl-dark/50">{reason}</p>
+      <code className="mt-1 block rounded bg-hcl-tech-grey px-2 py-1.5 font-mono text-xs text-hcl-dark">
         {cmd}
       </code>
     </div>

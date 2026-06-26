@@ -31,16 +31,30 @@ export default function Callback() {
 
     (async () => {
       try {
+        console.log('[Callback] Starting handleCallback...');
         const dest = await auth.handleCallback();
-        await refreshUser();
+        console.log('[Callback] handleCallback returned:', dest);
+        
+        // Try to refresh user, but don't block navigation on it
+        console.log('[Callback] Calling refreshUser...');
+        try {
+          await refreshUser();
+          console.log('[Callback] refreshUser completed');
+        } catch (refreshError) {
+          console.warn('[Callback] refreshUser failed (non-fatal):', refreshError);
+        }
+        
+        console.log('[Callback] Navigating to:', dest);
         navigate(dest, { replace: true });
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
+        const errorMsg = e instanceof Error ? e.message : String(e);
+        console.error('[Callback] Error during signin:', errorMsg);
+        setError(errorMsg);
       }
     })();
-    // refreshUser identity is stable (closure over setUser); intentional one-shot.
+    // navigate and refreshUser identities are stable; intentional one-shot.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [navigate]);
 
   return (
     <div className="flex min-h-[60vh] items-center justify-center">

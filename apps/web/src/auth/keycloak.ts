@@ -133,15 +133,19 @@ class AuthClient {
 
   /**
    * Handle the OAuth redirect back from Keycloak.
-   * Returns the `returnTo` path from the OIDC `state` (or '/').
+   * Returns the `returnTo` path from the OIDC `state` (or '/product').
+   * Note: Does NOT call refreshUser() - the Callback component handles that.
    */
   async handleCallback(): Promise<string> {
-    if (this.disabled || !this.mgr) return '/';
+    if (this.disabled || !this.mgr) return '/product';
+    console.log('[auth] handleCallback: starting signinRedirectCallback...');
     const u = await this.mgr.signinRedirectCallback();
+    console.log('[auth] handleCallback: signinRedirectCallback completed');
     this.oidcUser = u;
-    await this.refreshUser();
     const state = (u.state ?? {}) as { returnTo?: string };
-    return state.returnTo && state.returnTo !== '/auth/callback' ? state.returnTo : '/';
+    const dest = state.returnTo && state.returnTo !== '/auth/callback' ? state.returnTo : '/product';
+    console.log('[auth] handleCallback: returning destination:', dest);
+    return dest;
   }
 
   /** Fetch the app's view of the current user from /api/v1/auth/me. */
@@ -151,15 +155,25 @@ class AuthClient {
       return this.appUser;
     }
     const token = this.getAccessToken();
-    if (!token) return null;
+    if (!token) {
+      console.warn('[auth] refreshUser: no access token available');
+      return null;
+    }
     try {
+      console.log('[auth] refreshUser: fetching /api/v1/auth/me...');
       const r = await fetch(`${API_URL}/api/v1/auth/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!r.ok) return null;
+      console.log('[auth] refreshUser: response status:', r.status);
+      if (!r.ok) {
+        console.warn('[auth] refreshUser: API returned', r.status);
+        return null;
+      }
       this.appUser = (await r.json()) as AppUser;
+      console.log('[auth] refreshUser: user loaded:', this.appUser.id);
       return this.appUser;
-    } catch {
+    } catch (e) {
+      console.error('[auth] refreshUser: fetch failed:', e);
       return null;
     }
   }

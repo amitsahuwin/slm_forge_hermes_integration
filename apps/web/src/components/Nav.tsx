@@ -31,7 +31,7 @@ export default function Nav() {
   const canCreateExperiment = useCan('create', 'experiment');
 
   return (
-    <header className="border-b border-zinc-800">
+    <header className="sticky top-0 z-50 border-b border-zinc-800 bg-zinc-950">
       <div className="mx-auto flex max-w-[1600px] items-center gap-4 px-6 py-3">
         <NavLink
           to="/"
@@ -40,15 +40,15 @@ export default function Nav() {
           SLM-Forge
         </NavLink>
         <nav className="flex flex-1 items-center gap-0.5 overflow-x-auto">
-            <NavLink to="/" end className={({ isActive }) => `${link} ${isActive ? activeLink : ''}`}>
-              Dashboard
-            </NavLink>
             <NavLink to="/product" className={({ isActive }) => `${link} ${isActive ? activeLink : ''}`}>
               Product
             </NavLink>
-            {show.experiments && (
-              <NavLink to="/experiments" className={({ isActive }) => `${link} ${isActive ? activeLink : ''}`}>
-                Experiments
+            <NavLink to="/" end className={({ isActive }) => `${link} ${isActive ? activeLink : ''}`}>
+              Dashboard
+            </NavLink>
+            {show.datasets && (
+              <NavLink to="/datasets" className={({ isActive }) => `${link} ${isActive ? activeLink : ''}`}>
+                Datasets
               </NavLink>
             )}
             {show.runs && (
@@ -56,19 +56,14 @@ export default function Nav() {
                 Runs
               </NavLink>
             )}
+            {show.experiments && (
+              <NavLink to="/experiments" className={({ isActive }) => `${link} ${isActive ? activeLink : ''}`}>
+                Experiments
+              </NavLink>
+            )}
             {show.exports && (
               <NavLink to="/exports" className={({ isActive }) => `${link} ${isActive ? activeLink : ''}`}>
                 Exports
-              </NavLink>
-            )}
-            {show.datasets && (
-              <NavLink to="/datasets" className={({ isActive }) => `${link} ${isActive ? activeLink : ''}`}>
-                Datasets
-              </NavLink>
-            )}
-            {show.maintenance && (
-              <NavLink to="/maintenance" className={({ isActive }) => `${link} ${isActive ? activeLink : ''}`}>
-                Maintenance
               </NavLink>
             )}
             {show.chat && (
@@ -76,9 +71,9 @@ export default function Nav() {
                 Chat
               </NavLink>
             )}
-            {show.research && (
-              <NavLink to="/research" className={({ isActive }) => `${link} ${isActive ? activeLink : ''}`}>
-                R&D
+            {show.traces && (
+              <NavLink to="/traces" className={({ isActive }) => `${link} ${isActive ? activeLink : ''}`}>
+                Traces
               </NavLink>
             )}
             {show.agents && (
@@ -86,16 +81,22 @@ export default function Nav() {
                 Agents
               </NavLink>
             )}
-            {show.traces && (
-              <NavLink to="/traces" className={({ isActive }) => `${link} ${isActive ? activeLink : ''}`}>
-                Traces
-              </NavLink>
-            )}
             {show.autofix && (
               <NavLink to="/autofix" className={({ isActive }) => `${link} ${isActive ? activeLink : ''}`}>
-                Auto-Fixes
+                Auto-Fixes (Beta)
               </NavLink>
             )}
+            {show.research && (
+              <NavLink to="/research" className={({ isActive }) => `${link} ${isActive ? activeLink : ''}`}>
+                R&D (Beta)
+              </NavLink>
+            )}
+            {show.maintenance && (
+              <NavLink to="/maintenance" className={({ isActive }) => `${link} ${isActive ? activeLink : ''}`}>
+                Maintenance
+              </NavLink>
+            )}
+            
         </nav>
         <div className="flex shrink-0 items-center gap-1.5">
           {canCreateDataset && (

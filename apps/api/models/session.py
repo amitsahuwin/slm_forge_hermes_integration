@@ -62,3 +62,8 @@ class TrainingSession(SQLModel, table=True):
     created_at: datetime = Field(default_factory=_now)
     started_at: datetime | None = None
     completed_at: datetime | None = None
+
+    # Phase C — multi-tenancy. Same shape as Run.
+    tenant_id: str | None = Field(default=None, index=True)
+    user_id: str | None = Field(default=None, index=True)
+    role: str | None = None

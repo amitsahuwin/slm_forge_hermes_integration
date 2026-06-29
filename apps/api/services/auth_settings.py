@@ -14,10 +14,13 @@ Keycloak + OPA into the request path.
 """
 from __future__ import annotations
 
+import logging
 import os
 from functools import lru_cache
 
 from pydantic import BaseModel
+
+log = logging.getLogger("api.auth_settings")
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -101,8 +104,21 @@ class AuthSettings(BaseModel):
 @lru_cache(maxsize=1)
 def get_auth_settings() -> AuthSettings:
     """Module-level singleton — cheap, immutable, easy to monkeypatch in tests."""
+    auth_enabled = _env_bool("SLM_FORGE_AUTH_ENABLED", default=False)
+    if not auth_enabled:
+        # Phase C — multi-tenancy makes auth-disable a foot-gun: every
+        # request becomes the synthetic admin which bypasses tenant
+        # isolation entirely. Loud once-per-process warning so operators
+        # notice they're running in legacy mode. Removal of the flag is
+        # tracked in `docs/specs/2026-06-29-multi-tenancy-identity.md`.
+        log.warning(
+            "SLM_FORGE_AUTH_ENABLED=false — DEPRECATED. Auth-disable mode "
+            "bypasses tenant isolation. Use `make auth ENABLED=true` and "
+            "`make auth-token EMAIL=alice@acme` for dev iteration. This "
+            "flag will be removed in a future release."
+        )
     return AuthSettings(
-        auth_enabled=_env_bool("SLM_FORGE_AUTH_ENABLED", default=False),
+        auth_enabled=auth_enabled,
         keycloak_url=os.environ.get("KEYCLOAK_URL", "http://keycloak:8080"),
         keycloak_public_url=os.environ.get(
             "KEYCLOAK_PUBLIC_URL", "http://localhost:8080"

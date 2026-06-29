@@ -60,9 +60,30 @@
       {
         "name": "support",
         "description": "Read-only across the board for customer/internal support staff."
+      },
+      {
+        "name": "viewer",
+        "description": "Phase C — read-only baseline used for users without a stronger role."
+      },
+      {
+        "name": "worker",
+        "description": "Phase C — service accounts for trainer/ratchet/exporter. Narrow scope: claim_run, update_run, upload_artifact, read_dataset."
       }
     ]
   },
+  "groups": [
+    {
+      "name": "tenants",
+      "path": "/tenants",
+      "subGroups": [
+        {"name": "local", "path": "/tenants/local"},
+        {"name": "acme", "path": "/tenants/acme"},
+        {"name": "globex", "path": "/tenants/globex"},
+        {"name": "system", "path": "/tenants/system"}
+      ]
+    }
+  ],
+  "defaultGroups": ["/tenants/local"],
   "users": [
     {
       "username": "admin@local",
@@ -80,7 +101,8 @@
       ],
       "realmRoles": [
         "admin"
-      ]
+      ],
+      "groups": ["/tenants/local"]
     },
     {
       "username": "engineer@local",
@@ -175,6 +197,72 @@
         "support"
       ],
       "requiredActions": []
+    },
+    {
+      "username": "alice@acme",
+      "email": "alice@acme",
+      "firstName": "Alice",
+      "lastName": "Acme",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{"type": "password", "value": "alice1234", "temporary": false}],
+      "realmRoles": ["admin"],
+      "groups": ["/tenants/acme"]
+    },
+    {
+      "username": "bob@acme",
+      "email": "bob@acme",
+      "firstName": "Bob",
+      "lastName": "Acme",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{"type": "password", "value": "bob12345", "temporary": false}],
+      "realmRoles": ["data_engineer"],
+      "groups": ["/tenants/acme"]
+    },
+    {
+      "username": "carol@globex",
+      "email": "carol@globex",
+      "firstName": "Carol",
+      "lastName": "Globex",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{"type": "password", "value": "carol123", "temporary": false}],
+      "realmRoles": ["admin"],
+      "groups": ["/tenants/globex"]
+    },
+    {
+      "username": "dave@globex",
+      "email": "dave@globex",
+      "firstName": "Dave",
+      "lastName": "Globex",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{"type": "password", "value": "dave1234", "temporary": false}],
+      "realmRoles": ["data_engineer"],
+      "groups": ["/tenants/globex"]
+    },
+    {
+      "username": "viewer@acme",
+      "email": "viewer@acme",
+      "firstName": "Read-Only",
+      "lastName": "Acme",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{"type": "password", "value": "viewer12", "temporary": false}],
+      "realmRoles": ["viewer"],
+      "groups": ["/tenants/acme"]
+    },
+    {
+      "username": "viewer@globex",
+      "email": "viewer@globex",
+      "firstName": "Read-Only",
+      "lastName": "Globex",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{"type": "password", "value": "viewer34", "temporary": false}],
+      "realmRoles": ["viewer"],
+      "groups": ["/tenants/globex"]
     }
   ],
   "clients": [
@@ -233,6 +321,32 @@
         "roles",
         "email"
       ]
+    },
+    {
+      "clientId": "slm-forge-worker",
+      "name": "SLM-Forge Worker (service account)",
+      "description": "Confidential client with `client_credentials` grant. Used by trainer / ratchet / exporter workers to obtain a JWT bearing the `worker` realm role.",
+      "enabled": true,
+      "bearerOnly": false,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "slm-forge-worker-dev-secret",
+      "fullScopeAllowed": true,
+      "defaultClientScopes": [
+        "web-origins",
+        "profile",
+        "roles",
+        "email"
+      ],
+      "attributes": {
+        "use.refresh.tokens": "false",
+        "access.token.lifespan": "1800"
+      }
     }
   ],
   "browserSecurityHeaders": {

@@ -66,7 +66,7 @@ def _call_skill(skill_name: str, payload: dict[str, Any]) -> dict[str, Any]:
         }
     try:
         raw = _call_ollama(skill, json.dumps(payload, default=str), expect_json=True)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         log.exception("skill %s call failed", skill_name)
         return {"parsed": None, "raw": "", "error": f"{type(e).__name__}: {e}"}
     parsed: dict[str, Any] | None = None
@@ -396,7 +396,7 @@ def run_evaluation_designer(
             crit = json.loads(raw)
         except json.JSONDecodeError:
             crit = {"raw": raw}
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         crit = {"error": f"{type(e).__name__}: {e}"}
     state["steps"]["criteria"] = crit
     _emit("criteria_done", result=crit)
@@ -480,11 +480,18 @@ async def stream_agent(
 ) -> AsyncGenerator[AgentEvent, None]:
     """Run an agent in a worker thread and yield events as they're produced.
 
-    Lazily polls a shared `progress` list every 0.2s; emits anything new.
-    Always emits a final `done` event with the recommendation, or `error` if
-    the agent raised.
+    Phase B — wraps the whole run in a ``trace_span(kind='agent')`` so the
+    Traces tab shows a top-level row for the agent invocation with each
+    Hermes skill call nested beneath it. Because the actual work runs in
+    a worker thread (via ``loop.run_in_executor``), we capture the
+    current contextvars context with ``contextvars.copy_context()`` and
+    have the executor *run inside* that copy. Without this hop, the
+    threadpool would start with an empty context and child skill traces
+    would not inherit the agent's ``trace_id``.
     """
     import asyncio
+    import contextvars
+    import uuid as _uuid
 
     runners = {
         "experiment_recommender": run_experiment_recommender,
@@ -496,49 +503,62 @@ async def stream_agent(
         yield {"stage": "error", "message": f"unknown agent {name!r}"}
         return
 
+    # Lazy import: avoids pulling SQLModel into worker-side imports of
+    # this module (workers may not have the API installed).
+    from apps.api.services.tracing import trace_span
+
+    agent_run_id = _uuid.uuid4().hex[:16]
     progress: list[AgentEvent] = []
     loop = asyncio.get_event_loop()
 
-    async def runner() -> AgentState | Exception:
-        try:
-            return await loop.run_in_executor(
-                None, lambda: runners[name](*args, progress=progress, **kwargs)
-            )
-        except Exception as e:  # noqa: BLE001
-            return e
+    with trace_span(kind="agent", name=name, agent_run_id=agent_run_id) as agent_span:
 
-    task = asyncio.create_task(runner())
-    seen = 0
-    while not task.done():
-        await asyncio.sleep(0.2)
+        async def runner() -> AgentState | Exception:
+            try:
+                ctx = contextvars.copy_context()
+                return await loop.run_in_executor(
+                    None,
+                    lambda: ctx.run(runners[name], *args, progress=progress, **kwargs),
+                )
+            except Exception as e:
+                return e
+
+        task = asyncio.create_task(runner())
+        seen = 0
+        while not task.done():
+            await asyncio.sleep(0.2)
+            while seen < len(progress):
+                yield progress[seen]
+                seen += 1
         while seen < len(progress):
             yield progress[seen]
             seen += 1
-    # Flush any final events that landed after the last poll.
-    while seen < len(progress):
-        yield progress[seen]
-        seen += 1
 
-    result = await task
-    if isinstance(result, Exception):
-        yield {"stage": "error", "message": f"{type(result).__name__}: {result}"}
-        return
-    yield {
-        "stage": "complete",
-        "agent": name,
-        "recommendation": result.get("recommendation", {}),
-        "steps": result.get("steps", {}),
-    }
+        result = await task
+        if isinstance(result, Exception):
+            yield {"stage": "error", "message": f"{type(result).__name__}: {result}"}
+            return
+
+        recommendation = result.get("recommendation", {}) if isinstance(result, dict) else {}
+        agent_span.set_result({"agent": name, "recommendation": recommendation})
+        yield {
+            "stage": "complete",
+            "agent": name,
+            "agent_run_id": agent_run_id,
+            "trace_id": agent_span.trace_id,
+            "recommendation": recommendation,
+            "steps": result.get("steps", {}) if isinstance(result, dict) else {},
+        }
 
 
 __all__ = [
-    "AgentState",
-    "AgentEvent",
-    "run_experiment_recommender",
-    "run_optimization_coach",
-    "run_evaluation_designer",
-    "run_incident_responder",
-    "stream_agent",
     "HERMES_MODEL",
     "OLLAMA_URL",
+    "AgentEvent",
+    "AgentState",
+    "run_evaluation_designer",
+    "run_experiment_recommender",
+    "run_incident_responder",
+    "run_optimization_coach",
+    "stream_agent",
 ]

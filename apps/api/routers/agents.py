@@ -19,7 +19,7 @@ from collections.abc import AsyncGenerator
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from sqlmodel import Session, select
 from sse_starlette.sse import EventSourceResponse
 
@@ -178,13 +178,39 @@ _INPUT_MODELS: dict[str, type[BaseModel]] = {
 
 
 def _validate_payload(name: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Validate the per-agent payload and surface a UI-friendly 422.
+
+    On failure, ``detail`` is a dict carrying:
+      - ``agent``: the agent name,
+      - ``missing_fields``: the list of fields Pydantic flagged (works for
+        both *missing* and *bad type* errors),
+      - ``hint``: a one-line nudge that pairs with the schema.
+    The frontend (Agents.tsx) renders this directly as an inline banner.
+    """
     schema = _INPUT_MODELS.get(name)
     if schema is None:
         raise HTTPException(404, f"Unknown agent {name!r}")
     try:
         return schema(**payload).model_dump()
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(400, f"Invalid input for {name!r}: {e}") from e
+    except ValidationError as e:
+        bad_fields: list[str] = []
+        for err in e.errors():
+            loc = err.get("loc") or ()
+            if loc:
+                bad_fields.append(str(loc[0]))
+        # Preserve order, dedupe.
+        seen: set[str] = set()
+        missing_fields = [f for f in bad_fields if not (f in seen or seen.add(f))]
+        expected = list(schema.model_fields.keys())
+        hint = f"{name!r} expects {expected}; check missing_fields."
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "agent": name,
+                "missing_fields": missing_fields,
+                "hint": hint,
+            },
+        ) from e
 
 
 @router.post("/{name}/run-sync")
@@ -206,7 +232,7 @@ def run_sync(name: str, payload: dict[str, Any], db: SessionDep) -> dict[str, An
     }
     try:
         result = runners[name](*args, **kwargs)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         log.exception("agent %s sync run failed", name)
         raise HTTPException(500, f"Agent failed: {e}") from e
     return {

@@ -160,7 +160,24 @@ export default function Agents() {
       });
       if (!r.ok) {
         const j = await r.json().catch(() => ({ detail: `HTTP ${r.status}` }));
-        throw new Error(j.detail || `HTTP ${r.status}`);
+        // FastAPI 422 now returns { detail: { agent, missing_fields, hint } }
+        // from Phase A's _validate_payload refactor; flatten that into a
+        // single string so the existing error banner can show it.
+        const d = j?.detail;
+        let msg: string;
+        if (d && typeof d === 'object' && 'missing_fields' in d) {
+          const fields = Array.isArray(d.missing_fields)
+            ? (d.missing_fields as string[]).join(', ')
+            : '';
+          msg = fields
+            ? `Missing or invalid: ${fields}${d.hint ? ` — ${d.hint}` : ''}`
+            : (d.hint as string | undefined) ?? `HTTP ${r.status}`;
+        } else if (typeof d === 'string') {
+          msg = d;
+        } else {
+          msg = `HTTP ${r.status}`;
+        }
+        throw new Error(msg);
       }
       if (!r.body) throw new Error('No response body');
       const reader = r.body.getReader();

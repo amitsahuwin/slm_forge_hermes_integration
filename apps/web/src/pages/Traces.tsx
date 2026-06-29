@@ -33,7 +33,17 @@ type TraceRow = {
   session_id: number | null;
   success: boolean;
   skill_changed: boolean;
+  // Phase B — trace nesting (NULL on legacy rows).
+  kind?: 'agent' | 'skill' | 'tool' | null;
+  trace_id?: string | null;
+  parent_span_id?: string | null;
+  span_id?: string | null;
+  agent_run_id?: string | null;
+  // Only present when ?group_by=trace; children share kind=skill/tool.
+  children?: TraceRow[];
 };
+
+type GroupBy = 'flat' | 'tree';
 
 type SkillSummaryRow = {
   skill_name: string;
@@ -97,6 +107,13 @@ export default function Traces() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [clearing, setClearing] = useState(false);
 
+  // Phase B — Tree view collapses spans sharing a trace_id under their
+  // agent parent. Default to 'tree' so agent runs are immediately
+  // visible; Flat preserves the historical row-per-span shape for
+  // anyone who liked the old layout.
+  const [groupBy, setGroupBy] = useState<GroupBy>('tree');
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
   const buildParams = (): URLSearchParams => {
     const p = new URLSearchParams();
     p.set('limit', String(limit));
@@ -108,8 +125,17 @@ export default function Traces() {
     if (minDuration && Number(minDuration) > 0) p.set('min_duration_ms', minDuration);
     if (runIdFilter && Number(runIdFilter) > 0) p.set('run_id', runIdFilter);
     if (sessionIdFilter && Number(sessionIdFilter) > 0) p.set('session_id', sessionIdFilter);
+    if (groupBy === 'tree') p.set('group_by', 'trace');
     return p;
   };
+
+  const toggleExpanded = (key: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
   const load = async () => {
     try {
@@ -223,8 +249,12 @@ export default function Traces() {
     }
   }
 
+  // Phase A fix: the chip used to read `(skillFilter.size > 0 ? 1 : 0)`,
+  // so picking N skills always rendered as one filter. Sum the set size
+  // so each clicked skill in the left "Skill Activity" panel ticks the
+  // chip up by one.
   const activeFilterCount =
-    (skillFilter.size > 0 ? 1 : 0) +
+    skillFilter.size +
     (statusFilter ? 1 : 0) +
     (timeRange !== 'all' ? 1 : 0) +
     (minDuration ? 1 : 0) +
@@ -360,17 +390,46 @@ export default function Traces() {
             <option value={500}>500</option>
           </select>
         </label>
-        {activeFilterCount > 0 && (
+        <div className="flex items-center gap-0.5 rounded-md border border-zinc-800 bg-zinc-900 p-0.5">
           <button
-            onClick={clearAllFilters}
-            className="rounded-md border border-zinc-700 bg-zinc-800/50 px-2 py-1 text-zinc-300 hover:bg-zinc-800"
+            onClick={() => setGroupBy('tree')}
+            className={`rounded-sm px-2 py-1 text-xs ${
+              groupBy === 'tree'
+                ? 'bg-emerald-950/40 text-emerald-200'
+                : 'text-zinc-400 hover:text-zinc-200'
+            }`}
+            title="Group spans by trace_id; agents render with nested skill spans"
           >
-            Clear filters ({activeFilterCount})
+            Tree
           </button>
+          <button
+            onClick={() => setGroupBy('flat')}
+            className={`rounded-sm px-2 py-1 text-xs ${
+              groupBy === 'flat'
+                ? 'bg-emerald-950/40 text-emerald-200'
+                : 'text-zinc-400 hover:text-zinc-200'
+            }`}
+            title="One row per span (legacy view)"
+          >
+            Flat
+          </button>
+        </div>
+        {activeFilterCount > 0 && (
+          <>
+            <button
+              onClick={clearAllFilters}
+              className="rounded-md border border-zinc-700 bg-zinc-800/50 px-2 py-1 text-zinc-300 hover:bg-zinc-800"
+            >
+              Clear filters
+            </button>
+            <span className="text-zinc-400">
+              {activeFilterCount} filter{activeFilterCount === 1 ? '' : 's'} active
+            </span>
+          </>
         )}
         {rows && (
           <span className="ml-auto text-zinc-500">
-            {rows.length} row{rows.length === 1 ? '' : 's'}
+            {rows.length} matching trace{rows.length === 1 ? '' : 's'}
           </span>
         )}
       </div>
@@ -445,6 +504,15 @@ export default function Traces() {
             <ul>
               {rows.map((r) => (
                 <li key={r.id}>
+                  {r.children && r.children.length > 0 ? (
+                    <TreeNode
+                      row={r}
+                      selectedId={selectedId}
+                      onSelect={setSelectedId}
+                      expanded={expanded}
+                      toggleExpanded={toggleExpanded}
+                    />
+                  ) : (
                   <button
                     onClick={() => setSelectedId(r.id)}
                     className={`block w-full border-b border-zinc-800/60 px-3 py-2 text-left transition-colors ${
@@ -494,6 +562,7 @@ export default function Traces() {
                       </div>
                     )}
                   </button>
+                  )}
                 </li>
               ))}
             </ul>
@@ -591,5 +660,82 @@ function BodyBlock({ title, body }: { title: string; body: string }) {
         </pre>
       )}
     </div>
+  );
+}
+
+// Phase B — expandable agent row with nested skill children.
+// Keyed by trace_id (or row id as fallback for legacy rows lacking one).
+function TreeNode({
+  row,
+  selectedId,
+  onSelect,
+  expanded,
+  toggleExpanded,
+}: {
+  row: TraceRow;
+  selectedId: number | null;
+  onSelect: (id: number) => void;
+  expanded: Set<string>;
+  toggleExpanded: (key: string) => void;
+}) {
+  const key = row.trace_id ?? String(row.id);
+  const isOpen = expanded.has(key);
+  const children = row.children ?? [];
+  return (
+    <>
+      <div className={`flex w-full border-b border-zinc-800/60`}>
+        <button
+          onClick={() => toggleExpanded(key)}
+          className="flex w-7 items-center justify-center text-zinc-500 hover:text-zinc-200"
+          aria-label={isOpen ? 'Collapse' : 'Expand'}
+          title={isOpen ? 'Collapse' : 'Expand'}
+        >
+          {isOpen ? '▾' : '▸'}
+        </button>
+        <button
+          onClick={() => onSelect(row.id)}
+          className={`flex-1 px-3 py-2 text-left transition-colors ${
+            selectedId === row.id
+              ? 'bg-emerald-950/30 text-emerald-200'
+              : 'text-zinc-200 hover:bg-zinc-800/40'
+          }`}
+        >
+          <div className="flex items-center gap-2 text-xs">
+            <span className="rounded-sm bg-amber-950/40 px-1.5 py-0.5 font-mono text-[10px] uppercase text-amber-200">
+              agent
+            </span>
+            <span className="font-mono">{row.source}</span>
+            <span className="ml-auto text-zinc-500">{children.length} skill(s)</span>
+            <span className="text-zinc-500">{row.duration_ms} ms</span>
+          </div>
+          {row.error && (
+            <div className="mt-1 truncate text-[11px] text-rose-400">{row.error}</div>
+          )}
+        </button>
+      </div>
+      {isOpen &&
+        children.map((c) => (
+          <button
+            key={c.id}
+            onClick={() => onSelect(c.id)}
+            className={`block w-full border-b border-zinc-800/40 pl-10 pr-3 py-1.5 text-left transition-colors ${
+              selectedId === c.id
+                ? 'bg-emerald-950/30 text-emerald-200'
+                : 'text-zinc-300 hover:bg-zinc-800/40'
+            }`}
+          >
+            <div className="flex items-center gap-2 text-[11px]">
+              <span className="rounded-sm bg-sky-950/40 px-1.5 py-0.5 font-mono text-[10px] uppercase text-sky-200">
+                {c.kind ?? 'skill'}
+              </span>
+              <span className="font-mono">{c.skill_name || c.source}</span>
+              <span className="ml-auto text-zinc-500">{c.duration_ms} ms</span>
+            </div>
+            {c.error && (
+              <div className="mt-0.5 truncate text-[11px] text-rose-400">{c.error}</div>
+            )}
+          </button>
+        ))}
+    </>
   );
 }

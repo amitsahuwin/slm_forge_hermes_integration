@@ -27,6 +27,7 @@ enforcement incrementally.
 from __future__ import annotations
 
 import logging
+import os
 import time
 from collections.abc import Awaitable, Callable
 from functools import wraps
@@ -166,9 +167,30 @@ def verify_jwt(token: str, settings: AuthSettings | None = None) -> User:
         log.info("JWT validation failed: %s", e)
         raise HTTPException(401, "Invalid bearer token") from e
 
+    return _build_user_from_claims(claims)
+
+
+def _build_user_from_claims(claims: dict) -> User:
+    """Map decoded JWT claims → :class:`User`. Public for testing.
+
+    Phase C — when the JWT was issued via the worker confidential client
+    (``azp`` = authorized party), promote the bearer into the worker
+    identity even if the realm doesn't assign the role via the role
+    matrix UI. This keeps the realm-export self-contained: a worker
+    only needs ``serviceAccountsEnabled`` on the client; the rest of
+    the identity (role=worker, tenant=system) is implied by ``azp``.
+    """
     realm_access = claims.get("realm_access") or {}
     roles = list(realm_access.get("roles") or [])
     groups = list(claims.get("groups") or [])
+
+    azp = claims.get("azp") or claims.get("client_id")
+    if azp == os.environ.get("SLM_FORGE_WORKER_CLIENT_ID", "slm-forge-worker"):
+        if "worker" not in roles:
+            roles.append("worker")
+        if not any(g.endswith("/system") or g == "system" for g in groups):
+            groups.append("/tenants/system")
+
     return User(
         id=str(claims.get("preferred_username") or claims.get("sub") or "unknown"),
         email=claims.get("email"),

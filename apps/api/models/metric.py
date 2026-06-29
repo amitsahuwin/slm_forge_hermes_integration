@@ -19,3 +19,9 @@ class Metric(SQLModel, table=True):
     name: str  # e.g. "train_loss", "val_loss", "tokens_per_sec", "learning_rate"
     value: float
     recorded_at: datetime = Field(default_factory=_now)
+
+    # Phase C — multi-tenancy. Denormalised from the parent Run so list
+    # queries don't need a JOIN; populated at insert from the run's owner.
+    tenant_id: str | None = Field(default=None, index=True)
+    user_id: str | None = Field(default=None, index=True)
+    role: str | None = None

@@ -285,12 +285,27 @@ auth-up: ## Alias for `make auth ENABLED=false`
 auth-down: ## Stop Keycloak + OPA (core stack stays up)
 	$(COMPOSE) --profile auth down
 
-auth-token: ## Print a fresh JWT for admin@local (handy for curl testing)
-	@curl -s -X POST "http://localhost:8080/realms/slm-forge/protocol/openid-connect/token" \
+auth-token: ## Print a fresh JWT. EMAIL=<user> PASSWORD=<pw> override defaults (admin@local / admin1234). Phase C demo users: alice@acme/alice1234, bob@acme/bob12345, carol@globex/carol123, dave@globex/dave1234, viewer@acme/viewer12, viewer@globex/viewer34
+	@EMAIL="$${EMAIL:-admin@local}"; \
+	 PASSWORD="$${PASSWORD:-$$( [ "$$EMAIL" = "admin@local" ] && echo admin1234 || \
+	   [ "$$EMAIL" = "alice@acme" ] && echo alice1234 || \
+	   [ "$$EMAIL" = "bob@acme" ] && echo bob12345 || \
+	   [ "$$EMAIL" = "carol@globex" ] && echo carol123 || \
+	   [ "$$EMAIL" = "dave@globex" ] && echo dave1234 || \
+	   [ "$$EMAIL" = "viewer@acme" ] && echo viewer12 || \
+	   [ "$$EMAIL" = "viewer@globex" ] && echo viewer34 )}"; \
+	 curl -s -X POST "http://localhost:8080/realms/slm-forge/protocol/openid-connect/token" \
 	  -d "grant_type=password" \
 	  -d "client_id=slm-forge-web" \
-	  -d "username=admin@local" \
-	  -d "password=admin1234" | python3 -c "import json,sys; print(json.load(sys.stdin)['access_token'])"
+	  -d "username=$$EMAIL" \
+	  -d "password=$$PASSWORD" | python3 -c "import json,sys; print(json.load(sys.stdin)['access_token'])"
+
+auth-worker-token: ## Print a fresh worker JWT (client_credentials, Phase C R4)
+	@curl -s -X POST "http://localhost:8080/realms/slm-forge/protocol/openid-connect/token" \
+	  -d "grant_type=client_credentials" \
+	  -d "client_id=$${SLM_FORGE_WORKER_CLIENT_ID:-slm-forge-worker}" \
+	  -d "client_secret=$${SLM_FORGE_WORKER_CLIENT_SECRET:-slm-forge-worker-dev-secret}" \
+	  | python3 -c "import json,sys; print(json.load(sys.stdin)['access_token'])"
 
 opa-test: ## Run the OPA policy unit tests
 	@command -v opa >/dev/null 2>&1 && opa test policies/ \

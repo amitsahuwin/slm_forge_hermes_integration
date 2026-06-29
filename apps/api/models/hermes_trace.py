@@ -60,3 +60,15 @@ class HermesTrace(SQLModel, table=True):
     success: bool = Field(
         default=True, index=True, sa_column_kwargs={"server_default": "1"}
     )
+    # Phase B — trace nesting. ``kind`` says what produced the row;
+    # ``trace_id`` groups every span of a single end-to-end invocation;
+    # ``parent_span_id`` is NULL for a root span and the parent's
+    # ``span_id`` otherwise; ``agent_run_id`` lets an entire agent
+    # invocation be retrieved in one query even across child skills.
+    kind: str = Field(
+        default="skill", index=True, sa_column_kwargs={"server_default": "'skill'"}
+    )
+    trace_id: str | None = Field(default=None, index=True)
+    parent_span_id: str | None = Field(default=None)
+    span_id: str | None = Field(default=None)
+    agent_run_id: str | None = Field(default=None, index=True)

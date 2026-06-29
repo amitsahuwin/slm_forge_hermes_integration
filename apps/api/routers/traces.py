@@ -53,6 +53,23 @@ class TraceRow(BaseModel):
     # previous row's for the same ``skill_name``. False when no previous
     # row exists or when there's no skill_name (e.g. ``source='chat'``).
     skill_changed: bool = False
+    # Phase B — trace nesting. NULL on legacy rows.
+    kind: str = "skill"
+    trace_id: str | None = None
+    parent_span_id: str | None = None
+    span_id: str | None = None
+    agent_run_id: str | None = None
+
+
+class TraceTreeRow(TraceRow):
+    """A trace tree: agent (or root skill) span with its child spans inline.
+
+    Returned when the client passes ``?group_by=trace``. ``children`` is
+    ordered by ``created_at`` ascending so the Traces tab can render the
+    skill calls in the order they happened.
+    """
+
+    children: list[TraceRow] = []
 
 
 class SkillSummaryRow(BaseModel):
@@ -95,6 +112,11 @@ def _row_to_trace(r: HermesTrace, prev_sha: str | None) -> TraceRow:
         session_id=r.session_id,
         success=r.success,
         skill_changed=changed,
+        kind=getattr(r, "kind", "skill") or "skill",
+        trace_id=getattr(r, "trace_id", None),
+        parent_span_id=getattr(r, "parent_span_id", None),
+        span_id=getattr(r, "span_id", None),
+        agent_run_id=getattr(r, "agent_run_id", None),
     )
 
 
@@ -128,7 +150,7 @@ def _previous_skill_hashes(
     return out
 
 
-@router.get("", response_model=list[TraceRow])
+@router.get("")
 @requires("read", "setting")
 def list_traces(
     request: Request,
@@ -156,7 +178,25 @@ def list_traces(
     min_duration_ms: Annotated[int | None, Query(ge=0)] = None,
     run_id: Annotated[int | None, Query()] = None,
     session_id: Annotated[int | None, Query()] = None,
-) -> list[TraceRow]:
+    # Phase B
+    group_by: Annotated[
+        str | None,
+        Query(
+            description=(
+                "When 'trace', collapse rows with the same trace_id into a "
+                "tree with each root's children inline. Default: none (flat)."
+            )
+        ),
+    ] = None,
+    kind: Annotated[
+        str | None,
+        Query(description="Filter by span kind: agent | skill | tool"),
+    ] = None,
+    agent_run_id: Annotated[
+        str | None,
+        Query(description="Filter to all spans of a single agent invocation"),
+    ] = None,
+) -> list[TraceRow] | list[TraceTreeRow]:
     """Return the most recent traces, newest first.
 
     Locked to admin (and any other role granted ``read`` on ``setting``)
@@ -192,11 +232,82 @@ def list_traces(
         stmt = stmt.where(HermesTrace.run_id == run_id)
     if session_id is not None:
         stmt = stmt.where(HermesTrace.session_id == session_id)
-    stmt = stmt.order_by(desc(HermesTrace.created_at)).limit(limit)
+    if kind is not None:
+        if kind not in {"agent", "skill", "tool"}:
+            raise HTTPException(400, "kind must be one of: agent, skill, tool")
+        stmt = stmt.where(HermesTrace.kind == kind)
+    if agent_run_id is not None:
+        stmt = stmt.where(HermesTrace.agent_run_id == agent_run_id)
 
+    if group_by == "trace":
+        # Collect every span involved in the matching traces, then group
+        # client-side. The `limit` applies to *trees*, not rows, so we
+        # first pick the matching trace_ids, then pull every row for
+        # those traces (in any order, sorted on the way out).
+        # Fetch the rows that pass every other filter, then collapse to the
+        # distinct trace_ids ordered by newest first. SQLModel's exec()
+        # returns scalar values for single-column selects in some configs
+        # and tuples in others, so we drop down to .all() with the
+        # original select() and extract trace_id on the Python side — this
+        # also keeps the existing filter logic identical between modes.
+        seen_trace_ids: list[str] = []
+        seen: set[str] = set()
+        scored_rows = list(db.exec(stmt.order_by(desc(HermesTrace.created_at))).all())
+        for r in scored_rows:
+            if r.trace_id and r.trace_id not in seen:
+                seen.add(r.trace_id)
+                seen_trace_ids.append(r.trace_id)
+                if len(seen_trace_ids) >= limit:
+                    break
+        trace_ids = seen_trace_ids
+        if not trace_ids:
+            return []
+        all_rows = list(
+            db.exec(
+                select(HermesTrace)
+                .where(HermesTrace.trace_id.in_(trace_ids))  # type: ignore[union-attr]
+                .order_by(HermesTrace.created_at)
+            ).all()
+        )
+        return _build_trees(all_rows)
+
+    if group_by not in (None, "", "none"):
+        raise HTTPException(400, "group_by must be 'trace' or omitted")
+
+    stmt = stmt.order_by(desc(HermesTrace.created_at)).limit(limit)
     rows = list(db.exec(stmt).all())
     prev_hashes = _previous_skill_hashes(db, [r.id for r in rows if r.id is not None])
     return [_row_to_trace(r, prev_hashes.get(r.id or -1)) for r in rows]
+
+
+def _build_trees(rows: list[HermesTrace]) -> list[TraceTreeRow]:
+    """Group rows by ``trace_id`` and pick a root span per group.
+
+    The root is the row with ``parent_span_id IS NULL`` (the agent
+    span); if none exists, the oldest row wins so legacy data still
+    renders. Non-root rows become ``children``, sorted by created_at.
+    """
+    by_trace: dict[str, list[HermesTrace]] = {}
+    for r in rows:
+        tid = r.trace_id or ""
+        by_trace.setdefault(tid, []).append(r)
+
+    out: list[TraceTreeRow] = []
+    for tid, group in by_trace.items():
+        group_sorted = sorted(group, key=lambda x: x.created_at)
+        roots = [r for r in group_sorted if r.parent_span_id is None]
+        root = roots[0] if roots else group_sorted[0]
+        children = [r for r in group_sorted if r is not root]
+        root_row = _row_to_trace(root, None)
+        out.append(
+            TraceTreeRow(
+                **root_row.model_dump(),
+                children=[_row_to_trace(c, None) for c in children],
+            )
+        )
+    # Order trees by their root's created_at descending (newest trace first).
+    out.sort(key=lambda t: t.created_at, reverse=True)
+    return out
 
 
 @router.get("/{trace_id}", response_model=TraceRow)
@@ -293,3 +404,28 @@ def list_skill_summary(request: Request, db: SessionDep) -> list[SkillSummaryRow
         )
     out.sort(key=lambda r: r.last_seen, reverse=True)
     return out
+
+
+@router.get("/by-trace/{trace_id}", response_model=TraceTreeRow)
+@requires("read", "setting")
+def get_trace_tree(
+    trace_id: str,
+    request: Request,
+    db: SessionDep,
+) -> TraceTreeRow:
+    """Return the full tree for a single trace_id (root + children).
+
+    404 when no rows match. Phase B — used by the Traces tab's
+    expand-on-row action.
+    """
+    rows = list(
+        db.exec(
+            select(HermesTrace)
+            .where(HermesTrace.trace_id == trace_id)
+            .order_by(HermesTrace.created_at)
+        ).all()
+    )
+    if not rows:
+        raise HTTPException(404, f"trace_id {trace_id!r} not found")
+    trees = _build_trees(rows)
+    return trees[0]

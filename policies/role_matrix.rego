@@ -82,3 +82,28 @@ matrix["support"] := {
 	"research":   {"read"},
 	"chat":       {"read"},
 }
+
+# Phase C — viewer is the read-only baseline used for users without a
+# stronger role. Mirrors support but explicit so the matrix doesn't
+# silently inherit from another role.
+matrix["viewer"] := {
+	"dataset":    {"read"},
+	"experiment": {"read"},
+	"run":        {"read"},
+	"export":     {"read"},
+	"log":        {"read"},
+	"research":   {"read"},
+	"chat":       {"read"},
+}
+
+# Phase C — worker (service account for trainer / ratchet / exporter).
+# Narrowly scoped to the claim-and-upload path; workers must never list
+# arbitrary runs or read other tenants' resources. Cross-tenant access
+# is permitted *only* through ``tenancy.worker_claim_match`` on rows
+# the worker has actually claimed.
+matrix["worker"] := {
+	"dataset":    {"read"},
+	"run":        {"read", "update"},
+	"export":     {"read", "execute"},
+	"log":        {"create"},
+}

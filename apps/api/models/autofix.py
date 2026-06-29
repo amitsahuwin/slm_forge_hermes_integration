@@ -69,6 +69,9 @@ class AutoFixAttempt(SQLModel, table=True):
 
     # PR-1 A4 — multi-tenant ready.
     tenant_id: str = Field(default="default", index=True)
+    # Phase C — user-level ownership; null on legacy / system-generated rows.
+    user_id: str | None = Field(default=None, index=True)
+    role: str | None = None
 
     created_at: datetime = Field(default_factory=_now)
     completed_at: datetime | None = None

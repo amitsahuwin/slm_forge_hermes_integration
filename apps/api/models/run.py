@@ -77,3 +77,10 @@ class Run(SQLModel, table=True):
     created_at: datetime = Field(default_factory=_now)
     started_at: datetime | None = None
     completed_at: datetime | None = None
+
+    # Phase C — multi-tenancy. Captured at row creation from the
+    # request's ``Identity``. Existing rows backfill to NULL and are
+    # invisible via ``scope_query`` until an admin claims them.
+    tenant_id: str | None = Field(default=None, index=True)
+    user_id: str | None = Field(default=None, index=True)
+    role: str | None = None

@@ -13,26 +13,75 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel
 
 from apps.api.middleware.auth import User, requires
 from apps.api.services.auth_settings import get_auth_settings
+from apps.api.services.identity import Identity
 
 log = logging.getLogger("slm_forge.auth.router")
 router = APIRouter()
 
 
-@router.get("/me", response_model=User)
-def me(request: Request) -> User:
+class MeResponse(BaseModel):
+    """Phase C — ``/auth/me`` response now carries the resolved Identity
+    alongside the raw ``User`` shape. ``tenant_id`` and ``primary_role``
+    are what every router scopes on; the SPA reads them to render the
+    tenant pill in the nav. Backwards compatible: existing consumers
+    that only read ``id``/``email``/``roles``/``groups`` keep working.
+    """
+
+    id: str
+    email: str | None = None
+    roles: list[str] = []
+    groups: list[str] = []
+    # Phase C — resolved identity fields. ``tenant_id`` may be empty
+    # when the user has no tenant group (configuration error after the
+    # auth-mandatory cutover, but reported here so the UI can show a
+    # readable "configure your tenant" message instead of a blank
+    # screen).
+    tenant_id: str = ""
+    primary_role: str = ""
+    is_admin: bool = False
+    is_worker: bool = False
+
+
+@router.get("/me", response_model=MeResponse)
+def me(request: Request) -> MeResponse:
     """Whoami — works whether or not enforcement is on.
 
-    With enforcement off you'll get the synthetic admin; with it on you'll
-    get the JWT-derived user the middleware attached.
+    Phase C — also returns the resolved Identity so the SPA doesn't have
+    to duplicate the role-precedence logic client-side.
     """
     user: User | None = getattr(request.state, "user", None)
     if user is None:
-        # Shouldn't happen — middleware always attaches one — but be safe.
         raise HTTPException(401, "Not authenticated")
-    return user
+
+    tenant_id = ""
+    primary_role = ""
+    is_admin = False
+    is_worker = False
+    try:
+        ident = Identity.from_user(user)
+        tenant_id = ident.tenant_id
+        primary_role = ident.role
+        is_admin = ident.is_admin
+        is_worker = ident.is_worker
+    except ValueError:
+        # User has no tenant group — return the raw shape so the UI can
+        # render an unauthorized state instead of crashing.
+        pass
+
+    return MeResponse(
+        id=user.id,
+        email=user.email,
+        roles=user.roles,
+        groups=user.groups,
+        tenant_id=tenant_id,
+        primary_role=primary_role,
+        is_admin=is_admin,
+        is_worker=is_worker,
+    )
 
 
 @router.get("/config")

@@ -310,8 +310,22 @@ def _record_trace(
     """
     try:
         import json as _json
+        import uuid as _uuid
 
         from sqlmodel import Session as _Session
+
+        # Lazy import the tracing module so the bridge stays usable from
+        # workers that never load the API package. When the API IS loaded
+        # and a ``trace_span`` is active, this row inherits its
+        # ``trace_id`` and the parent ``span_id``; otherwise the row is
+        # its own root (legacy behaviour — backwards compatible).
+        try:
+            from apps.api.services import tracing as _tracing
+            _stack = _tracing._span_stack.get()
+            _agent_run_id = _tracing._current_agent_run_id()
+        except Exception:  # pragma: no cover — API not on path
+            _stack = ()
+            _agent_run_id = None
 
         from apps.api.models.hermes_trace import HermesTrace
         from apps.api.services.db import engine
@@ -320,6 +334,16 @@ def _record_trace(
 
         request_body_str = _maybe_redact_body(source, _json.dumps(request_body, ensure_ascii=False))
         response_body_str = _maybe_redact_body(source, response_text or "")
+
+        # Pull trace context: inherit from active span if any.
+        if _stack:
+            parent = _stack[-1]
+            trace_id = parent[0]
+            parent_span_id = parent[1]
+        else:
+            trace_id = _uuid.uuid4().hex[:16]
+            parent_span_id = None
+        span_id = _uuid.uuid4().hex[:16]
 
         with _Session(engine) as db:
             db.add(
@@ -338,6 +362,11 @@ def _record_trace(
                     run_id=_coerce_int_id(run_id_ctx.get()),
                     session_id=_coerce_int_id(session_id_ctx.get()),
                     success=error is None,
+                    kind="skill",
+                    trace_id=trace_id,
+                    parent_span_id=parent_span_id,
+                    span_id=span_id,
+                    agent_run_id=_agent_run_id,
                 )
             )
             db.commit()

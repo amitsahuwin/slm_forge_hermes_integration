@@ -18,6 +18,13 @@ export type AppUser = {
   email: string;
   roles: string[];
   groups: string[];
+  // Phase C — resolved Identity fields. `tenant_id` may be empty when
+  // the user has no tenant group (a configuration error post-cutover);
+  // the UI shows a "no tenant assigned" message instead of crashing.
+  tenant_id: string;
+  primary_role: string;
+  is_admin: boolean;
+  is_worker: boolean;
 };
 
 export type AuthConfig = {
@@ -33,7 +40,11 @@ const SYNTHETIC_ADMIN: AppUser = {
   id: 'local-admin',
   email: 'local-admin@slm-forge.local',
   roles: ['admin'],
-  groups: ['local'],
+  groups: ['/tenants/local'],
+  tenant_id: 'local',
+  primary_role: 'admin',
+  is_admin: true,
+  is_worker: false,
 };
 
 class AuthClient {

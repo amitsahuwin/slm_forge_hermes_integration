@@ -41,10 +41,20 @@ _PATCH_FLAG = "_slm_forge_patched"
 def service_headers() -> dict[str, str]:
     """Return headers a worker should attach to every API request.
 
-    Useful for explicit-header callers that don't go through the global
-    monkey-patch (rare; most code paths should just call :func:`install`
-    once and forget about it).
+    Phase C — prefers a Keycloak service-account JWT
+    (``Authorization: Bearer ...``) when ``SLM_FORGE_WORKER_CLIENT_SECRET``
+    is set; otherwise falls back to the legacy ``X-Service-Token``
+    shared-secret bypass. Both paths are accepted by ``AuthMiddleware``;
+    the JWT path is preferred because it maps the worker into the same
+    Identity / OPA pipeline as human users.
     """
+    if os.environ.get("SLM_FORGE_WORKER_CLIENT_SECRET", "").strip():
+        try:
+            from packages.common.auth import get_default
+
+            return {"Authorization": f"Bearer {get_default().bearer()}"}
+        except Exception as e:  # noqa: BLE001
+            log.warning("worker JWT fetch failed (%s); falling back to X-Service-Token", e)
     return {_HEADER_NAME: SERVICE_TOKEN} if SERVICE_TOKEN else {}
 
 

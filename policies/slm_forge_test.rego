@@ -171,3 +171,108 @@ test_multi_role_union_allows if {
 		"resource": "dataset",
 	}
 }
+
+# ─── Phase C — tenant isolation matrix ──────────────────────────────────────
+
+test_same_tenant_same_user_can_read_own_run if {
+	allow with input as {
+		"user":     {"id": "alice", "tenant_id": "acme", "roles": ["data_engineer"], "groups": ["/tenants/acme"]},
+		"action":   "read",
+		"resource": "run",
+		"context":  {"tenant_id": "acme", "user_id": "alice"},
+	}
+}
+
+test_same_tenant_other_user_non_admin_denied if {
+	not allow with input as {
+		"user":     {"id": "bob",   "tenant_id": "acme", "roles": ["data_engineer"], "groups": ["/tenants/acme"]},
+		"action":   "read",
+		"resource": "run",
+		"context":  {"tenant_id": "acme", "user_id": "alice"},
+	}
+}
+
+test_admin_can_read_any_user_in_their_tenant if {
+	allow with input as {
+		"user":     {"id": "admin", "tenant_id": "acme", "roles": ["admin"], "groups": ["/tenants/acme"]},
+		"action":   "read",
+		"resource": "run",
+		"context":  {"tenant_id": "acme", "user_id": "alice"},
+	}
+}
+
+test_admin_cannot_cross_tenant if {
+	not allow with input as {
+		"user":     {"id": "admin", "tenant_id": "acme", "roles": ["admin"], "groups": ["/tenants/acme"]},
+		"action":   "read",
+		"resource": "run",
+		"context":  {"tenant_id": "globex", "user_id": "carol"},
+	}
+}
+
+test_other_tenant_any_role_denied if {
+	not allow with input as {
+		"user":     {"id": "carol", "tenant_id": "globex", "roles": ["data_engineer"], "groups": ["/tenants/globex"]},
+		"action":   "read",
+		"resource": "run",
+		"context":  {"tenant_id": "acme", "user_id": "alice"},
+	}
+}
+
+# ─── Worker scope ───────────────────────────────────────────────────────────
+
+test_worker_can_update_claimed_run if {
+	allow with input as {
+		"user":     {"id": "trainer-bot", "tenant_id": "system", "roles": ["worker"], "groups": ["/tenants/system"]},
+		"action":   "update",
+		"resource": "run",
+		"context":  {"tenant_id": "acme", "user_id": "alice", "claimed_by": "trainer-bot"},
+	}
+}
+
+test_worker_cannot_update_unclaimed_run if {
+	not allow with input as {
+		"user":     {"id": "trainer-bot", "tenant_id": "system", "roles": ["worker"], "groups": ["/tenants/system"]},
+		"action":   "update",
+		"resource": "run",
+		"context":  {"tenant_id": "acme", "user_id": "alice", "claimed_by": "other-bot"},
+	}
+}
+
+test_worker_can_read_dataset_for_claimed_run if {
+	allow with input as {
+		"user":     {"id": "trainer-bot", "tenant_id": "system", "roles": ["worker"], "groups": ["/tenants/system"]},
+		"action":   "read",
+		"resource": "dataset",
+		"context":  {"tenant_id": "acme", "user_id": "alice", "claimed_by": "trainer-bot"},
+	}
+}
+
+test_worker_cannot_delete_anything if {
+	not allow with input as {
+		"user":     {"id": "trainer-bot", "tenant_id": "system", "roles": ["worker"], "groups": ["/tenants/system"]},
+		"action":   "delete",
+		"resource": "run",
+		"context":  {"tenant_id": "acme", "user_id": "alice", "claimed_by": "trainer-bot"},
+	}
+}
+
+# ─── Viewer scope ───────────────────────────────────────────────────────────
+
+test_viewer_can_read_own_tenant_run if {
+	allow with input as {
+		"user":     {"id": "v1", "tenant_id": "acme", "roles": ["viewer"], "groups": ["/tenants/acme"]},
+		"action":   "read",
+		"resource": "run",
+		"context":  {"tenant_id": "acme", "user_id": "v1"},
+	}
+}
+
+test_viewer_cannot_create_run if {
+	not allow with input as {
+		"user":     {"id": "v1", "tenant_id": "acme", "roles": ["viewer"], "groups": ["/tenants/acme"]},
+		"action":   "create",
+		"resource": "run",
+		"context":  {"tenant_id": "acme", "user_id": "v1"},
+	}
+}

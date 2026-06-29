@@ -22,6 +22,14 @@ engine = create_engine(DB_URL, echo=False, connect_args={"check_same_thread": Fa
 
 # Phase 2 migrations for runs table
 _RUN_MIGRATIONS: list[tuple[str, str]] = [
+    # Phase C — multi-tenancy. Additive + nullable so existing rows are
+    # preserved as legacy NULL; new rows must populate (router-enforced).
+    # ``role`` captured at write time and used to scope artifact paths
+    # in Phase D (Ozone keys: <tenant>/<role>/<user>/...).
+    ("tenant_id", "TEXT"),
+    ("user_id", "TEXT"),
+    ("role", "TEXT"),
+
     ("session_id", "INTEGER"),
     ("parent_run_id", "INTEGER"),
     ("iteration_number", "INTEGER"),
@@ -43,6 +51,25 @@ _RUN_MIGRATIONS: list[tuple[str, str]] = [
 # Phase U — sessions table forward-migrations (backend pinned per session)
 _SESSION_MIGRATIONS: list[tuple[str, str]] = [
     ("trainer_backend", "TEXT DEFAULT 'mlx'"),
+    # Phase C — multi-tenancy (see _RUN_MIGRATIONS for the same shape).
+    ("tenant_id", "TEXT"),
+    ("user_id", "TEXT"),
+    ("role", "TEXT"),
+]
+
+# Phase C — additive tenant columns on the rest of the user-data tables.
+# All nullable so existing rows preserve as legacy NULL; scope_query
+# refuses to surface them until an admin claims via `migrate-claim-legacy`.
+_EXPORT_MIGRATIONS: list[tuple[str, str]] = [
+    ("tenant_id", "TEXT"),
+    ("user_id", "TEXT"),
+    ("role", "TEXT"),
+]
+
+_METRIC_MIGRATIONS: list[tuple[str, str]] = [
+    ("tenant_id", "TEXT"),
+    ("user_id", "TEXT"),
+    ("role", "TEXT"),
 ]
 
 # PR-1 A1/A4 — hermes_traces additive migration. Both columns are backfilled
@@ -60,6 +87,13 @@ _HERMES_TRACE_MIGRATIONS: list[tuple[str, str]] = [
     ("run_id", "INTEGER"),
     ("session_id", "INTEGER"),
     ("success", "INTEGER DEFAULT 1"),
+    # Phase B — trace nesting. Existing rows backfill to kind='skill'
+    # and trace_id=CAST(id AS TEXT) so each legacy row is its own root.
+    ("kind", "TEXT DEFAULT 'skill'"),
+    ("trace_id", "TEXT"),
+    ("parent_span_id", "TEXT"),
+    ("span_id", "TEXT"),
+    ("agent_run_id", "TEXT"),
 ]
 
 # Phase 4 — exports table is created by SQLModel; no ALTER needed unless schema changes
@@ -90,7 +124,21 @@ def _migrate_hermes_traces() -> None:
 # PR-A — auto_fix_attempt is a new table; create_all handles the initial
 # schema. The migrations list exists so PR-B (and beyond) can extend the
 # row shape additively without hand-editing prod databases.
-_AUTOFIX_MIGRATIONS: list[tuple[str, str]] = []
+_AUTOFIX_MIGRATIONS: list[tuple[str, str]] = [
+    # Phase C — multi-tenancy. `tenant_id` already lives on this table
+    # (PR-1 A4); we just add `user_id` + `role` to align with the other
+    # data-bearing tables so `scope_query` works uniformly.
+    ("user_id", "TEXT"),
+    ("role", "TEXT"),
+]
+
+
+def _migrate_exports() -> None:
+    _migrate_table("exports", _EXPORT_MIGRATIONS)
+
+
+def _migrate_metrics() -> None:
+    _migrate_table("metrics", _METRIC_MIGRATIONS)
 
 
 def _migrate_autofix() -> None:
@@ -134,6 +182,8 @@ def init_db() -> None:
     SQLModel.metadata.create_all(engine)
     _migrate_runs()
     _migrate_sessions()
+    _migrate_exports()
+    _migrate_metrics()
     _migrate_hermes_traces()
     _migrate_autofix()
     _migrate_chat_conversations()

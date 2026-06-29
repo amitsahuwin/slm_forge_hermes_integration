@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import UserBadge from './UserBadge';
 import PlatformBadge from './PlatformBadge';
+import TenantPill from './TenantPill';
 import { useCan, useCanSeeNav } from '../auth/useCan';
 
 // Compact link styling — narrower padding + smaller text so 9+ tabs fit
@@ -116,6 +117,7 @@ export default function Nav() {
             </NavLink>
           )}
           <PlatformBadge />
+          <TenantPill />
           <div className="ml-1 border-l border-zinc-800 pl-2">
             <UserBadge />
           </div>

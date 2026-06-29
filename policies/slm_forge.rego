@@ -23,18 +23,27 @@ package slm_forge
 import rego.v1
 
 import data.slm_forge.matrix
+import data.slm_forge.tenancy
 
 default allow := false
 
-# Admins bypass the matrix entirely.
-allow if is_admin
+# Admins bypass the matrix entirely — but only within their tenant.
+allow if {
+	is_admin
+	tenancy.same_tenant
+}
 
 is_admin if "admin" in input.user.roles
 
-# Otherwise: any role the user has must permit the (action, resource) pair.
+# Otherwise: any role the user has must permit the (action, resource)
+# pair AND the ownership/tenant layer must also clear. ``tenant_allow``
+# is permissive when the resource has no tenant/owner context, so
+# non-tenant-scoped endpoints (settings, catalog, etc.) keep their
+# matrix-only semantics.
 allow if {
 	some role in input.user.roles
 	permitted(role, input.action, input.resource)
+	tenancy.tenant_allow
 }
 
 # Helper: role `role` has permission for `action` on `resource`?

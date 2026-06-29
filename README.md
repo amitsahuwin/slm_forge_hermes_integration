@@ -166,6 +166,104 @@ open http://localhost:5173    # or: xdg-open on Linux
 
 The `/chat` page exposes a categorized template library covering every step above; the `/research` page runs Ollama-driven market-research reports grounded in DuckDuckGo / SerpAPI / Tavily search.
 
+## What's new in 0.8.0 (Observability + Multi-tenancy + Apache Ozone)
+
+Release notes: [`release/0.8.0.md`](release/0.8.0.md). ADRs:
+[`docs/adr/0005-trace-nesting-contextvars.md`](docs/adr/0005-trace-nesting-contextvars.md),
+[`docs/adr/0006-multi-tenancy-keycloak-groups.md`](docs/adr/0006-multi-tenancy-keycloak-groups.md).
+Specs: [`docs/specs/2026-06-29-*.md`](docs/specs/).
+
+**Three landmark changes ship together (Phases A + B + C + D):**
+
+- **Nested agent traces.** Every Hermes-skill call now nests under its
+  parent agent run via `contextvars` + new `trace_id` / `parent_span_id` /
+  `kind` / `agent_run_id` columns on `hermes_traces`. The Traces tab
+  defaults to a **Tree** view; agent invocations render as expandable
+  parent rows with their child skill spans inside. Toggle to **Flat**
+  to keep the legacy one-row-per-span view.
+- **Multi-tenancy via Keycloak groups.** Every `Run`/`TrainingSession`/
+  `Export`/`Metric`/`AutoFixAttempt` now carries
+  `tenant_id`/`user_id`/`role`. A single `Identity` dataclass maps the
+  JWT-backed `User` to a canonical `(tenant_id, user_id, role, …)`
+  record; `scope_query(stmt, identity, Model)` is the only sanctioned
+  way to read tenanted data and hard-errors when a model is missing
+  the columns. The realm now ships 4 tenant groups (`local`, `acme`,
+  `globex`, `system`) + 6 demo users + a `slm-forge-worker`
+  confidential client. The top-nav gains a **tenant pill** showing
+  `<tenant> · <role>`.
+- **Worker JWTs via `client_credentials`.** The legacy
+  `X-Service-Token` is deprecated; trainer / ratchet / exporter now
+  fetch a Keycloak service-account JWT (`packages/common/auth.py:WorkerToken`),
+  cache it until `exp - leeway`, and present it as
+  `Authorization: Bearer …`. A compromised worker token grants only
+  the narrow `worker` scope, not full admin.
+- **Apache Ozone storage (Phase D).** The new
+  `apps/api/services/storage/` package abstracts artifact I/O behind
+  an `ObjectStore` ABC with two backends — `LocalObjectStore`
+  (filesystem, legacy default) and `OzoneObjectStore` (S3 gateway via
+  `aioboto3`). Pick with `SLM_FORGE_STORAGE=local|s3` (default `s3`).
+  Tenant-scoped key scheme: `bucket=slm-forge-{tenant}`,
+  `key={role}/{user}/{exports|runs|data}/{artifact_id}/{filename}`.
+  A 30-day disk-fallback decorator lets pre-Phase-D artifacts remain
+  readable while operators migrate (`SLM_FORGE_DISK_FALLBACK=true`
+  until `SLM_FORGE_DISK_FALLBACK_UNTIL`). `make ozone-up` brings up a
+  local `kind` cluster + Helm-installs the official
+  `ozone-helm-charts` (see `deploy/ozone/`).
+- **Unified Jobs tab.** The aspirational "check Jobs tab" error
+  messages now link to a real page. `/jobs?id=<kind>:<id>` accepts
+  composite ids (`run:42`, `agent:abc123`, `synth:def456`,
+  `session:7`, `export:9`, `autofix:3`, `research:hex…`) and shows
+  one uniform shape with status, error, progress, parent links.
+  Tenant isolation enforced: cross-tenant returns 404, not 403.
+
+**New env vars (quick reference, 0.8.0)**
+
+| Category | Env var | Default | Purpose |
+|---|---|---|---|
+| Multi-tenancy / Auth | `SLM_FORGE_AUTH_ENABLED` | `false` | **DEPRECATED.** Path forward: `make auth ENABLED=true`. A WARN fires on startup. |
+| | `SLM_FORGE_KEYCLOAK_URL` | `http://keycloak:8080` | OIDC discovery base used by `WorkerToken` + middleware. |
+| | `SLM_FORGE_KEYCLOAK_REALM` | `slm-forge` | Realm name; matches `keycloak/realm-export.json`. |
+| | `SLM_FORGE_WORKER_CLIENT_ID` | `slm-forge-worker` | Confidential client used by workers. |
+| | `SLM_FORGE_WORKER_CLIENT_SECRET` | `slm-forge-worker-dev-secret` | Dev secret seeded by the realm export. Rotate in prod. |
+| Storage (Phase D) | `SLM_FORGE_STORAGE` | `s3` | `s3` → Apache Ozone S3 gateway; `local` → filesystem. |
+| | `SLM_FORGE_OZONE_S3_ENDPOINT` | `http://host.docker.internal:9878` | S3 gateway host:port exposed by `make ozone-up`. |
+| | `SLM_FORGE_OZONE_ACCESS_KEY_ID` / `SLM_FORGE_OZONE_SECRET_ACCESS_KEY` | `slmforge` / `slmforge-dev-secret` | Gateway creds. |
+| | `SLM_FORGE_LOCAL_STORAGE_ROOT` | `/app/storage` | Where `LocalObjectStore` writes when `STORAGE=local`. |
+| | `SLM_FORGE_DISK_FALLBACK` | `false` | `true` lets the storage layer fall through to legacy disk on 404 (read-only). |
+| | `SLM_FORGE_DISK_FALLBACK_UNTIL` | `2026-07-29` | Hardcoded sunset for the fallback. After this date the flag is ignored. |
+| | `SLM_FORGE_LEGACY_DISK_ROOT` | `/app` | Where the fallback decorator looks for legacy artifacts. |
+
+**Demo users (seeded by the realm export):**
+
+| Username | Password | Realm role | Tenant |
+|---|---|---|---|
+| `admin@local` | `admin1234` | admin | local |
+| `alice@acme` | `alice1234` | admin | acme |
+| `bob@acme` | `bob12345` | data_engineer | acme |
+| `viewer@acme` | `viewer12` | viewer | acme |
+| `carol@globex` | `carol123` | admin | globex |
+| `dave@globex` | `dave1234` | data_engineer | globex |
+| `viewer@globex` | `viewer34` | viewer | globex |
+
+Mint a JWT for any of them with `make auth-token EMAIL=alice@acme`.
+Mint a worker JWT with `make auth-worker-token`.
+
+**Bring-up checklist:**
+
+```bash
+make setup                          # one-time
+make auth ENABLED=true              # Keycloak + OPA, realm imported
+make ozone-up && make ozone-status  # wait until all pods are Running
+make ozone-bootstrap                # create the 4 per-tenant buckets
+make dev                            # start the stack
+# Open http://localhost:5173, sign in as alice@acme (alice1234).
+# Nav top-right should read "acme · admin".
+```
+
+If you don't want Ozone yet, set `SLM_FORGE_STORAGE=local` in `.env`
+and skip the `ozone-*` targets. The lab keeps the legacy filesystem
+behaviour for `/app/runs`, `/app/exports`, `/app/data`.
+
 ## What's new in 0.7.0 (Hermes Hardening)
 
 Release notes: [`release/0.7.0.md`](release/0.7.0.md). Architecture decisions: [`docs/adr/`](docs/adr/). Client-facing tour: [`docs/SLM_FORGE_PRODUCT_GUIDE.md`](docs/SLM_FORGE_PRODUCT_GUIDE.md) (or open the new `/product` tab in the UI).
@@ -264,13 +362,22 @@ make grafana                  # open Grafana in your browser
 make prometheus               # open Prometheus
 make loki-explore             # open Grafana Explore with Loki preselected
 
-# Authentication (Phase M)
+# Authentication (Phase M + multi-tenancy 0.8.0)
 make auth ENABLED=true        # bring up Keycloak+OPA AND turn enforcement ON
-make auth ENABLED=false       # bring up Keycloak+OPA, enforcement OFF
+make auth ENABLED=false       # DEPRECATED — auth-disable mode logs a WARN at boot
 make auth-down                # stop Keycloak + OPA
 make auth-token               # print a JWT for admin@local (for curl testing)
-make opa-test                 # run the 18 Rego policy unit tests
+make auth-token EMAIL=alice@acme  # mint a JWT for any seeded demo user
+make auth-worker-token        # mint a worker JWT (client_credentials grant)
+make opa-test                 # run the 29 Rego policy unit tests (tenancy matrix)
 make admin-panel              # open /admin/users (needs auth ENABLED + admin role)
+
+# Apache Ozone object storage (Phase D, 0.8.0)
+make ozone-up                 # create a kind cluster + Helm-install Ozone in slm-forge-ozone
+make ozone-bootstrap          # create the 4 per-tenant S3 buckets
+make ozone-status             # show pods, PVCs, and S3 buckets
+make ozone-down               # uninstall Ozone + delete the kind cluster
+make ozone-port-forward       # kubectl port-forward the S3 gateway (fallback when extraPortMappings don't reach)
 
 # MCP server (Claude Desktop / Cursor / Claude Code)
 make mcp-up                   # start the HTTP-transport container

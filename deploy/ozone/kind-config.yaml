@@ -1,0 +1,43 @@
+# Phase D — kind cluster configuration for Apache Ozone.
+#
+# Single-node `kind` cluster sized for a developer laptop. The
+# extraPortMappings expose the Ozone S3 gateway (9878) and Ozone
+# Manager (9874) on the host so the API container (running outside
+# the cluster, in docker-compose) can talk to them at
+# ``host.docker.internal:9878`` on macOS or ``172.17.0.1:9878`` on
+# Linux.
+#
+# Spin up with:
+#   make ozone-up
+# which runs:
+#   kind create cluster --config deploy/ozone/kind-config.yaml \
+#     --name slm-forge-ozone
+#
+# Tear down with `make ozone-down`. Cluster + PVCs are isolated under
+# the cluster name so this never touches your other kind clusters.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: slm-forge-ozone
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      # Ozone S3 gateway — the only port the API directly consumes.
+      - containerPort: 30878
+        hostPort: 9878
+        protocol: TCP
+      # Ozone Manager REST UI / admin API — handy for `ozone sh`.
+      - containerPort: 30874
+        hostPort: 9874
+        protocol: TCP
+      # SCM UI — for the Recon dashboards / debugging.
+      - containerPort: 30876
+        hostPort: 9876
+        protocol: TCP
+    kubeadmConfigPatches:
+      # Allow scheduling workloads on the control-plane node — single
+      # node only, no separate workers.
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"

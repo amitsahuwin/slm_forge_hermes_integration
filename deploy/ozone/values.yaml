@@ -1,0 +1,110 @@
+# Phase D — Helm values override for the official ozone-helm-charts
+# chart (https://ozone.apache.org/docs/quick-start/installation/kubernetes).
+#
+# Sized for a developer kind cluster: 1 OM, 1 SCM, 1 Recon, 3 DataNodes,
+# 1 S3 Gateway. JVM heaps are kept minimal so the whole stack fits in
+# ~2 GB RAM. PVCs use the default `local-path` storage class that ships
+# with kind via the Rancher local-path-provisioner.
+#
+# Install with:
+#   helm install ozone apache-ozone/ozone \
+#     -f deploy/ozone/values.yaml \
+#     -n slm-forge-ozone \
+#     --create-namespace
+# (wrapped by `make ozone-up`).
+
+global:
+  ozoneImage:
+    repository: apache/ozone
+    tag: "1.4.0"
+    pullPolicy: IfNotPresent
+  storage:
+    storageClassName: local-path
+
+# Ozone Manager — the metadata service for volumes/buckets/keys.
+om:
+  replicas: 1
+  persistence:
+    enabled: true
+    size: 2Gi
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "1000m"
+      memory: "768Mi"
+  # Expose OM via a NodePort so kind's extraPortMappings can reach it.
+  service:
+    type: NodePort
+    nodePort: 30874
+  jvm:
+    Xmx: "256m"
+
+# Storage Container Manager — block-level metadata.
+scm:
+  replicas: 1
+  persistence:
+    enabled: true
+    size: 2Gi
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "1000m"
+      memory: "768Mi"
+  jvm:
+    Xmx: "256m"
+
+# DataNodes — the actual storage workers.
+datanode:
+  replicas: 3
+  persistence:
+    enabled: true
+    size: 8Gi
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "1500m"
+      memory: "1Gi"
+  jvm:
+    Xmx: "256m"
+
+# S3 Gateway — the only service the SLM-Forge API talks to.
+s3g:
+  replicas: 1
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "1000m"
+      memory: "768Mi"
+  service:
+    type: NodePort
+    nodePort: 30878
+  jvm:
+    Xmx: "256m"
+
+# Recon — observability / cluster health dashboard. Optional but
+# tiny; we ship it on by default for debugging.
+recon:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 1Gi
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+  jvm:
+    Xmx: "192m"
+  service:
+    type: NodePort
+    nodePort: 30876

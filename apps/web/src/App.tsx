@@ -13,6 +13,7 @@ import Traces from './pages/Traces';
 import ExperimentDetail from './pages/ExperimentDetail';
 import Experiments from './pages/Experiments';
 import Exports from './pages/Exports';
+import Jobs from './pages/Jobs';
 import Maintenance from './pages/Maintenance';
 import NewDatasetV2 from './pages/NewDatasetV2';
 import NewExperiment from './pages/NewExperiment';
@@ -57,6 +58,7 @@ export default function App() {
               <Route path="/chat/:cid" element={<Chat />} />
               <Route path="/research" element={<Research />} />
               <Route path="/agents" element={<Agents />} />
+              <Route path="/jobs" element={<Jobs />} />
             <Route
               path="/traces"
               element={

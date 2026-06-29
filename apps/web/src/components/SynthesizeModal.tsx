@@ -49,6 +49,10 @@ export default function SynthesizeModal({
   const [progress, setProgress] = useState<ProgressEvent | null>(null);
   const [result, setResult] = useState<DoneEvent | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  // Phase C.5 — surface the synth job id when an SSE stream drops so the
+  // error banner can link the user to /jobs?id=synth:<id> (the Jobs tab
+  // looks the job up via apps/api/routers/jobs.py).
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
 
   const esRef = useRef<EventSource | null>(null);
   const autoCloseRef = useRef<number | null>(null);
@@ -163,6 +167,7 @@ export default function SynthesizeModal({
   }
 
   function attachStream(jobId: string) {
+    setActiveJobId(jobId);
     const es = new EventSource(withAuth(`${API_URL}/api/v1/synth/jobs/${jobId}/stream`));
     esRef.current = es;
 
@@ -203,7 +208,12 @@ export default function SynthesizeModal({
           setErrorMsg(msg);
         }
       } else if (es.readyState === EventSource.CLOSED) {
-        setErrorMsg('Stream closed unexpectedly. The job may still be running — check Jobs tab.');
+        // The Jobs tab (apps/web/src/pages/Jobs.tsx) renders this id;
+        // the prefix is `synth:` so the federated /api/v1/jobs/{id}
+        // endpoint routes to the in-memory synth registry.
+        setErrorMsg(
+          `Stream closed unexpectedly. The job may still be running — check the Jobs tab (synth:${jobId}).`,
+        );
       } else {
         // Transient — let it retry; only flip to error if we never recover.
         return;
@@ -412,6 +422,18 @@ export default function SynthesizeModal({
           <div className="space-y-3">
             <div className="rounded-md border border-rose-900/60 bg-rose-950/40 p-3 text-sm text-rose-200">
               {errorMsg ?? 'Synthesis failed.'}
+              {activeJobId && (
+                <>
+                  {' '}
+                  <Link
+                    to={`/jobs?id=synth:${activeJobId}`}
+                    onClick={handleClose}
+                    className="text-emerald-300 underline hover:text-emerald-200"
+                  >
+                    Open in Jobs →
+                  </Link>
+                </>
+              )}
             </div>
             <div className="flex items-center justify-end gap-2">
               <button

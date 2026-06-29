@@ -97,7 +97,11 @@ export default function Nav() {
                 Maintenance
               </NavLink>
             )}
-            
+            {/* Phase C.5 — Jobs tab. Open to every signed-in user; the
+                backend scopes lookups to the caller's tenant + owner. */}
+            <NavLink to="/jobs" className={({ isActive }) => `${link} ${isActive ? activeLink : ''}`}>
+              Jobs
+            </NavLink>
         </nav>
         <div className="flex shrink-0 items-center gap-1.5">
           {canCreateDataset && (

@@ -26,6 +26,7 @@ from apps.api.routers import (
     hermes,
     ingest,
     ingest_v2,
+    jobs,
     logs,
     metrics,
     models,
@@ -300,6 +301,9 @@ app.include_router(metrics.router, tags=["observability"])
 # Phase M — auth (Keycloak + OPA). The endpoints work in both enforcement
 # modes; only /auth/users requires admin role + Keycloak admin creds.
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
+# Phase C.5 — unified Jobs federated lookup. Resolves composite ids like
+# ``run:42`` / ``agent:abc123`` / ``synth:def456`` into a single shape.
+app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["jobs"])
 
 
 @app.get("/")

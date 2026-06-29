@@ -24,6 +24,11 @@ dependencies = [
     "python-json-logger>=2.0",
     "prometheus-client>=0.20",
     "tenacity>=8.2",
+    # Phase D — Apache Ozone S3 gateway client. aioboto3 powers
+    # OzoneObjectStore's streaming put/get; the sync boto3 covers
+    # scripts/ozone_bootstrap.py and any synchronous admin work.
+    "aioboto3>=13.0",
+    "boto3>=1.35",
 ]
 
 [dependency-groups]

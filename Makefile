@@ -311,6 +311,81 @@ opa-test: ## Run the OPA policy unit tests
 	@command -v opa >/dev/null 2>&1 && opa test policies/ \
 	  || docker run --rm -v "$$PWD/policies:/policies" openpolicyagent/opa:latest test /policies
 
+# ─── Apache Ozone object storage (Phase D) ─────────────────────────────────
+#
+# Default storage backend is ``s3`` (Ozone) when SLM_FORGE_STORAGE=s3 (the
+# default in .env.example). Set SLM_FORGE_STORAGE=local to skip these
+# targets entirely and stay on the legacy filesystem.
+
+OZONE_CLUSTER ?= slm-forge-ozone
+OZONE_NS      ?= slm-forge-ozone
+OZONE_RELEASE ?= ozone
+OZONE_CHART   ?= apache-ozone/ozone
+OZONE_S3_ENDPOINT ?= http://localhost:9878
+
+ozone-up: ## Create a kind cluster + helm-install Apache Ozone (Phase D)
+	@command -v kind >/dev/null 2>&1 || { echo "kind not found — install: https://kind.sigs.k8s.io"; exit 1; }
+	@command -v helm >/dev/null 2>&1 || { echo "helm not found — install: https://helm.sh/docs/intro/install/"; exit 1; }
+	@command -v kubectl >/dev/null 2>&1 || { echo "kubectl not found — install: https://kubernetes.io/docs/tasks/tools/"; exit 1; }
+	@if kind get clusters | grep -q '^$(OZONE_CLUSTER)$$'; then \
+	  echo "→ kind cluster $(OZONE_CLUSTER) already exists; skipping create."; \
+	else \
+	  echo "→ Creating kind cluster $(OZONE_CLUSTER)..."; \
+	  kind create cluster --config deploy/ozone/kind-config.yaml --name $(OZONE_CLUSTER); \
+	fi
+	@kubectl config use-context kind-$(OZONE_CLUSTER) >/dev/null
+	@helm repo add apache-ozone https://apache.github.io/ozone-helm-charts 2>/dev/null || true
+	@helm repo update apache-ozone >/dev/null
+	@if helm status -n $(OZONE_NS) $(OZONE_RELEASE) >/dev/null 2>&1; then \
+	  echo "→ Helm release $(OZONE_RELEASE) already present; upgrading."; \
+	  helm upgrade $(OZONE_RELEASE) $(OZONE_CHART) -f deploy/ozone/values.yaml -n $(OZONE_NS); \
+	else \
+	  echo "→ Installing $(OZONE_CHART) in namespace $(OZONE_NS)..."; \
+	  helm install $(OZONE_RELEASE) $(OZONE_CHART) -f deploy/ozone/values.yaml -n $(OZONE_NS) --create-namespace; \
+	fi
+	@echo ""
+	@echo "  ✓ Ozone installing. Watch readiness with: make ozone-status"
+	@echo "  S3 gateway will be reachable at $(OZONE_S3_ENDPOINT) once pods are Running."
+	@echo "  After all pods are Ready, run: make ozone-bootstrap"
+
+ozone-down: ## Uninstall Ozone + delete the kind cluster
+	@if helm status -n $(OZONE_NS) $(OZONE_RELEASE) >/dev/null 2>&1; then \
+	  helm uninstall $(OZONE_RELEASE) -n $(OZONE_NS); \
+	fi
+	@kubectl delete ns $(OZONE_NS) --ignore-not-found
+	@if kind get clusters | grep -q '^$(OZONE_CLUSTER)$$'; then \
+	  echo "→ Deleting kind cluster $(OZONE_CLUSTER)..."; \
+	  kind delete cluster --name $(OZONE_CLUSTER); \
+	else \
+	  echo "→ kind cluster $(OZONE_CLUSTER) not found; nothing to delete."; \
+	fi
+
+ozone-status: ## Show Ozone pods, PVCs, and an S3 ls of buckets
+	@echo "── kind clusters ───────────────────────────────────────"
+	@kind get clusters | sed 's/^/  /'
+	@echo ""
+	@echo "── pods in $(OZONE_NS) ─────────────────────────────────"
+	@kubectl get pods -n $(OZONE_NS) 2>/dev/null || echo "  (namespace missing — run make ozone-up)"
+	@echo ""
+	@echo "── PVCs ────────────────────────────────────────────────"
+	@kubectl get pvc -n $(OZONE_NS) 2>/dev/null || true
+	@echo ""
+	@echo "── S3 buckets ──────────────────────────────────────────"
+	@SLM_FORGE_OZONE_S3_ENDPOINT=$(OZONE_S3_ENDPOINT) \
+	 uv run python -c "import os,boto3; \
+	   s=boto3.client('s3', endpoint_url=os.environ.get('SLM_FORGE_OZONE_S3_ENDPOINT'), \
+	                  aws_access_key_id=os.environ.get('SLM_FORGE_OZONE_ACCESS_KEY_ID','slmforge'), \
+	                  aws_secret_access_key=os.environ.get('SLM_FORGE_OZONE_SECRET_ACCESS_KEY','slmforge-dev-secret')); \
+	   print('\\n'.join('  ' + b['Name'] for b in s.list_buckets().get('Buckets', []))) or print('  (no buckets yet — run make ozone-bootstrap)')" \
+	  2>/dev/null || echo "  (S3 gateway not reachable yet)"
+
+ozone-bootstrap: ## Create the slm-forge demo tenant buckets in Ozone
+	@echo "→ Creating per-tenant S3 buckets..."
+	@uv run python scripts/ozone_bootstrap.py
+
+ozone-port-forward: ## Port-forward the Ozone S3 gateway (when extraPortMappings don't reach)
+	@kubectl port-forward -n $(OZONE_NS) svc/$(OZONE_RELEASE)-s3g 9878:9878
+
 # ─── MCP server (Claude Desktop / Cursor / Claude Code) ────────────────────
 
 mcp-up: ## Start the MCP server (HTTP transport on :8765)

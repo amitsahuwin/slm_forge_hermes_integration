@@ -52,12 +52,13 @@ def test_patch_to_failed_enqueues_post_mortem(db: Session):
     from tests.api._isolation_helpers import synth_admin_request
     patch_run(run.id, payload, synth_admin_request(), db, bg)
 
-    # FastAPI BackgroundTasks stores added tasks on .tasks.
-    assert len(bg.tasks) == 1
-    task = bg.tasks[0]
-    # The task is the ``generate_for_run`` coroutine factory + (run_id,) args.
-    assert task.args == (run.id,)
-    assert task.func.__name__ == "generate_for_run"
+    # FastAPI BackgroundTasks stores added tasks on .tasks. Filter to
+    # the post-mortem task specifically — the storage-sync task is also
+    # queued on terminal status transitions and is exercised separately
+    # in test_storage_sync_on_completion.py.
+    pm_tasks = [t for t in bg.tasks if t.func.__name__ == "generate_for_run"]
+    assert len(pm_tasks) == 1
+    assert pm_tasks[0].args == (run.id,)
 
 
 def test_patch_failed_to_failed_does_not_double_enqueue(db: Session):
@@ -82,7 +83,8 @@ def test_patch_to_completed_does_not_enqueue(db: Session):
     from tests.api._isolation_helpers import synth_admin_request
     patch_run(run.id, RunPatch(status=RunStatus.COMPLETED), synth_admin_request(), db, bg)
 
-    assert len(bg.tasks) == 0
+    pm_tasks = [t for t in bg.tasks if t.func.__name__ == "generate_for_run"]
+    assert len(pm_tasks) == 0
 
 
 def test_patch_without_status_change_does_not_enqueue(db: Session):

@@ -62,7 +62,7 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-sk-local-litellm-master}
       - ANTHROPIC_AUTH_TOKEN=${ANTHROPIC_AUTH_TOKEN:-sk-local-litellm-master}
       # Phase D — Ozone S3 storage backend.
-      - SLM_FORGE_STORAGE=${SLM_FORGE_STORAGE:-local}
+      - SLM_FORGE_STORAGE=${SLM_FORGE_STORAGE:-s3}
       - SLM_FORGE_OZONE_S3_ENDPOINT=${SLM_FORGE_OZONE_S3_ENDPOINT:-http://host.docker.internal:9878}
       - SLM_FORGE_OZONE_ACCESS_KEY_ID=${SLM_FORGE_OZONE_ACCESS_KEY_ID:-}
       - SLM_FORGE_OZONE_SECRET_ACCESS_KEY=${SLM_FORGE_OZONE_SECRET_ACCESS_KEY:-}

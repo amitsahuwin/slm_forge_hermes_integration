@@ -19,6 +19,8 @@ from apps.api.middleware.auth import requires
 from apps.api.models.export import Export, ExportStatus, QuantLevel
 from apps.api.models.run import Run
 from apps.api.services.db import get_session
+from apps.api.services.identity import current_identity
+from apps.api.services.scoping import scope_query
 
 router = APIRouter()
 
@@ -53,8 +55,12 @@ SessionDep = Annotated[Session, Depends(get_session)]
 
 
 @router.post("", response_model=Export)
-def create_export(payload: ExportCreate, db: SessionDep) -> Export:
-    run = db.get(Run, payload.run_id)
+def create_export(payload: ExportCreate, request: Request, db: SessionDep) -> Export:
+    identity = current_identity(request)
+    # Caller must own (or be tenant-admin over) the parent run.
+    run = db.exec(
+        scope_query(select(Run).where(Run.id == payload.run_id), identity, Run)
+    ).first()
     if not run:
         raise HTTPException(404, "Run not found")
     if run.status.value != "completed":
@@ -71,6 +77,11 @@ def create_export(payload: ExportCreate, db: SessionDep) -> Export:
         base_model=run.base_model,
         method=run.method.value,
         quant_levels=quants,
+        # Phase D — exports inherit identity from the parent Run so that
+        # admin-triggered exports of a user's run still belong to the user.
+        tenant_id=run.tenant_id,
+        user_id=run.user_id,
+        role=run.role,
     )
     db.add(export)
     db.commit()
@@ -80,30 +91,38 @@ def create_export(payload: ExportCreate, db: SessionDep) -> Export:
 
 @router.get("", response_model=list[Export])
 def list_exports(
+    request: Request,
     db: SessionDep,
     status: ExportStatus | None = Query(default=None),
     limit: int = Query(default=50, le=200),
 ) -> list[Export]:
-    stmt = select(Export).order_by(desc(Export.created_at)).limit(limit)
+    identity = current_identity(request)
+    stmt = scope_query(select(Export), identity, Export)
     if status is not None:
-        stmt = (
-            select(Export).where(Export.status == status)
-            .order_by(desc(Export.created_at)).limit(limit)
-        )
+        stmt = stmt.where(Export.status == status)
+    stmt = stmt.order_by(desc(Export.created_at)).limit(limit)
     return list(db.exec(stmt).all())
 
 
 @router.get("/{xid}", response_model=Export)
-def get_export(xid: int, db: SessionDep) -> Export:
-    e = db.get(Export, xid)
+def get_export(xid: int, request: Request, db: SessionDep) -> Export:
+    identity = current_identity(request)
+    e = db.exec(
+        scope_query(select(Export).where(Export.id == xid), identity, Export)
+    ).first()
     if not e:
         raise HTTPException(404, "Export not found")
     return e
 
 
 @router.patch("/{xid}", response_model=Export)
-def patch_export(xid: int, payload: ExportPatch, db: SessionDep) -> Export:
-    e = db.get(Export, xid)
+def patch_export(
+    xid: int, payload: ExportPatch, request: Request, db: SessionDep
+) -> Export:
+    identity = current_identity(request)
+    e = db.exec(
+        scope_query(select(Export).where(Export.id == xid), identity, Export)
+    ).first()
     if not e:
         raise HTTPException(404, "Export not found")
     data = payload.model_dump(exclude_unset=True)
@@ -130,8 +149,9 @@ async def stream_export(xid: int) -> EventSourceResponse:
         terminal = {
             ExportStatus.COMPLETED.value, ExportStatus.FAILED.value, ExportStatus.CANCELLED.value,
         }
-        from apps.api.services.db import engine
         from sqlmodel import Session as _Session
+
+        from apps.api.services.db import engine
 
         while True:
             with _Session(engine) as s:
@@ -183,9 +203,14 @@ def _to_container_path(host_path: str) -> str | None:
 
 
 @router.get("/{xid}/download/{variant}")
-def download_export(xid: int, variant: str, db: SessionDep) -> FileResponse:
+def download_export(
+    xid: int, variant: str, request: Request, db: SessionDep
+) -> FileResponse:
     """Download a specific GGUF variant file. variant in {f16, q4, q5, q8}."""
-    e = db.get(Export, xid)
+    identity = current_identity(request)
+    e = db.exec(
+        scope_query(select(Export).where(Export.id == xid), identity, Export)
+    ).first()
     if not e:
         raise HTTPException(404, "Export not found")
 
@@ -230,9 +255,11 @@ def download_export(xid: int, variant: str, db: SessionDep) -> FileResponse:
 def delete_export(xid: int, request: Request, db: SessionDep) -> None:
     """Delete an export and its on-disk artifacts."""
     import shutil
-    from pathlib import Path
 
-    e = db.get(Export, xid)
+    identity = current_identity(request)
+    e = db.exec(
+        scope_query(select(Export).where(Export.id == xid), identity, Export)
+    ).first()
     if not e:
         raise HTTPException(404, "Export not found")
 

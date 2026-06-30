@@ -23,22 +23,20 @@ def db_session(tmp_path):
     engine.dispose()
 
 
-class _FakeRequest:
-    """Placeholder request — we bypass the @requires decorator in tests
-    by calling ``rerun_session.__wrapped__`` directly, so the request
-    object is never inspected. Keeps tests independent of any
-    process-global auth-settings cache poisoning from other test
-    files."""
-
-
 def _rerun(sid, db: Session):
     """Call the underlying ``rerun_session`` function without the
     @requires decorator. Functools.wraps preserves ``__wrapped__``."""
     from apps.api.routers.sessions import rerun_session
-    return rerun_session.__wrapped__(sid, _FakeRequest(), db)
+    from tests.api._isolation_helpers import synth_admin_request
+
+    return rerun_session.__wrapped__(sid, synth_admin_request(), db)
 
 
 def _mk_source(db: Session, **kw) -> TrainingSession:
+    # Phase D — stamp identity matching the synth admin used by _rerun()
+    kw.setdefault("tenant_id", "local")
+    kw.setdefault("user_id", "local-admin")
+    kw.setdefault("role", "admin")
     sess = TrainingSession(
         name=kw.pop("name", "src-exp"),
         dataset=kw.pop("dataset", "demo"),

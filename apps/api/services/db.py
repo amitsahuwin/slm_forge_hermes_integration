@@ -81,6 +81,8 @@ _METRIC_MIGRATIONS: list[tuple[str, str]] = [
 _HERMES_TRACE_MIGRATIONS: list[tuple[str, str]] = [
     ("attempts", "INTEGER DEFAULT 1"),
     ("tenant_id", "TEXT DEFAULT 'default'"),
+    # Phase D — per-user isolation on traces (mirrors runs/sessions/exports).
+    ("user_id", "TEXT DEFAULT 'default'"),
     ("skill_name", "TEXT"),
     ("skill_sha256", "TEXT"),
     ("skill_mtime", "TIMESTAMP"),

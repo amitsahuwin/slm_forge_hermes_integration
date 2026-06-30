@@ -37,6 +37,17 @@ class HermesTrace(SQLModel, table=True):
     # PR-1 A4: tenant boundary. ``"default"`` for single-tenant deployments;
     # populated from the request contextvar in API context, env in worker context.
     tenant_id: str = Field(default="default", index=True)
+    # Phase D — user-level boundary. API-side writes derive this from the
+    # request identity; worker-side writes derive it from the parent Run
+    # (so a worker-issued span is attributed to the user who created the
+    # run, not the worker's system identity). server_default matches the
+    # migration (TEXT DEFAULT 'default') so raw INSERTs without user_id
+    # still satisfy NOT NULL on legacy code paths.
+    user_id: str = Field(
+        default="default",
+        index=True,
+        sa_column_kwargs={"server_default": "default"},
+    )
 
     # Skill-Activity view: parsed from ``source`` (``skill:foo`` → ``foo``).
     # Indexed so the Traces tab can group / multi-select filter cheaply.

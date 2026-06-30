@@ -12,7 +12,9 @@ from apps.api.middleware.auth import requires
 from apps.api.models.run import Run, RunMethod
 from apps.api.models.session import SessionStatus, TargetMetric, TrainingSession
 from apps.api.services.db import get_session
+from apps.api.services.identity import current_identity
 from apps.api.services.model_catalog import validate_run_request
+from apps.api.services.scoping import scope_query
 
 router = APIRouter()
 
@@ -59,7 +61,14 @@ def create_session(
     error = validate_run_request(payload.base_model, payload.trainer_backend)
     if error is not None:
         raise HTTPException(422, error)
-    s = TrainingSession(**payload.model_dump())
+    # Phase D — stamp identity from JWT.
+    identity = current_identity(request)
+    s = TrainingSession(
+        **payload.model_dump(),
+        tenant_id=identity.tenant_id,
+        user_id=identity.user_id,
+        role=identity.role,
+    )
     db.add(s)
     db.commit()
     db.refresh(s)
@@ -68,24 +77,29 @@ def create_session(
 
 @router.get("", response_model=list[TrainingSession])
 def list_sessions(
+    request: Request,
     db: SessionDep,
     status: SessionStatus | None = Query(default=None),
     limit: int = Query(default=50, le=200),
 ) -> list[TrainingSession]:
-    stmt = select(TrainingSession).order_by(desc(TrainingSession.created_at)).limit(limit)
+    identity = current_identity(request)
+    stmt = scope_query(select(TrainingSession), identity, TrainingSession)
     if status is not None:
-        stmt = (
-            select(TrainingSession)
-            .where(TrainingSession.status == status)
-            .order_by(desc(TrainingSession.created_at))
-            .limit(limit)
-        )
+        stmt = stmt.where(TrainingSession.status == status)
+    stmt = stmt.order_by(desc(TrainingSession.created_at)).limit(limit)
     return list(db.exec(stmt).all())
 
 
 @router.get("/{sid}", response_model=TrainingSession)
-def get_session_(sid: int, db: SessionDep) -> TrainingSession:
-    s = db.get(TrainingSession, sid)
+def get_session_(sid: int, request: Request, db: SessionDep) -> TrainingSession:
+    identity = current_identity(request)
+    s = db.exec(
+        scope_query(
+            select(TrainingSession).where(TrainingSession.id == sid),
+            identity,
+            TrainingSession,
+        )
+    ).first()
     if not s:
         raise HTTPException(404, "Session not found")
     return s
@@ -123,13 +137,23 @@ def rerun_session(
     pointer, error message) stays intact. The ratchet worker picks up
     the new session via its normal queue poll.
     """
-    src = db.get(TrainingSession, sid)
+    identity = current_identity(request)
+    src = db.exec(
+        scope_query(
+            select(TrainingSession).where(TrainingSession.id == sid),
+            identity,
+            TrainingSession,
+        )
+    ).first()
     if not src:
         raise HTTPException(404, "Session not found")
     payload = {field: getattr(src, field) for field in _RERUN_CLONED_FIELDS}
     new = TrainingSession(
         name=f"{src.name} (rerun)",
         status=SessionStatus.QUEUED,
+        tenant_id=identity.tenant_id,
+        user_id=identity.user_id,
+        role=identity.role,
         **payload,
     )
     db.add(new)
@@ -139,8 +163,17 @@ def rerun_session(
 
 
 @router.patch("/{sid}", response_model=TrainingSession)
-def patch_session(sid: int, payload: SessionPatch, db: SessionDep) -> TrainingSession:
-    s = db.get(TrainingSession, sid)
+def patch_session(
+    sid: int, payload: SessionPatch, request: Request, db: SessionDep
+) -> TrainingSession:
+    identity = current_identity(request)
+    s = db.exec(
+        scope_query(
+            select(TrainingSession).where(TrainingSession.id == sid),
+            identity,
+            TrainingSession,
+        )
+    ).first()
     if not s:
         raise HTTPException(404, "Session not found")
     data = payload.model_dump(exclude_unset=True)
@@ -157,8 +190,16 @@ def patch_session(sid: int, payload: SessionPatch, db: SessionDep) -> TrainingSe
 
 
 @router.get("/{sid}/iterations", response_model=list[Run])
-def list_iterations(sid: int, db: SessionDep) -> list[Run]:
-    if not db.get(TrainingSession, sid):
+def list_iterations(sid: int, request: Request, db: SessionDep) -> list[Run]:
+    identity = current_identity(request)
+    parent = db.exec(
+        scope_query(
+            select(TrainingSession).where(TrainingSession.id == sid),
+            identity,
+            TrainingSession,
+        )
+    ).first()
+    if not parent:
         raise HTTPException(404, "Session not found")
     return list(
         db.exec(
@@ -168,7 +209,7 @@ def list_iterations(sid: int, db: SessionDep) -> list[Run]:
 
 
 @router.delete("/{sid}", status_code=204)
-def delete_session(sid: int, db: SessionDep) -> None:
+def delete_session(sid: int, request: Request, db: SessionDep) -> None:
     """Delete a session and ALL its child runs (cascading). Blocks if any child run has exports."""
     import shutil
     from pathlib import Path
@@ -176,7 +217,14 @@ def delete_session(sid: int, db: SessionDep) -> None:
     from apps.api.models.export import Export
     from apps.api.models.metric import Metric
 
-    s = db.get(TrainingSession, sid)
+    identity = current_identity(request)
+    s = db.exec(
+        scope_query(
+            select(TrainingSession).where(TrainingSession.id == sid),
+            identity,
+            TrainingSession,
+        )
+    ).first()
     if not s:
         raise HTTPException(404, "Session not found")
 

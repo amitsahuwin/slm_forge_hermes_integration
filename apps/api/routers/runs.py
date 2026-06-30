@@ -29,9 +29,11 @@ from apps.api.models.metric import Metric
 from apps.api.models.run import Run, RunMethod, RunStatus
 from apps.api.services.claims import claim_next_run
 from apps.api.services.db import get_session
+from apps.api.services.identity import current_identity
 from apps.api.services.model_catalog import validate_run_request
 from apps.api.services.post_mortem import generate_for_run
 from apps.api.services.remedy import translate_error
+from apps.api.services.scoping import scope_query
 
 router = APIRouter()
 
@@ -82,7 +84,7 @@ SessionDep = Annotated[Session, Depends(get_session)]
 
 
 @router.post("", response_model=Run)
-async def create_run(payload: RunCreate, session: SessionDep) -> Run:
+async def create_run(payload: RunCreate, request: Request, session: SessionDep) -> Run:
     """Create a new training run.
 
     PR-3: catalog-validation failures (422) carry a plain-English remedy from
@@ -101,7 +103,15 @@ async def create_run(payload: RunCreate, session: SessionDep) -> Run:
             },
         )
         raise HTTPException(422, detail={"message": error, "remedy": remedy})
-    run = Run(**payload.model_dump())
+    # Phase D — stamp identity from JWT; client cannot override these fields
+    # (RunCreate doesn't declare them).
+    identity = current_identity(request)
+    run = Run(
+        **payload.model_dump(),
+        tenant_id=identity.tenant_id,
+        user_id=identity.user_id,
+        role=identity.role,
+    )
     session.add(run)
     session.commit()
     session.refresh(run)
@@ -127,27 +137,28 @@ def claim_run(payload: RunClaim, session: SessionDep) -> Run | None:
 
 @router.get("", response_model=list[Run])
 def list_runs(
+    request: Request,
     session: SessionDep,
     status: RunStatus | None = Query(default=None),
     backend: str | None = Query(default=None),
     limit: int = Query(default=50, le=200),
 ) -> list[Run]:
-    stmt = select(Run).order_by(desc(Run.created_at)).limit(limit)
+    identity = current_identity(request)
+    stmt = scope_query(select(Run), identity, Run)
     if status is not None:
-        stmt = (
-            select(Run)
-            .where(Run.status == status)
-            .order_by(desc(Run.created_at))
-            .limit(limit)
-        )
+        stmt = stmt.where(Run.status == status)
     if backend is not None:
         stmt = stmt.where(Run.trainer_backend == backend)
+    stmt = stmt.order_by(desc(Run.created_at)).limit(limit)
     return list(session.exec(stmt).all())
 
 
 @router.get("/{run_id}", response_model=Run)
-def get_run(run_id: int, session: SessionDep) -> Run:
-    run = session.get(Run, run_id)
+def get_run(run_id: int, request: Request, session: SessionDep) -> Run:
+    identity = current_identity(request)
+    run = session.exec(
+        scope_query(select(Run).where(Run.id == run_id), identity, Run)
+    ).first()
     if not run:
         raise HTTPException(404, "Run not found")
     return run
@@ -157,10 +168,14 @@ def get_run(run_id: int, session: SessionDep) -> Run:
 def patch_run(
     run_id: int,
     payload: RunPatch,
+    request: Request,
     session: SessionDep,
     background: BackgroundTasks,
 ) -> Run:
-    run = session.get(Run, run_id)
+    identity = current_identity(request)
+    run = session.exec(
+        scope_query(select(Run).where(Run.id == run_id), identity, Run)
+    ).first()
     if not run:
         raise HTTPException(404, "Run not found")
     # Capture the pre-PATCH status so we can detect the failed-transition edge.
@@ -202,8 +217,13 @@ class PostMortemResponse(BaseModel):
 
 
 @router.get("/{run_id}/post_mortem", response_model=PostMortemResponse)
-def get_post_mortem(run_id: int, session: SessionDep) -> PostMortemResponse:
-    run = session.get(Run, run_id)
+def get_post_mortem(
+    run_id: int, request: Request, session: SessionDep
+) -> PostMortemResponse:
+    identity = current_identity(request)
+    run = session.exec(
+        scope_query(select(Run).where(Run.id == run_id), identity, Run)
+    ).first()
     if not run:
         raise HTTPException(404, "Run not found")
     return PostMortemResponse(
@@ -216,18 +236,48 @@ def get_post_mortem(run_id: int, session: SessionDep) -> PostMortemResponse:
 
 
 @router.get("/{run_id}/metrics", response_model=list[Metric])
-def list_metrics(run_id: int, session: SessionDep) -> list[Metric]:
-    if not session.get(Run, run_id):
+def list_metrics(
+    run_id: int, request: Request, session: SessionDep
+) -> list[Metric]:
+    identity = current_identity(request)
+    parent = session.exec(
+        scope_query(select(Run).where(Run.id == run_id), identity, Run)
+    ).first()
+    if not parent:
         raise HTTPException(404, "Run not found")
     stmt = select(Metric).where(Metric.run_id == run_id).order_by(Metric.step, Metric.id)
     return list(session.exec(stmt).all())
 
 
 @router.post("/{run_id}/metrics", response_model=Metric)
-def post_metric(run_id: int, payload: MetricCreate, session: SessionDep) -> Metric:
-    if not session.get(Run, run_id):
+def post_metric(
+    run_id: int,
+    payload: MetricCreate,
+    request: Request,
+    session: SessionDep,
+) -> Metric:
+    # Metrics derive their tenant/user from the parent Run — the worker
+    # writing the metric carries the system identity, not the run owner's,
+    # so we must look up the parent without enforcing caller scope.
+    parent = session.get(Run, run_id)
+    if not parent:
         raise HTTPException(404, "Run not found")
-    m = Metric(run_id=run_id, **payload.model_dump())
+    # If the caller is a regular user (not the worker), enforce ownership
+    # via scope_query — they can't post metrics on someone else's run.
+    identity = current_identity(request)
+    if not identity.is_worker:
+        scoped = session.exec(
+            scope_query(select(Run).where(Run.id == run_id), identity, Run)
+        ).first()
+        if not scoped:
+            raise HTTPException(404, "Run not found")
+    m = Metric(
+        run_id=run_id,
+        tenant_id=parent.tenant_id,
+        user_id=parent.user_id,
+        role=parent.role,
+        **payload.model_dump(),
+    )
     session.add(m)
     session.commit()
     session.refresh(m)

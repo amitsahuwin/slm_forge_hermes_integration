@@ -47,7 +47,8 @@ async def test_valid_run_is_persisted(db_session, monkeypatch: pytest.MonkeyPatc
         base_model="mlx-community/gemma-3-4b-it-4bit",
         trainer_backend="mlx",
     )
-    run = await create_run(payload, db_session)
+    from tests.api._isolation_helpers import synth_admin_request
+    run = await create_run(payload, synth_admin_request(), db_session)
     assert run.id is not None
     assert run.trainer_backend == "mlx"
 
@@ -59,7 +60,8 @@ async def test_uncataloged_model_is_422_and_not_persisted(
     monkeypatch.delenv("SLM_FORGE_ENFORCE_CATALOG", raising=False)
     payload = RunCreate(dataset="demo", base_model="totally/made-up")
     with pytest.raises(HTTPException) as exc:
-        await create_run(payload, db_session)
+        from tests.api._isolation_helpers import synth_admin_request
+        await create_run(payload, synth_admin_request(), db_session)
     assert exc.value.status_code == 422
     # PR-3 contract: detail is dict-shaped with a stable ``message`` field.
     assert isinstance(exc.value.detail, dict)
@@ -72,7 +74,8 @@ async def test_broken_model_is_422(db_session, monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.delenv("SLM_FORGE_ENFORCE_CATALOG", raising=False)
     payload = RunCreate(dataset="demo", base_model="mlx-community/gemma-3n-E2B-it-bf16")
     with pytest.raises(HTTPException) as exc:
-        await create_run(payload, db_session)
+        from tests.api._isolation_helpers import synth_admin_request
+        await create_run(payload, synth_admin_request(), db_session)
     assert exc.value.status_code == 422
     assert isinstance(exc.value.detail, dict)
 
@@ -83,7 +86,8 @@ async def test_escape_hatch_allows_uncataloged(
 ) -> None:
     monkeypatch.setenv("SLM_FORGE_ENFORCE_CATALOG", "false")
     payload = RunCreate(dataset="demo", base_model="totally/made-up")
-    run = await create_run(payload, db_session)
+    from tests.api._isolation_helpers import synth_admin_request
+    run = await create_run(payload, synth_admin_request(), db_session)
     assert run.id is not None
 
 

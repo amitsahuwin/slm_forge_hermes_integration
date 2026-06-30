@@ -33,6 +33,35 @@ DATA_ROOT = PROJECT_ROOT / "data" / "datasets"
 RUNS_ROOT = PROJECT_ROOT / "runs"
 
 
+def _resolve_dataset_dir(run: dict[str, Any], base: Path) -> Path:
+    """Phase D.3 — workers look up the dataset under the Phase-D layout:
+
+      1. ``base/global/<name>/``                        — bundled samples
+      2. ``base/users/{tenant_id}/{user_id}/<name>/``    — user uploads
+
+    Falls back to the legacy flat ``base/<name>/`` so a pre-Phase-D run
+    that's still in the queue can finish. Returns the first matching
+    directory (so a real ``train.jsonl`` check still acts as the final
+    gate). If nothing exists, returns the *expected* per-user path so
+    the error message points at the right spot.
+    """
+    name = str(run["dataset"])
+    candidates: list[Path] = [base / "global" / name]
+    tenant = run.get("tenant_id")
+    user = run.get("user_id")
+    if tenant and user:
+        candidates.append(base / "users" / tenant / user / name)
+    candidates.append(base / name)  # legacy flat layout — backwards compat
+    for c in candidates:
+        if (c / "train.jsonl").exists():
+            return c
+    # Nothing found — return the expected user path so the failure
+    # message guides the operator to the right spot.
+    if tenant and user:
+        return base / "users" / tenant / user / name
+    return base / name
+
+
 def _patch_run(api_url: str, run_id: int, **fields: Any) -> None:
     try:
         httpx.patch(
@@ -66,7 +95,7 @@ def run_training_job(
     """
     backend = backend if backend is not None else get_backend()
     run_id = run["id"]
-    dataset_dir = DATA_ROOT / run["dataset"]
+    dataset_dir = _resolve_dataset_dir(run, DATA_ROOT)
 
     if not (dataset_dir / "train.jsonl").exists():
         # Phase R — remote workers fetch the dataset from the API instead of

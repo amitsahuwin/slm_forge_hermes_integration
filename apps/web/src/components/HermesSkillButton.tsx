@@ -68,8 +68,19 @@ export default function HermesSkillButton({
       }
       const r = await fetch(`${API_URL}${path}`, init);
       if (!r.ok) {
-        const j = await r.json().catch(() => ({ detail: `HTTP ${r.status}` }));
-        throw new Error(j.detail || `HTTP ${r.status}`);
+        const j = (await r.json().catch(() => ({}))) as { detail?: unknown };
+        // Phase D — detail may be a string OR { message, remedy }. Always
+        // produce a string so React never renders "[object Object]".
+        let msg: string;
+        if (typeof j.detail === 'string') {
+          msg = j.detail;
+        } else if (j.detail && typeof j.detail === 'object') {
+          const d = j.detail as { message?: unknown };
+          msg = typeof d.message === 'string' ? d.message : JSON.stringify(j.detail);
+        } else {
+          msg = `HTTP ${r.status}`;
+        }
+        throw new Error(msg);
       }
       onResult((await r.json()) as SkillResponse);
     } catch (e: unknown) {

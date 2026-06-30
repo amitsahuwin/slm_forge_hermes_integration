@@ -56,7 +56,9 @@ def test_ensure_dataset_local_downloads_and_extracts(
     monkeypatch.setattr(transfer.httpx, "get", fake_get)
     ds = transfer.ensure_dataset_local("demo", "http://api")
 
-    assert ds == tmp_path / "demo"
+    # Phase D.3 — downloaded archives land under ``global/`` so the
+    # trainer's resolver finds them on next call.
+    assert ds == tmp_path / "global" / "demo"
     assert (ds / "train.jsonl").read_text() == '{"text": "a"}\n'
     assert calls == ["http://api/api/v1/datasets/demo/archive"]
 

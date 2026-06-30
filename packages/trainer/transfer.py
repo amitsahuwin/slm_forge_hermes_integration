@@ -42,10 +42,18 @@ def _validate_members(members: list[tarfile.TarInfo]) -> None:
 
 
 def ensure_dataset_local(dataset: str, api_url: str) -> Path:
-    """Return the local dataset dir, downloading the archive if missing."""
-    ds_dir = DATA_ROOT / dataset
-    if (ds_dir / "train.jsonl").exists():
-        return ds_dir
+    """Return the local dataset dir, downloading the archive if missing.
+
+    Phase D.3 — checks the new ``global/<name>/`` layout first, then the
+    legacy flat path. Newly-downloaded archives land under ``global/``
+    so the trainer's ``_resolve_dataset_dir`` finds them on next call.
+    """
+    global_dir = DATA_ROOT / "global" / dataset
+    legacy_dir = DATA_ROOT / dataset
+    if (global_dir / "train.jsonl").exists():
+        return global_dir
+    if (legacy_dir / "train.jsonl").exists():
+        return legacy_dir
 
     url = f"{api_url}/api/v1/datasets/{dataset}/archive"
     log.info("Dataset '%s' missing locally — downloading %s", dataset, url)
@@ -55,21 +63,22 @@ def ensure_dataset_local(dataset: str, api_url: str) -> Path:
     except httpx.HTTPError as e:
         raise TransferError(f"Dataset archive download failed: {e}") from e
 
+    extract_root = DATA_ROOT / "global"
     try:
         with tarfile.open(fileobj=io.BytesIO(r.content), mode="r:gz") as tf:
             members = tf.getmembers()
             _validate_members(members)
-            DATA_ROOT.mkdir(parents=True, exist_ok=True)
-            tf.extractall(DATA_ROOT, members=members)
+            extract_root.mkdir(parents=True, exist_ok=True)
+            tf.extractall(extract_root, members=members)
     except tarfile.TarError as e:
         raise TransferError(f"Invalid dataset archive: {e}") from e
 
-    if not (ds_dir / "train.jsonl").exists():
+    if not (global_dir / "train.jsonl").exists():
         raise TransferError(
             f"Archive for '{dataset}' extracted but train.jsonl is still missing"
         )
-    log.info("Dataset '%s' ready at %s", dataset, ds_dir)
-    return ds_dir
+    log.info("Dataset '%s' ready at %s", dataset, global_dir)
+    return global_dir
 
 
 def upload_adapter(run_id: int, adapter_dir: Path, api_url: str) -> bool:

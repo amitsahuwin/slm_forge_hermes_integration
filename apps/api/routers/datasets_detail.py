@@ -11,13 +11,13 @@ import json
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
-router = APIRouter()
+from apps.api.services.identity import current_identity
+from apps.api.services.identity_paths import resolve_dataset
 
-# Match existing convention in datasets.py.
-DATA_ROOT = Path("/app/data/datasets")
+router = APIRouter()
 
 # Preview row counts.
 _TRAIN_PREVIEW = 5
@@ -51,10 +51,16 @@ class RowsResponse(BaseModel):
 # ─── helpers ──────────────────────────────────────────────────────────
 
 
-def _dataset_dir(name: str) -> Path:
-    """Return the dataset directory or raise 404."""
-    d = DATA_ROOT / name
-    if not d.exists() or not d.is_dir():
+def _dataset_dir(name: str, request: Request) -> Path:
+    """Phase D.3 — resolve ``name`` against the caller's visible dirs
+    (global samples + own + admin tenant-wide). 404 if not found / not
+    allowed (opaque to avoid existence leaks)."""
+    identity = current_identity(request)
+    try:
+        d = resolve_dataset(name, identity)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    if d is None or not d.is_dir():
         raise HTTPException(status_code=404, detail="Dataset not found")
     return d
 
@@ -169,8 +175,8 @@ def _length_stats(paths: list[Path]) -> dict:
 
 
 @router.get("/{name}", response_model=DatasetDetail)
-def get_dataset_detail(name: str) -> DatasetDetail:
-    d = _dataset_dir(name)
+def get_dataset_detail(name: str, request: Request) -> DatasetDetail:
+    d = _dataset_dir(name, request)
     train_p = d / "train.jsonl"
     valid_p = d / "valid.jsonl"
     canary_p = d / "canary.jsonl"
@@ -195,11 +201,12 @@ def get_dataset_detail(name: str) -> DatasetDetail:
 @router.get("/{name}/rows", response_model=RowsResponse)
 def get_dataset_rows(
     name: str,
+    request: Request,
     split: str = Query("train", pattern="^(train|valid|canary)$"),
     offset: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
 ) -> RowsResponse:
-    d = _dataset_dir(name)
+    d = _dataset_dir(name, request)
     path = d / f"{split}.jsonl"
     total = _count_jsonl(path)
     rows = _slice_jsonl(path, offset, limit) if total else []

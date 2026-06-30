@@ -215,9 +215,12 @@ async def test_synth_4xx_carries_remedy(monkeypatch: pytest.MonkeyPatch, tmp_pat
     # The 404 raise inside start_synth is the easiest path to trigger — source
     # dataset doesn't exist.
     from apps.api.routers import synth as synth_router
+    from apps.api.services import identity_paths
+    from tests.api._isolation_helpers import synth_admin_request
 
-    # Redirect the dataset root so the request resolves to a non-existent path.
-    monkeypatch.setattr(synth_router, "DATA_ROOT", tmp_path)
+    # Phase D.3 — start_synth now resolves source dataset against DATASETS_ROOT
+    # in identity_paths. Redirect that to tmp_path so 'missing-seed' is absent.
+    monkeypatch.setattr(identity_paths, "DATASETS_ROOT", tmp_path)
 
     monkeypatch.setattr(
         remedy_module,
@@ -234,16 +237,13 @@ async def test_synth_4xx_carries_remedy(monkeypatch: pytest.MonkeyPatch, tmp_pat
         canary_ratio=0.1,
     )
 
-    class _FakeRequest:
-        state = type("S", (), {"user": type("U", (), {"id": "x", "roles": ["admin"]})()})()
-
     # Strip the @requires decorator overhead by calling the underlying function
     # — the decorator is exercised in tests/api/test_auth.py and we want focus
     # on the remedy contract here.
     inner = synth_router.start_synth.__wrapped__ if hasattr(synth_router.start_synth, "__wrapped__") else synth_router.start_synth
 
     with pytest.raises(HTTPException) as ei:
-        await inner(req, _FakeRequest())  # type: ignore[arg-type]
+        await inner(req, synth_admin_request())  # type: ignore[arg-type]
 
     assert ei.value.status_code == 404
     assert isinstance(ei.value.detail, dict)

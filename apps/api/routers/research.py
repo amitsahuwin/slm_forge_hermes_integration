@@ -99,9 +99,14 @@ class ReportContent(BaseModel):
 
 
 class _Job:
-    def __init__(self, req: ResearchRequest) -> None:
+    def __init__(self, req: ResearchRequest, tenant_id: str, user_id: str) -> None:
         self.job_id: str = uuid.uuid4().hex[:12]
         self.req: ResearchRequest = req
+        # Phase D.3 — every job carries the owner's identity so the
+        # write path lands under the right per-user dir and the
+        # job-status endpoints can gate by ownership.
+        self.tenant_id: str = tenant_id
+        self.user_id: str = user_id
         self.status: JobStatus = "queued"
         self.created_at: str = datetime.now(UTC).isoformat()
         self.completed_at: str | None = None
@@ -280,10 +285,14 @@ async def _run_research_job(job: _Job) -> None:
             progress_cb,
         )
 
-        # Persist to disk. Engine intentionally doesn't mkdir; we do it here
-        # so the router owns all filesystem side effects.
-        _REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-        out_path = report_path(_REPORTS_DIR, req.topic)
+        # Persist to disk under per-user dir. Engine intentionally doesn't
+        # mkdir; we do it here so the router owns all filesystem side effects.
+        from apps.api.services.identity_paths import REPORTS_ROOT
+        from pathlib import Path as _Path
+
+        user_dir = _Path(REPORTS_ROOT) / "users" / job.tenant_id / job.user_id
+        user_dir.mkdir(parents=True, exist_ok=True)
+        out_path = report_path(user_dir, req.topic)
         out_path.write_text(markdown, encoding="utf-8")
 
         job.filename = out_path.name
@@ -315,14 +324,28 @@ async def _run_research_job(job: _Job) -> None:
 # ─── Routes ──────────────────────────────────────────────────────────────
 
 
+def _job_visible(j: _Job, identity) -> bool:
+    """Phase D.3 — gate research job access by tenant + ownership."""
+    if j.tenant_id != identity.tenant_id:
+        return False
+    if identity.is_admin:
+        return True
+    return j.user_id == identity.user_id
+
+
 @router.post("/start", response_model=ResearchStartResponse)
-async def start_research(req: ResearchRequest) -> ResearchStartResponse:
+async def start_research(
+    req: ResearchRequest, request: Request
+) -> ResearchStartResponse:
     if req.depth not in ("quick", "standard", "deep"):
         raise HTTPException(400, "depth must be one of: quick, standard, deep")
     if not req.topic.strip():
         raise HTTPException(400, "topic must be non-empty")
 
-    job = _Job(req)
+    from apps.api.services.identity import current_identity
+
+    identity = current_identity(request)
+    job = _Job(req, tenant_id=identity.tenant_id, user_id=identity.user_id)
     _JOBS[job.job_id] = job
     _prune_jobs()
     job.task = asyncio.create_task(_run_research_job(job))
@@ -330,17 +353,23 @@ async def start_research(req: ResearchRequest) -> ResearchStartResponse:
 
 
 @router.get("/jobs/{job_id}", response_model=JobInfo)
-def get_job(job_id: str) -> JobInfo:
+def get_job(job_id: str, request: Request) -> JobInfo:
+    from apps.api.services.identity import current_identity
+
+    identity = current_identity(request)
     j = _JOBS.get(job_id)
-    if j is None:
+    if j is None or not _job_visible(j, identity):
         raise HTTPException(404, "Job not found")
     return j.snapshot()
 
 
 @router.get("/jobs/{job_id}/stream")
-async def stream_job(job_id: str) -> EventSourceResponse:
+async def stream_job(job_id: str, request: Request) -> EventSourceResponse:
+    from apps.api.services.identity import current_identity
+
+    identity = current_identity(request)
     j = _JOBS.get(job_id)
-    if j is None:
+    if j is None or not _job_visible(j, identity):
         raise HTTPException(404, "Job not found")
 
     async def gen() -> AsyncGenerator[dict[str, str], None]:
@@ -366,48 +395,67 @@ async def stream_job(job_id: str) -> EventSourceResponse:
 
 
 @router.get("/reports", response_model=list[ReportRow])
-def list_reports() -> list[ReportRow]:
-    if not _REPORTS_DIR.exists():
-        return []
+def list_reports(request: Request) -> list[ReportRow]:
+    from apps.api.services.identity import current_identity
+    from apps.api.services.identity_paths import visible_report_dirs
+
+    identity = current_identity(request)
     rows: list[ReportRow] = []
-    for p in _REPORTS_DIR.glob("*.md"):
-        try:
-            body = p.read_text(encoding="utf-8")
-        except OSError as e:
-            log.warning("Failed to read %s: %s", p, e)
+    seen_names: set[str] = set()
+    # Walk every dir the caller may see. ``visible_report_dirs`` returns
+    # an ordered list — admin gets the whole tenant tree, non-admin gets
+    # only their own dir. ``rglob`` covers both the new per-user layout
+    # (users/{tenant}/{user}/*.md) and any flat legacy files.
+    for base in visible_report_dirs(identity):
+        if not base.exists():
             continue
-        fm = _parse_frontmatter(body)
-        tags_raw = fm.get("tags", [])
-        tags: list[str] = tags_raw if isinstance(tags_raw, list) else []
-        try:
-            stat = p.stat()
-            size = stat.st_size
-            # Fallback timestamp: file mtime → ISO8601 in UTC.
-            fallback_ts = datetime.fromtimestamp(stat.st_mtime, UTC).isoformat()
-        except OSError:
-            size = 0
-            fallback_ts = ""
-        rows.append(
-            ReportRow(
-                filename=p.name,
-                title=str(fm.get("title") or p.stem),
-                topic=str(fm.get("topic") or ""),
-                depth=str(fm.get("depth") or ""),
-                generated_at=str(fm.get("generated_at") or fallback_ts),
-                tags=[str(t) for t in tags],
-                bytes=size,
+        for p in base.rglob("*.md"):
+            if not p.is_file() or p.name in seen_names:
+                continue
+            seen_names.add(p.name)
+            try:
+                body = p.read_text(encoding="utf-8")
+            except OSError as e:
+                log.warning("Failed to read %s: %s", p, e)
+                continue
+            fm = _parse_frontmatter(body)
+            tags_raw = fm.get("tags", [])
+            tags: list[str] = tags_raw if isinstance(tags_raw, list) else []
+            try:
+                stat = p.stat()
+                size = stat.st_size
+                fallback_ts = datetime.fromtimestamp(stat.st_mtime, UTC).isoformat()
+            except OSError:
+                size = 0
+                fallback_ts = ""
+            rows.append(
+                ReportRow(
+                    filename=p.name,
+                    title=str(fm.get("title") or p.stem),
+                    topic=str(fm.get("topic") or ""),
+                    depth=str(fm.get("depth") or ""),
+                    generated_at=str(fm.get("generated_at") or fallback_ts),
+                    tags=[str(t) for t in tags],
+                    bytes=size,
+                )
             )
-        )
     rows.sort(key=lambda r: r.generated_at, reverse=True)
     return rows
 
 
 @router.get("/reports/{filename}", response_model=ReportContent)
-def get_report(filename: str) -> ReportContent:
+def get_report(filename: str, request: Request) -> ReportContent:
     if not _FILENAME_RE.match(filename):
         raise HTTPException(400, "Invalid filename")
-    p = _REPORTS_DIR / filename
-    if not p.exists() or not p.is_file():
+    from apps.api.services.identity import current_identity
+    from apps.api.services.identity_paths import resolve_report
+
+    identity = current_identity(request)
+    try:
+        p = resolve_report(filename, identity)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    if p is None:
         raise HTTPException(404, "Report not found")
     try:
         text = p.read_text(encoding="utf-8")
@@ -421,8 +469,15 @@ def get_report(filename: str) -> ReportContent:
 def delete_report(filename: str, request: Request) -> None:
     if not _FILENAME_RE.match(filename):
         raise HTTPException(400, "Invalid filename")
-    p = _REPORTS_DIR / filename
-    if not p.exists() or not p.is_file():
+    from apps.api.services.identity import current_identity
+    from apps.api.services.identity_paths import resolve_report
+
+    identity = current_identity(request)
+    try:
+        p = resolve_report(filename, identity)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    if p is None:
         raise HTTPException(404, "Report not found")
     try:
         p.unlink()

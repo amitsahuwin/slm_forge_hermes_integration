@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 
 from apps.api.services import qa_store
@@ -208,8 +208,17 @@ def get_qa(qa_id: str) -> QAStatusResponse:
 
 
 @router.post("/finalize", response_model=FinalizeResponse)
-def finalize(payload: FinalizeRequest) -> FinalizeResponse:
-    dataset_dir = DATA_ROOT / payload.dataset_name
+def finalize(payload: FinalizeRequest, request: Request) -> FinalizeResponse:
+    # Phase D.3 — writes go to the caller's per-user dataset dir.
+    from apps.api.services.identity import current_identity
+    from apps.api.services.identity_paths import safe_name, user_datasets_dir
+
+    identity = current_identity(request)
+    try:
+        ds_name = safe_name(payload.dataset_name)
+    except ValueError as e:
+        raise HTTPException(400, f"Invalid dataset_name: {e}") from e
+    dataset_dir = user_datasets_dir(identity) / ds_name
     if dataset_dir.exists() and not payload.overwrite:
         raise HTTPException(
             409, f"Dataset '{payload.dataset_name}' exists. Pass overwrite=true to replace."

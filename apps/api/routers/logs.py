@@ -21,12 +21,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlmodel import Session
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from sqlmodel import Session, select
 from sse_starlette.sse import EventSourceResponse
 
 from apps.api.models.run import Run, RunStatus
 from apps.api.services.db import engine, get_session
+from apps.api.services.identity import current_identity
+from apps.api.services.scoping import scope_query
 from packages._logging import VALID_WORKERS, worker_log_path
 
 router = APIRouter()
@@ -134,11 +136,17 @@ def _validate_worker(worker: str) -> Path:
 @router.get("/runs/{run_id}/logs")
 def get_run_logs(
     run_id: int,
+    request: Request,
     session: SessionDep,
     n: int = Query(default=500, ge=1, le=_MAX_LINES_PER_STREAM),
 ) -> dict[str, list[str]]:
     """Return the last ``n`` lines of ``runs/<run_id>/training.log``."""
-    run = session.get(Run, run_id)
+    # Phase D — caller must own (or be tenant-admin over) the run; otherwise
+    # 404 (opaque). Workers carry is_worker=True → WHERE 1=0 → 404.
+    identity = current_identity(request)
+    run = session.exec(
+        scope_query(select(Run).where(Run.id == run_id), identity, Run)
+    ).first()
     if not run:
         raise HTTPException(404, "Run not found")
     return {"lines": _tail_lines(_run_log_path(run_id), n)}
@@ -240,14 +248,17 @@ async def _tail_file_sse(
 
 
 @router.get("/runs/{run_id}/logs/stream")
-async def stream_run_logs(run_id: int) -> EventSourceResponse:
+async def stream_run_logs(run_id: int, request: Request) -> EventSourceResponse:
     """Tail ``runs/<run_id>/training.log`` and stream lines as SSE events.
 
     Terminates when the Run row transitions to a terminal status or when the
     per-stream line cap is reached.
     """
+    identity = current_identity(request)
     with Session(engine) as s:
-        run = s.get(Run, run_id)
+        run = s.exec(
+            scope_query(select(Run).where(Run.id == run_id), identity, Run)
+        ).first()
         if not run:
             raise HTTPException(404, "Run not found")
 

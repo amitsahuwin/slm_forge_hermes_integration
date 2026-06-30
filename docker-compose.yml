@@ -61,6 +61,11 @@ services:
       - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL_API:-http://litellm:4000}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-sk-local-litellm-master}
       - ANTHROPIC_AUTH_TOKEN=${ANTHROPIC_AUTH_TOKEN:-sk-local-litellm-master}
+      # Phase D — Ozone S3 storage backend.
+      - SLM_FORGE_STORAGE=${SLM_FORGE_STORAGE:-local}
+      - SLM_FORGE_OZONE_S3_ENDPOINT=${SLM_FORGE_OZONE_S3_ENDPOINT:-http://host.docker.internal:9878}
+      - SLM_FORGE_OZONE_ACCESS_KEY_ID=${SLM_FORGE_OZONE_ACCESS_KEY_ID:-}
+      - SLM_FORGE_OZONE_SECRET_ACCESS_KEY=${SLM_FORGE_OZONE_SECRET_ACCESS_KEY:-}
     # `host-gateway` makes host.docker.internal resolve even on Linux hosts
     # (Docker Desktop on Mac maps it automatically, but this is harmless +
     # portable).

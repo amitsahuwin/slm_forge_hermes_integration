@@ -8,6 +8,7 @@ its very first artifact write. Idempotent: ``HeadBucket`` first,
 On the ``SLM_FORGE_STORAGE=local`` path this is a no-op — local
 storage just creates directories as keys arrive.
 """
+
 from __future__ import annotations
 
 import logging
@@ -19,6 +20,10 @@ from apps.api.services.identity import Identity
 log = logging.getLogger("api.storage.tenancy")
 
 DEFAULT_BUCKET_PREFIX = "slm-forge"
+
+# In-memory set of buckets already verified this process lifetime.
+# Avoids an S3 HeadBucket round-trip on every single request.
+_verified_buckets: set[str] = set()
 
 
 def _bucket_for(tenant_id: str) -> str:
@@ -36,6 +41,8 @@ async def ensure_tenant_bucket(identity: Identity) -> str:
     bucket = _bucket_for(identity.tenant_id)
     if backend == "local":
         return bucket
+    if bucket in _verified_buckets:
+        return bucket
 
     # Ozone path — lazy import so local-only deployments don't pay it.
     from apps.api.services.storage.ozone import OzoneObjectStore
@@ -44,16 +51,20 @@ async def ensure_tenant_bucket(identity: Identity) -> str:
     async with store._client() as s3:
         try:
             await s3.head_bucket(Bucket=bucket)
+            _verified_buckets.add(bucket)
             return bucket
         except Exception:  # noqa: BLE001
             pass
         try:
             await s3.create_bucket(Bucket=bucket)
-            log.info("created Ozone bucket %s for tenant %s", bucket, identity.tenant_id)
+            log.info(
+                "created Ozone bucket %s for tenant %s", bucket, identity.tenant_id
+            )
         except Exception as e:  # noqa: BLE001
             # Concurrent first-login may race with another worker; if
             # the bucket exists now we treat the create as a success.
             log.warning("create_bucket(%s) failed; assuming it exists: %s", bucket, e)
+    _verified_buckets.add(bucket)
     return bucket
 
 

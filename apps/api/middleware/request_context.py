@@ -12,6 +12,7 @@ For every HTTP request we:
 
 Cheap, no I/O, no dependencies beyond starlette.
 """
+
 from __future__ import annotations
 
 import os

@@ -77,7 +77,9 @@ def engine_with_seeds(tmp_path, monkeypatch: pytest.MonkeyPatch):
 
 
 def _req():
-    return MagicMock()
+    # Phase D — Identity needs tenant binding matching the seed rows.
+    from tests.api._isolation_helpers import make_request
+    return make_request(user_id="default", tenant="default", role="admin")
 
 
 def test_summary_groups_by_skill_name(engine_with_seeds) -> None:

@@ -7,6 +7,7 @@ Pipeline:
   3. llama-quantize              — F16 GGUF → Q4_K_M / Q5_K_M / Q8_0
      (found on PATH / Homebrew / a local llama.cpp source build)
 """
+
 from __future__ import annotations
 
 import logging
@@ -21,33 +22,37 @@ import httpx
 
 log = logging.getLogger("exporter.pipeline")
 
-PROJECT_ROOT   = Path(__file__).resolve().parents[2]
-RUNS_ROOT      = PROJECT_ROOT / "runs"
-EXPORTS_ROOT   = PROJECT_ROOT / "exports"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+RUNS_ROOT = PROJECT_ROOT / "runs"
+EXPORTS_ROOT = PROJECT_ROOT / "exports"
 
 # Full llama.cpp source clone. convert_hf_to_gguf.py is run with cwd set
 # here so all its sibling imports (conversion, gguf-py) resolve naturally.
-LLAMA_SRC       = PROJECT_ROOT / "scripts" / "llama_cpp_src"
-CONVERT_SCRIPT  = LLAMA_SRC / "convert_hf_to_gguf.py"
+LLAMA_SRC = PROJECT_ROOT / "scripts" / "llama_cpp_src"
+CONVERT_SCRIPT = LLAMA_SRC / "convert_hf_to_gguf.py"
 # llama-quantize produced by a local source build (Linux/CUDA hosts that
 # build llama.cpp from the bundled clone with `cmake -B build`).
-LOCAL_QUANTIZE  = LLAMA_SRC / "build" / "bin" / "llama-quantize"
+LOCAL_QUANTIZE = LLAMA_SRC / "build" / "bin" / "llama-quantize"
 # Use the raw venv Python — never `uv run`, which gets confused by gguf-py
-VENV_PYTHON     = PROJECT_ROOT / ".venv" / "bin" / "python"
+VENV_PYTHON = PROJECT_ROOT / ".venv" / "bin" / "python"
 
 QUANT_FILENAME = {
-    "F16":    "model-F16.gguf",
+    "F16": "model-F16.gguf",
     "Q4_K_M": "model-Q4_K_M.gguf",
     "Q5_K_M": "model-Q5_K_M.gguf",
-    "Q8_0":   "model-Q8_0.gguf",
+    "Q8_0": "model-Q8_0.gguf",
 }
 DB_FIELD_PATH = {
-    "F16": "gguf_f16_path", "Q4_K_M": "gguf_q4_path",
-    "Q5_K_M": "gguf_q5_path", "Q8_0": "gguf_q8_path",
+    "F16": "gguf_f16_path",
+    "Q4_K_M": "gguf_q4_path",
+    "Q5_K_M": "gguf_q5_path",
+    "Q8_0": "gguf_q8_path",
 }
 DB_FIELD_BYTES = {
-    "F16": "gguf_f16_bytes", "Q4_K_M": "gguf_q4_bytes",
-    "Q5_K_M": "gguf_q5_bytes", "Q8_0": "gguf_q8_bytes",
+    "F16": "gguf_f16_bytes",
+    "Q4_K_M": "gguf_q4_bytes",
+    "Q5_K_M": "gguf_q5_bytes",
+    "Q8_0": "gguf_q8_bytes",
 }
 
 
@@ -79,8 +84,8 @@ def _find_llama_quantize() -> str | None:
     for c in (
         LOCAL_QUANTIZE,
         Path("/opt/homebrew/bin/llama-quantize"),  # macOS arm64 Homebrew
-        Path("/usr/local/bin/llama-quantize"),     # macOS Intel / manual
-        Path("/usr/bin/llama-quantize"),           # Linux distro packages
+        Path("/usr/local/bin/llama-quantize"),  # macOS Intel / manual
+        Path("/usr/bin/llama-quantize"),  # Linux distro packages
     ):
         p = str(c)
         if os.path.isfile(p) and os.access(p, os.X_OK):
@@ -110,14 +115,15 @@ def _check_tools() -> tuple[str, str]:
 
     if not VENV_PYTHON.exists():
         raise RuntimeError(
-            f"venv Python not found at {VENV_PYTHON}. "
-            "Run: uv sync --all-extras"
+            f"venv Python not found at {VENV_PYTHON}. " "Run: uv sync --all-extras"
         )
 
     # Verify the convert script runs cleanly with cwd set to its own dir
     r = subprocess.run(
         [str(VENV_PYTHON), str(CONVERT_SCRIPT), "--help"],
-        capture_output=True, text=True, timeout=30,
+        capture_output=True,
+        text=True,
+        timeout=30,
         cwd=str(LLAMA_SRC),
     )
     if r.returncode != 0:
@@ -135,7 +141,8 @@ def _patch_export(api_url: str, xid: int, **fields: Any) -> None:
     try:
         httpx.patch(
             f"{api_url}/api/v1/exports/{xid}",
-            json=fields, timeout=10,
+            json=fields,
+            timeout=10,
         ).raise_for_status()
     except Exception as e:  # noqa: BLE001
         log.warning("PATCH /exports/%s failed: %s", xid, e)
@@ -174,10 +181,12 @@ def _run_subprocess(
 
 
 def run_export_job(export_row: dict, api_url: str) -> None:
-    xid           = export_row["id"]
-    run_id        = export_row["run_id"]
-    base_model    = export_row["base_model"]
-    quant_levels  = [q.strip() for q in export_row["quant_levels"].split(",") if q.strip()]
+    xid = export_row["id"]
+    run_id = export_row["run_id"]
+    base_model = export_row["base_model"]
+    quant_levels = [
+        q.strip() for q in export_row["quant_levels"].split(",") if q.strip()
+    ]
 
     log.info("─── Export #%s for run #%s (quants=%s) ───", xid, run_id, quant_levels)
 
@@ -196,9 +205,9 @@ def run_export_job(export_row: dict, api_url: str) -> None:
         return
 
     export_dir = EXPORTS_ROOT / str(xid)
-    fused_dir  = export_dir / "fused"
-    gguf_dir   = export_dir / "gguf"
-    log_path   = export_dir / "export.log"
+    fused_dir = export_dir / "fused"
+    gguf_dir = export_dir / "gguf"
+    log_path = export_dir / "export.log"
     fused_dir.mkdir(parents=True, exist_ok=True)
     gguf_dir.mkdir(parents=True, exist_ok=True)
 
@@ -211,13 +220,22 @@ def run_export_job(export_row: dict, api_url: str) -> None:
 
     if adapter_format == "peft":
         log.info("Stage 1/3: PEFT merge_and_unload (CUDA-trained adapter)")
-        _patch_export(api_url, xid, status="fusing",
-                      progress_text="Merging PEFT adapter into base model…")
+        _patch_export(
+            api_url,
+            xid,
+            status="fusing",
+            progress_text="Merging PEFT adapter into base model…",
+        )
         fuse_cmd = [
-            str(VENV_PYTHON), "-m", "packages.exporter.peft_merge",
-            "--base", base_model,
-            "--adapter", str(adapter_dir),
-            "--out", str(fused_dir),
+            str(VENV_PYTHON),
+            "-m",
+            "packages.exporter.peft_merge",
+            "--base",
+            base_model,
+            "--adapter",
+            str(adapter_dir),
+            "--out",
+            str(fused_dir),
         ]
         rc = _run_subprocess(fuse_cmd, log_path, env=env, cwd=str(PROJECT_ROOT))
         if rc != 0:
@@ -227,21 +245,33 @@ def run_export_job(export_row: dict, api_url: str) -> None:
             return
     else:
         log.info("Stage 1/3: mlx_lm fuse --dequantize")
-        _patch_export(api_url, xid, status="fusing",
-                      progress_text="Fusing LoRA into base model (dequantize)…")
+        _patch_export(
+            api_url,
+            xid,
+            status="fusing",
+            progress_text="Fusing LoRA into base model (dequantize)…",
+        )
 
         # Detect subcommand vs direct-module form
         probe = subprocess.run(
             [str(VENV_PYTHON), "-m", "mlx_lm", "fuse", "--help"],
-            capture_output=True, text=True, timeout=15,
+            capture_output=True,
+            text=True,
+            timeout=15,
         )
-        fuse_base = [str(VENV_PYTHON), "-m", "mlx_lm", "fuse"] if probe.returncode == 0 \
-                    else [str(VENV_PYTHON), "-m", "mlx_lm.fuse"]
+        fuse_base = (
+            [str(VENV_PYTHON), "-m", "mlx_lm", "fuse"]
+            if probe.returncode == 0
+            else [str(VENV_PYTHON), "-m", "mlx_lm.fuse"]
+        )
 
         fuse_cmd = fuse_base + [
-            "--model", base_model,
-            "--adapter-path", str(adapter_dir),
-            "--save-path", str(fused_dir),
+            "--model",
+            base_model,
+            "--adapter-path",
+            str(adapter_dir),
+            "--save-path",
+            str(fused_dir),
             "--dequantize",
         ]
 
@@ -256,15 +286,22 @@ def run_export_job(export_row: dict, api_url: str) -> None:
 
     # ── Stage 2: convert_hf_to_gguf.py → F16 GGUF ────────────────────
     log.info("Stage 2/3: convert_hf_to_gguf.py → F16 GGUF")
-    _patch_export(api_url, xid, status="converting",
-                  progress_text="Converting fused model to F16 GGUF…")
+    _patch_export(
+        api_url,
+        xid,
+        status="converting",
+        progress_text="Converting fused model to F16 GGUF…",
+    )
 
     f16_path = gguf_dir / QUANT_FILENAME["F16"]
     convert_cmd = [
-        str(VENV_PYTHON), convert_script,
+        str(VENV_PYTHON),
+        convert_script,
         str(fused_dir),
-        "--outtype", "f16",
-        "--outfile", str(f16_path),
+        "--outtype",
+        "f16",
+        "--outfile",
+        str(f16_path),
     ]
 
     # CRITICAL: run with cwd=LLAMA_SRC so sibling imports resolve
@@ -283,15 +320,18 @@ def run_export_job(export_row: dict, api_url: str) -> None:
 
     f16_size = f16_path.stat().st_size
     log.info("  ✓ %s (%d MB)", f16_path.name, f16_size // (1024 * 1024))
-    _patch_export(api_url, xid,
-                  gguf_f16_path=str(f16_path), gguf_f16_bytes=f16_size)
+    _patch_export(api_url, xid, gguf_f16_path=str(f16_path), gguf_f16_bytes=f16_size)
 
     # ── Stage 3: llama-quantize → Q4_K_M / Q5_K_M / Q8_0 ─────────────
     remaining = [q for q in quant_levels if q != "F16"]
     if remaining:
         log.info("Stage 3/3: llama-quantize → %s", remaining)
-        _patch_export(api_url, xid, status="quantizing",
-                      progress_text="Quantizing to target formats…")
+        _patch_export(
+            api_url,
+            xid,
+            status="quantizing",
+            progress_text="Quantizing to target formats…",
+        )
 
         for quant in remaining:
             target = gguf_dir / QUANT_FILENAME[quant]
@@ -300,7 +340,8 @@ def run_export_job(export_row: dict, api_url: str) -> None:
 
             rc = _run_subprocess(
                 [quantize_bin, str(f16_path), str(target), quant],
-                log_path, env=env,
+                log_path,
+                env=env,
             )
             if rc != 0:
                 msg = f"llama-quantize {quant} exited {rc}. See {log_path}"
@@ -311,9 +352,11 @@ def run_export_job(export_row: dict, api_url: str) -> None:
             if target.exists():
                 size = target.stat().st_size
                 log.info("  ✓ %s (%d MB)", target.name, size // (1024 * 1024))
-                _patch_export(api_url, xid,
-                               **{DB_FIELD_PATH[quant]: str(target),
-                                  DB_FIELD_BYTES[quant]: size})
+                _patch_export(
+                    api_url,
+                    xid,
+                    **{DB_FIELD_PATH[quant]: str(target), DB_FIELD_BYTES[quant]: size},
+                )
             else:
                 msg = f"llama-quantize produced no output for {quant}"
                 log.error(msg)
@@ -321,5 +364,20 @@ def run_export_job(export_row: dict, api_url: str) -> None:
                 return
 
     log.info("─── Export #%s completed ───", xid)
-    _patch_export(api_url, xid, status="completed",
-                  progress_text="Done — download Q4_K_M.gguf and AirDrop to iPhone.")
+    _patch_export(
+        api_url,
+        xid,
+        status="completed",
+        progress_text="Done — download Q4_K_M.gguf and AirDrop to iPhone.",
+    )
+
+    # Phase D — upload export artifacts to Ozone when SLM_FORGE_STORAGE=s3.
+    try:
+        from packages.storage_sync import sync_export_artifacts
+
+        sync_export_artifacts(
+            xid,
+            tenant_id=export_row.get("tenant_id"),
+        )
+    except Exception:
+        log.exception("Export #%s: S3 artifact sync failed", xid)

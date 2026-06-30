@@ -15,6 +15,8 @@ from sqlmodel import Session, desc, func, select
 from apps.api.middleware.auth import requires
 from apps.api.models.autofix import AutoFixAttempt, AutoFixStatus
 from apps.api.services.db import get_session
+from apps.api.services.identity import current_identity
+from apps.api.services.scoping import scope_query
 
 router = APIRouter()
 
@@ -78,7 +80,10 @@ def list_attempts(
     offset: int = Query(0, ge=0),
 ) -> list[AutoFixRow]:
     """Newest-first list of captured errors / auto-fix attempts."""
-    stmt = select(AutoFixAttempt)
+    # Phase D — tenant/user-scoped. Admins see tenant-wide; non-admins
+    # see only their own. Cross-tenant access is blocked even for admins.
+    identity = current_identity(request)
+    stmt = scope_query(select(AutoFixAttempt), identity, AutoFixAttempt)
     if status:
         stmt = stmt.where(AutoFixAttempt.status == status)
     if fingerprint:
@@ -97,7 +102,14 @@ class AutoFixDetail(AutoFixRow):
 @router.get("/attempts/{attempt_id}", response_model=AutoFixDetail)
 @requires("read", "setting")
 def get_attempt(attempt_id: int, request: Request, db: SessionDep) -> AutoFixDetail:
-    row = db.get(AutoFixAttempt, attempt_id)
+    identity = current_identity(request)
+    row = db.exec(
+        scope_query(
+            select(AutoFixAttempt).where(AutoFixAttempt.id == attempt_id),
+            identity,
+            AutoFixAttempt,
+        )
+    ).first()
     if row is None:
         raise HTTPException(404, f"AutoFixAttempt {attempt_id} not found")
     base = _row(row).model_dump()
@@ -120,7 +132,14 @@ def abandon_attempt(
     Useful when ops decides not to act on a particular error class. The
     rejection is permanent until a manual DB write reverses it.
     """
-    row = db.get(AutoFixAttempt, attempt_id)
+    identity = current_identity(request)
+    row = db.exec(
+        scope_query(
+            select(AutoFixAttempt).where(AutoFixAttempt.id == attempt_id),
+            identity,
+            AutoFixAttempt,
+        )
+    ).first()
     if row is None:
         raise HTTPException(404, f"AutoFixAttempt {attempt_id} not found")
     row.status = AutoFixStatus.REJECTED.value
@@ -145,10 +164,19 @@ class AutoFixStats(BaseModel):
 @router.get("/stats", response_model=AutoFixStats)
 @requires("read", "setting")
 def stats(request: Request, db: SessionDep) -> AutoFixStats:
-    total = db.exec(select(func.count(AutoFixAttempt.id))).one()  # type: ignore[arg-type]
+    identity = current_identity(request)
+    total = db.exec(
+        scope_query(select(func.count(AutoFixAttempt.id)), identity, AutoFixAttempt)  # type: ignore[arg-type]
+    ).one()
 
     def _group(col: Any) -> dict[str, int]:
-        rows = db.exec(select(col, func.count(AutoFixAttempt.id)).group_by(col)).all()  # type: ignore[arg-type]
+        rows = db.exec(
+            scope_query(
+                select(col, func.count(AutoFixAttempt.id)).group_by(col),  # type: ignore[arg-type]
+                identity,
+                AutoFixAttempt,
+            )
+        ).all()
         return {str(k): int(v) for k, v in rows}
 
     return AutoFixStats(

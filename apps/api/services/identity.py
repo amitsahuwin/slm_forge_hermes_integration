@@ -122,9 +122,28 @@ def current_identity(request: Request) -> Identity:
 
     Relies on :class:`apps.api.middleware.auth.AuthMiddleware` having
     populated ``request.state.user``. Raises ``401`` when unauthenticated.
+
+    Phase D — when auth is disabled (dev mode) AND the middleware hasn't
+    yet attached a user (e.g. tests that exercise the router directly
+    without the middleware in the stack), fall back to a synthetic
+    admin Identity in tenant=``local``. This preserves the "auth off
+    means relaxed" contract while keeping production strictly gated.
     """
-    user = getattr(request.state, "user", None)
+    user = getattr(getattr(request, "state", None), "user", None)
     if user is None:
+        # Lazy import to avoid circular dependency at module load.
+        from apps.api.services.auth_settings import get_auth_settings
+
+        if not get_auth_settings().auth_enabled:
+            return Identity(
+                tenant_id="local",
+                user_id="local-admin",
+                role="admin",
+                email=None,
+                scopes=frozenset(),
+                is_admin=True,
+                is_worker=False,
+            )
         raise HTTPException(401, "Authentication required")
     try:
         return Identity.from_user(user)

@@ -203,10 +203,18 @@ def list_traces(
     because the request/response bodies contain dataset rows, system
     prompts, model weights metadata — basically the full prompt surface.
     """
-    stmt = select(HermesTrace)
+    # Phase D — every read is scoped by tenant + user (admin sees tenant-wide).
+    from apps.api.services.identity import current_identity
+    from apps.api.services.scoping import scope_query
+
+    identity = current_identity(request)
+    stmt = scope_query(select(HermesTrace), identity, HermesTrace)
     if source_like:
         stmt = stmt.where(HermesTrace.source.contains(source_like))  # type: ignore[attr-defined]
     if tenant_id:
+        # Admins can narrow further by tenant_id; non-admins are already
+        # restricted to their own tenant by scope_query, so this filter
+        # can only ever narrow (never widen) — safe to honour.
         stmt = stmt.where(HermesTrace.tenant_id == tenant_id)
     if skill:
         stmt = stmt.where(HermesTrace.skill_name.in_(skill))  # type: ignore[union-attr]
@@ -262,11 +270,17 @@ def list_traces(
         trace_ids = seen_trace_ids
         if not trace_ids:
             return []
+        # Phase D — re-scope the trace-tree fetch too. The trace_ids we
+        # collected are already filtered through the caller's lens, so
+        # this is belt-and-braces.
         all_rows = list(
             db.exec(
-                select(HermesTrace)
-                .where(HermesTrace.trace_id.in_(trace_ids))  # type: ignore[union-attr]
-                .order_by(HermesTrace.created_at)
+                scope_query(
+                    select(HermesTrace).where(HermesTrace.trace_id.in_(trace_ids))  # type: ignore[union-attr]
+                    .order_by(HermesTrace.created_at),
+                    identity,
+                    HermesTrace,
+                )
             ).all()
         )
         return _build_trees(all_rows)
@@ -313,7 +327,15 @@ def _build_trees(rows: list[HermesTrace]) -> list[TraceTreeRow]:
 @router.get("/{trace_id}", response_model=TraceRow)
 @requires("read", "setting")
 def get_trace(trace_id: int, request: Request, db: SessionDep) -> TraceRow:
-    row = db.get(HermesTrace, trace_id)
+    from apps.api.services.identity import current_identity
+    from apps.api.services.scoping import scope_query
+
+    identity = current_identity(request)
+    row = db.exec(
+        scope_query(
+            select(HermesTrace).where(HermesTrace.id == trace_id), identity, HermesTrace
+        )
+    ).first()
     if not row:
         raise HTTPException(404, f"Trace {trace_id} not found")
     prev_hashes = _previous_skill_hashes(db, [trace_id])
@@ -335,7 +357,13 @@ def clear_traces(request: Request, db: SessionDep) -> None:
 @requires("read", "setting")
 def list_sources(request: Request, db: SessionDep) -> dict[str, Any]:
     """Distinct `source` strings + counts for the filter dropdown."""
-    rows = db.exec(select(HermesTrace.source)).all()
+    from apps.api.services.identity import current_identity
+    from apps.api.services.scoping import scope_query
+
+    identity = current_identity(request)
+    rows = db.exec(
+        scope_query(select(HermesTrace.source), identity, HermesTrace)
+    ).all()
     counts: dict[str, int] = {}
     for s in rows:
         counts[s] = counts.get(s, 0) + 1
@@ -365,10 +393,18 @@ def list_skill_summary(request: Request, db: SessionDep) -> list[SkillSummaryRow
     # trim_old_traces job, so a single ordered scan + in-Python aggregation
     # is fast enough and sidesteps SQLAlchemy/SQLModel typing noise around
     # aggregate window functions.
+    from apps.api.services.identity import current_identity
+    from apps.api.services.scoping import scope_query
+
+    identity = current_identity(request)
     all_rows = db.exec(
-        select(HermesTrace)
-        .where(HermesTrace.skill_name.is_not(None))  # type: ignore[union-attr]
-        .order_by(HermesTrace.created_at)  # type: ignore[arg-type]
+        scope_query(
+            select(HermesTrace)
+            .where(HermesTrace.skill_name.is_not(None))  # type: ignore[union-attr]
+            .order_by(HermesTrace.created_at),  # type: ignore[arg-type]
+            identity,
+            HermesTrace,
+        )
     ).all()
 
     grouped: dict[str, list[HermesTrace]] = {}
@@ -418,11 +454,19 @@ def get_trace_tree(
     404 when no rows match. Phase B — used by the Traces tab's
     expand-on-row action.
     """
+    from apps.api.services.identity import current_identity
+    from apps.api.services.scoping import scope_query
+
+    identity = current_identity(request)
     rows = list(
         db.exec(
-            select(HermesTrace)
-            .where(HermesTrace.trace_id == trace_id)
-            .order_by(HermesTrace.created_at)
+            scope_query(
+                select(HermesTrace)
+                .where(HermesTrace.trace_id == trace_id)
+                .order_by(HermesTrace.created_at),
+                identity,
+                HermesTrace,
+            )
         ).all()
     )
     if not rows:

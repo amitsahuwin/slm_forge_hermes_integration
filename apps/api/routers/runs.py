@@ -1,4 +1,5 @@
 """Run management + live metric streaming."""
+
 from __future__ import annotations
 
 import asyncio
@@ -57,6 +58,9 @@ class RunCreate(BaseModel):
     seed: int = 0
     # Phase O — backend selector; immutable after creation (not in RunPatch).
     trainer_backend: str = "mlx"
+    # Optional: when a worker creates a run on behalf of a session,
+    # pass session_id so ownership is inherited from the parent session.
+    session_id: int | None = None
 
 
 class RunPatch(BaseModel):
@@ -106,11 +110,33 @@ async def create_run(payload: RunCreate, request: Request, session: SessionDep) 
     # Phase D — stamp identity from JWT; client cannot override these fields
     # (RunCreate doesn't declare them).
     identity = current_identity(request)
+    owner_tenant = identity.tenant_id
+    owner_user = identity.user_id
+    owner_role = identity.role
+    # When a system-tenant service account (ratchet/exporter) creates a
+    # run on behalf of a session, inherit the session's ownership so the
+    # original user can see their runs.
+    if (
+        payload.session_id is not None
+        and identity.tenant_id == "system"
+        and identity.is_admin
+    ):
+        from apps.api.models.session import TrainingSession
+
+        parent = session.exec(
+            select(TrainingSession).where(TrainingSession.id == payload.session_id)
+        ).first()
+        if parent and parent.tenant_id:
+            owner_tenant = parent.tenant_id
+            owner_user = parent.user_id or identity.user_id
+            owner_role = parent.role or identity.role
+    create_data = payload.model_dump(exclude={"session_id"})
     run = Run(
-        **payload.model_dump(),
-        tenant_id=identity.tenant_id,
-        user_id=identity.user_id,
-        role=identity.role,
+        **create_data,
+        session_id=payload.session_id,
+        tenant_id=owner_tenant,
+        user_id=owner_user,
+        role=owner_role,
     )
     session.add(run)
     session.commit()
@@ -229,23 +255,25 @@ def get_post_mortem(
     return PostMortemResponse(
         status=run.post_mortem_status,
         markdown=run.post_mortem,
-        generated_at=run.post_mortem_generated_at.isoformat()
-        if run.post_mortem_generated_at
-        else None,
+        generated_at=(
+            run.post_mortem_generated_at.isoformat()
+            if run.post_mortem_generated_at
+            else None
+        ),
     )
 
 
 @router.get("/{run_id}/metrics", response_model=list[Metric])
-def list_metrics(
-    run_id: int, request: Request, session: SessionDep
-) -> list[Metric]:
+def list_metrics(run_id: int, request: Request, session: SessionDep) -> list[Metric]:
     identity = current_identity(request)
     parent = session.exec(
         scope_query(select(Run).where(Run.id == run_id), identity, Run)
     ).first()
     if not parent:
         raise HTTPException(404, "Run not found")
-    stmt = select(Metric).where(Metric.run_id == run_id).order_by(Metric.step, Metric.id)
+    stmt = (
+        select(Metric).where(Metric.run_id == run_id).order_by(Metric.step, Metric.id)
+    )
     return list(session.exec(stmt).all())
 
 
@@ -330,7 +358,11 @@ async def stream_run(run_id: int) -> EventSourceResponse:
     async def event_gen() -> AsyncGenerator[dict[str, str], None]:
         last_metric_id = 0
         last_status: str | None = None
-        terminal = {RunStatus.COMPLETED.value, RunStatus.FAILED.value, RunStatus.CANCELLED.value}
+        terminal = {
+            RunStatus.COMPLETED.value,
+            RunStatus.FAILED.value,
+            RunStatus.CANCELLED.value,
+        }
         from sqlmodel import Session as _Session
 
         from apps.api.services.db import engine
@@ -339,12 +371,20 @@ async def stream_run(run_id: int) -> EventSourceResponse:
             with _Session(engine) as s:
                 run = s.get(Run, run_id)
                 if not run:
-                    yield {"event": "error", "data": json.dumps({"message": "Run not found"})}
+                    yield {
+                        "event": "error",
+                        "data": json.dumps({"message": "Run not found"}),
+                    }
                     return
 
                 if run.status.value != last_status:
                     last_status = run.status.value
-                    yield {"event": "status", "data": json.dumps({"status": run.status.value, "run_id": run.id})}
+                    yield {
+                        "event": "status",
+                        "data": json.dumps(
+                            {"status": run.status.value, "run_id": run.id}
+                        ),
+                    }
 
                 new_metrics = s.exec(
                     select(Metric)
@@ -356,14 +396,21 @@ async def stream_run(run_id: int) -> EventSourceResponse:
                     last_metric_id = m.id or last_metric_id
                     yield {
                         "event": "metric",
-                        "data": json.dumps({
-                            "step": m.step, "name": m.name, "value": m.value,
-                            "recorded_at": m.recorded_at.isoformat(),
-                        }),
+                        "data": json.dumps(
+                            {
+                                "step": m.step,
+                                "name": m.name,
+                                "value": m.value,
+                                "recorded_at": m.recorded_at.isoformat(),
+                            }
+                        ),
                     }
 
                 if run.status.value in terminal:
-                    yield {"event": "done", "data": json.dumps({"status": run.status.value})}
+                    yield {
+                        "event": "done",
+                        "data": json.dumps({"status": run.status.value}),
+                    }
                     return
 
             await asyncio.sleep(0.75)
@@ -393,7 +440,9 @@ def delete_run(run_id: int, request: Request, session: SessionDep) -> None:
         )
 
     # Delete metrics (cascade)
-    metrics_to_delete = session.exec(select(Metric).where(Metric.run_id == run_id)).all()
+    metrics_to_delete = session.exec(
+        select(Metric).where(Metric.run_id == run_id)
+    ).all()
     for m in metrics_to_delete:
         session.delete(m)
 

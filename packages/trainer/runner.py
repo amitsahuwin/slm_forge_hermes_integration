@@ -11,6 +11,7 @@ and streams normalized metrics back to the API. All engine-specific logic
 Phase O refactor — behavior is identical to the pre-refactor MLX-only
 runner. See ``docs/specs/PHASE_O_SPEC.md``.
 """
+
 from __future__ import annotations
 
 import logging
@@ -34,7 +35,9 @@ RUNS_ROOT = PROJECT_ROOT / "runs"
 
 def _patch_run(api_url: str, run_id: int, **fields: Any) -> None:
     try:
-        httpx.patch(f"{api_url}/api/v1/runs/{run_id}", json=fields, timeout=10).raise_for_status()
+        httpx.patch(
+            f"{api_url}/api/v1/runs/{run_id}", json=fields, timeout=10
+        ).raise_for_status()
     except Exception as e:
         log.warning("PATCH /runs/%s failed: %s", run_id, e)
 
@@ -159,7 +162,9 @@ def run_training_job(
         ):
             log.warning(
                 "Run #%s: adapter upload failed — adapter remains only on "
-                "this worker at %s", run_id, adapter_dir,
+                "this worker at %s",
+                run_id,
+                adapter_dir,
             )
 
         patch_fields: dict[str, Any] = {
@@ -176,6 +181,17 @@ def run_training_job(
             _post_metric(api_url, run_id, run["iters"], "canary_loss", canary_loss)
 
         _patch_run(api_url, run_id, **patch_fields)
+
+        # Phase D — upload artifacts to Ozone when SLM_FORGE_STORAGE=s3.
+        try:
+            from packages.storage_sync import sync_run_artifacts
+
+            sync_run_artifacts(
+                run_id,
+                tenant_id=run.get("tenant_id"),
+            )
+        except Exception:
+            log.exception("Run #%s: S3 artifact sync failed", run_id)
     else:
         msg = (
             f"Training process ({backend.name}) exited with code "

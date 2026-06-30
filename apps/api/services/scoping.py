@@ -11,6 +11,7 @@ Behaviour matrix:
 A single helper means forgetting it in a new router becomes the only
 mistake to look for — there's no per-call surface to drift on.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, TypeVar
@@ -38,8 +39,13 @@ def scope_query(query: T, identity: Identity, model: type) -> T:
             "add them via the Phase C migration before scoping."
         )
 
+    # System-tenant admins (service-token workers) need cross-tenant
+    # access to poll queued jobs from any tenant. They bypass scoping.
+    if identity.tenant_id == "system" and identity.is_admin:
+        return query
+
     if identity.is_worker:
-        # Refuse to enumerate. Workers must use the claim queue path.
+        # Non-admin workers must use the claim queue path.
         return query.where(false())  # type: ignore[attr-defined]
 
     q = query.where(model.tenant_id == identity.tenant_id)  # type: ignore[attr-defined]

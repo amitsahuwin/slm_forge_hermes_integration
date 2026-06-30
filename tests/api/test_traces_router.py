@@ -50,8 +50,15 @@ def engine(tmp_path, monkeypatch: pytest.MonkeyPatch):
 
 
 def _req(user_roles: list[str]) -> MagicMock:
+    # Phase D — group binds Identity.tenant_id to "default" so the
+    # caller can see seed rows that carry tenant_id="default".
     req = MagicMock()
-    req.state.user = User(id="alice", email="alice@x", roles=user_roles)
+    req.state.user = User(
+        id="default" if "admin" in user_roles else "alice",
+        email="alice@x",
+        roles=user_roles,
+        groups=["/tenants/default"],
+    )
     return req
 
 

@@ -1,4 +1,5 @@
 """Maintenance endpoints: disk usage + cleanup sweeps."""
+
 from __future__ import annotations
 
 import shutil
@@ -14,13 +15,15 @@ from apps.api.models.export import Export
 from apps.api.models.run import Run
 from apps.api.models.session import SessionStatus, TrainingSession
 from apps.api.services.db import get_session
+from apps.api.services.identity import Identity, current_identity
+from apps.api.services.scoping import scope_query
 
 router = APIRouter()
 
 # Paths inside the API container map to host paths via docker-compose volumes
-DATA_ROOT     = Path("/app/data")
-RUNS_ROOT     = Path("/app/runs")
-EXPORTS_ROOT  = Path("/app/exports")
+DATA_ROOT = Path("/app/data")
+RUNS_ROOT = Path("/app/runs")
+EXPORTS_ROOT = Path("/app/exports")
 
 SessionDep = Annotated[Session, Depends(get_session)]
 
@@ -65,9 +68,9 @@ def _dir_size(p: Path) -> tuple[int, int]:
 def disk_usage() -> DiskUsageResponse:
     entries = []
     for label, path in [
-        ("Runs",       RUNS_ROOT),
-        ("Exports",    EXPORTS_ROOT),
-        ("Datasets",   DATA_ROOT / "datasets"),
+        ("Runs", RUNS_ROOT),
+        ("Exports", EXPORTS_ROOT),
+        ("Datasets", DATA_ROOT / "datasets"),
         ("Ingest staging", DATA_ROOT / ".ingest_staging"),
     ]:
         b, n = _dir_size(path)
@@ -88,9 +91,10 @@ class CleanupResponse(BaseModel):
 
 
 @router.get("/cleanup/plan", response_model=CleanupPlan)
-def cleanup_plan(db: SessionDep) -> CleanupPlan:
+def cleanup_plan(request: Request, db: SessionDep) -> CleanupPlan:
     """Show what 'cleanup rejected iterations' would delete WITHOUT touching anything."""
-    rejected = _find_rejected_runs(db)
+    identity = current_identity(request)
+    rejected = _find_rejected_runs(db, identity)
     bytes_estimate = 0
     for run_id in rejected:
         run_dir = RUNS_ROOT / str(run_id)
@@ -113,7 +117,8 @@ def cleanup_plan(db: SessionDep) -> CleanupPlan:
 @requires("update", "setting")
 def cleanup_execute(request: Request, db: SessionDep) -> CleanupResponse:
     """Delete on-disk artifacts for rejected runs from completed sessions."""
-    rejected = _find_rejected_runs(db)
+    identity = current_identity(request)
+    rejected = _find_rejected_runs(db, identity)
     deleted = []
     bytes_freed = 0
     for run_id in rejected:
@@ -130,8 +135,14 @@ def cleanup_execute(request: Request, db: SessionDep) -> CleanupResponse:
     return CleanupResponse(deleted_run_ids=deleted, bytes_freed=bytes_freed)
 
 
-def _find_rejected_runs(db: Session) -> list[int]:
+def _find_rejected_runs(
+    db: Session,
+    identity: Identity,
+) -> list[int]:
     """Find rejected runs (was_accepted=False) of completed sessions only.
+
+    Scoped to the caller's tenant so users can only clean up
+    their own runs.
 
     Excludes:
       • Runs from running sessions (still in progress)
@@ -139,21 +150,25 @@ def _find_rejected_runs(db: Session) -> list[int]:
       • Standalone runs (session_id is None) — those are user-initiated, never auto-touch
       • Runs that have an Export (would orphan the export)
     """
-    # Completed sessions
-    sessions = list(db.exec(
-        select(TrainingSession).where(TrainingSession.status == SessionStatus.COMPLETED)
-    ).all())
+    # Completed sessions — scoped by tenant
+    stmt = select(TrainingSession).where(
+        TrainingSession.status == SessionStatus.COMPLETED,
+    )
+    stmt = scope_query(stmt, identity, TrainingSession)
+    sessions = list(db.exec(stmt).all())
     if not sessions:
         return []
     session_ids = [s.id for s in sessions]
 
     # Rejected runs in those sessions
-    rejected = list(db.exec(
-        select(Run).where(
-            Run.session_id.in_(session_ids),
-            Run.was_accepted == False,  # noqa: E712
-        )
-    ).all())
+    rejected = list(
+        db.exec(
+            select(Run).where(
+                Run.session_id.in_(session_ids),
+                Run.was_accepted == False,  # noqa: E712
+            )
+        ).all()
+    )
 
     # Filter out any with exports
     rejected_ids: list[int] = []
@@ -191,7 +206,11 @@ def _dev_mode_only() -> bool:
     expected behavior.
     """
     import os
-    return os.environ.get("DEPLOYMENT_MODE", "development").strip().lower() == "development"
+
+    return (
+        os.environ.get("DEPLOYMENT_MODE", "development").strip().lower()
+        == "development"
+    )
 
 
 @router.post("/__debug__/raise")

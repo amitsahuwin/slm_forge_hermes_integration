@@ -6,6 +6,7 @@ metric regexes, log lines, and the canary-eval algorithm are unchanged.
 
 See ``docs/specs/PHASE_O_SPEC.md`` §4.3.
 """
+
 from __future__ import annotations
 
 import logging
@@ -120,7 +121,9 @@ class MlxBackend(TrainerBackend):
         # Try modern subcommand form: python -m mlx_lm lora
         r1 = subprocess.run(
             [py, "-m", "mlx_lm", "lora", "--help"],
-            capture_output=True, text=True, timeout=15,
+            capture_output=True,
+            text=True,
+            timeout=15,
         )
         if r1.returncode == 0:
             return [py, "-m", "mlx_lm", "lora", "--config", str(config_path)]
@@ -128,7 +131,9 @@ class MlxBackend(TrainerBackend):
         # Try older direct-module form: python -m mlx_lm.lora
         r2 = subprocess.run(
             [py, "-m", "mlx_lm.lora", "--help"],
-            capture_output=True, text=True, timeout=15,
+            capture_output=True,
+            text=True,
+            timeout=15,
         )
         if r2.returncode == 0:
             return [py, "-m", "mlx_lm.lora", "--config", str(config_path)]
@@ -168,7 +173,9 @@ class MlxBackend(TrainerBackend):
         m = _ITER_VAL.search(line)
         if m:
             return [
-                TrainEvent(step=int(m.group(1)), name="val_loss", value=float(m.group(2)))
+                TrainEvent(
+                    step=int(m.group(1)), name="val_loss", value=float(m.group(2))
+                )
             ]
         return []
 
@@ -198,7 +205,8 @@ class MlxBackend(TrainerBackend):
         if not canary_src.exists():
             log.info(
                 "Run #%s: no canary.jsonl in %s — skipping canary eval",
-                run["id"], dataset_dir,
+                run["id"],
+                dataset_dir,
             )
             return None
 
@@ -224,7 +232,9 @@ class MlxBackend(TrainerBackend):
             shutil.copy2(canary_src, tmp_root / "test.jsonl")
 
             # test_batches must be small enough that test_batches * batch_size <= n_canary.
-            batch_size = max(1, run["batch_size"])
+            # mlx-lm requires batch_size <= dataset size, so clamp down
+            # when the canary set is tiny.
+            batch_size = min(max(1, run["batch_size"]), n_canary)
             test_batches = max(1, min(10, n_canary // batch_size))
 
             # Write a minimal config — reuse base model + adapter, skip training.

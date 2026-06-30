@@ -57,7 +57,17 @@ def empty_engine(tmp_path, monkeypatch: pytest.MonkeyPatch):
 
 
 def _req_with_user(user: User | None) -> MagicMock:
-    """A Request-shaped mock carrying ``request.state.user``."""
+    """A Request-shaped mock carrying ``request.state.user``.
+
+    Phase D — the user must carry a ``/tenants/<name>`` group for
+    ``current_identity()`` to resolve, otherwise it raises 403. Tests
+    that pass a user without groups get a tenant=default fallback so
+    the seed rows (also tenant_id='default') are visible."""
+    if user is not None and not (user.groups or []):
+        user = User(
+            id=user.id, email=user.email, roles=user.roles,
+            groups=["/tenants/default"],
+        )
     req = MagicMock()
     req.state.user = user
     return req
@@ -102,5 +112,9 @@ def test_auth_disabled_is_passthrough(empty_engine, monkeypatch):
     auth_settings_module.get_auth_settings.cache_clear()
     with Session(empty_engine) as db:
         # No user attached, no policy mocked — must just return.
-        result = list_skill_summary(request=MagicMock(), db=db)  # type: ignore[call-arg]
+        # Phase D — explicitly null out state.user so current_identity()
+        # falls back to the synthetic admin (auth-disabled passthrough).
+        req = MagicMock()
+        req.state.user = None
+        result = list_skill_summary(request=req, db=db)  # type: ignore[call-arg]
     assert result == []

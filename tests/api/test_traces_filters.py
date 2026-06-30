@@ -124,9 +124,10 @@ def engine_with_seeds(tmp_path, monkeypatch: pytest.MonkeyPatch):
 
 
 def _req() -> object:
-    """``list_traces`` accepts ``request: Request`` only for OPA enforcement;
-    when auth is disabled (the test default), the value is ignored."""
-    return MagicMock()
+    """Synthetic admin identity in tenant=default to match the seed rows
+    (which default to tenant_id='default' / user_id='default')."""
+    from tests.api._isolation_helpers import make_request
+    return make_request(user_id="default", tenant="default", role="admin")
 
 
 # ---------------------------------------------------------------------------

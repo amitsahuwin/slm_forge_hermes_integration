@@ -18,7 +18,7 @@ import logging
 from collections.abc import AsyncGenerator
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ValidationError
 from sqlmodel import Session, select
 from sse_starlette.sse import EventSourceResponse
@@ -107,24 +107,39 @@ class IncidentResponderIn(BaseModel):
 # ─── Input → runner-args adapter ─────────────────────────────────────────
 
 
-def _prepare_args(name: str, payload: dict[str, Any], db: Session) -> tuple[tuple, dict]:
+def _prepare_args(name: str, payload: dict[str, Any], db: Session, request: Request) -> tuple[tuple, dict]:
     """Translate the REST payload into the positional/keyword args the
     underlying ``run_<agent>`` function expects. Also enriches inputs with
     DB-side data (iteration history, run config, log tail) so the agent
     receives everything it needs.
+
+    Phase D — every DB lookup is scoped via ``scope_query`` so a user
+    cannot invoke an agent on another user's Run/Session by guessing IDs.
     """
+    from apps.api.services.identity import current_identity
+    from apps.api.services.scoping import scope_query
+
     if name == "experiment_recommender":
         return (
             (payload["dataset"], payload["task_description"]),
             {"target_device": payload.get("target_device", "mac_desktop")},
         )
+    identity = current_identity(request)
     if name == "optimization_coach":
         sid = int(payload["session_id"])
-        sess = db.get(TrainingSession, sid)
+        sess = db.exec(
+            scope_query(
+                select(TrainingSession).where(TrainingSession.id == sid),
+                identity,
+                TrainingSession,
+            )
+        ).first()
         if not sess:
             raise HTTPException(404, f"Session {sid} not found")
         runs = db.exec(
-            select(Run).where(Run.session_id == sid).order_by(Run.iteration_number)
+            scope_query(select(Run), identity, Run)
+            .where(Run.session_id == sid)
+            .order_by(Run.iteration_number)
         ).all()
         iterations = [
             {
@@ -148,7 +163,9 @@ def _prepare_args(name: str, payload: dict[str, Any], db: Session) -> tuple[tupl
         return ((payload["dataset"],), {})
     if name == "incident_responder":
         rid = int(payload["run_id"])
-        run = db.get(Run, rid)
+        run = db.exec(
+            scope_query(select(Run).where(Run.id == rid), identity, Run)
+        ).first()
         if not run:
             raise HTTPException(404, f"Run {rid} not found")
         run_data = {
@@ -214,14 +231,16 @@ def _validate_payload(name: str, payload: dict[str, Any]) -> dict[str, Any]:
 
 
 @router.post("/{name}/run-sync")
-def run_sync(name: str, payload: dict[str, Any], db: SessionDep) -> dict[str, Any]:
+def run_sync(
+    name: str, payload: dict[str, Any], request: Request, db: SessionDep
+) -> dict[str, Any]:
     """Run an agent synchronously and return the full state when done.
 
     Easier than SSE for chat-tool style calls; uses no streaming. Note:
     deep agents can take ~30s+ since they make multiple Ollama calls.
     """
     clean = _validate_payload(name, payload)
-    args, kwargs = _prepare_args(name, clean, db)
+    args, kwargs = _prepare_args(name, clean, db, request)
     from packages.agents import runner as _r
 
     runners = {
@@ -244,7 +263,9 @@ def run_sync(name: str, payload: dict[str, Any], db: SessionDep) -> dict[str, An
 
 
 @router.post("/{name}/run")
-async def run_stream(name: str, payload: dict[str, Any], db: SessionDep) -> EventSourceResponse:
+async def run_stream(
+    name: str, payload: dict[str, Any], request: Request, db: SessionDep
+) -> EventSourceResponse:
     """Kick off an agent and stream live progress as SSE.
 
     Events emitted:
@@ -253,7 +274,7 @@ async def run_stream(name: str, payload: dict[str, Any], db: SessionDep) -> Even
       • ``error`` — if anything blows up
     """
     clean = _validate_payload(name, payload)
-    args, kwargs = _prepare_args(name, clean, db)
+    args, kwargs = _prepare_args(name, clean, db, request)
 
     async def gen() -> AsyncGenerator[dict[str, str], None]:
         async for ev in stream_agent(name, *args, **kwargs):

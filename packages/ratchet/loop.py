@@ -1,4 +1,5 @@
 """The autoresearch ratchet loop. Runs one session to completion."""
+
 from __future__ import annotations
 
 import logging
@@ -26,10 +27,14 @@ class API:
         self.c = httpx.Client(timeout=30)
 
     def get_session(self, sid: int) -> dict:
-        return self.c.get(f"{self.base}/api/v1/sessions/{sid}").raise_for_status().json()
+        return (
+            self.c.get(f"{self.base}/api/v1/sessions/{sid}").raise_for_status().json()
+        )
 
     def patch_session(self, sid: int, **fields: Any) -> None:
-        self.c.patch(f"{self.base}/api/v1/sessions/{sid}", json=fields).raise_for_status()
+        self.c.patch(
+            f"{self.base}/api/v1/sessions/{sid}", json=fields
+        ).raise_for_status()
 
     def list_iterations(self, sid: int) -> list[dict]:
         r = self.c.get(f"{self.base}/api/v1/sessions/{sid}/iterations")
@@ -77,7 +82,9 @@ def _apply_mutation(base: dict, m: MutationProposal) -> dict:
     return out
 
 
-def _wait_for_run(api: API, rid: int, *, poll: float = 2.0, timeout: float = 7200) -> dict:
+def _wait_for_run(
+    api: API, rid: int, *, poll: float = 2.0, timeout: float = 7200
+) -> dict:
     """Block until a run reaches terminal status."""
     deadline = time.monotonic() + timeout
     last_status = None
@@ -118,11 +125,19 @@ def run_session(session_id: int, api: API) -> None:
 def _run_session_inner(session_id: int, api: API) -> None:
     session = api.get_session(session_id)
     log.info("─── Session #%s: %s ───", session_id, session["name"])
-    log.info("  dataset=%s model=%s method=%s backend=%s",
-             session["dataset"], session["base_model"], session["method"],
-             session.get("trainer_backend", "mlx"))
-    log.info("  max_rounds=%s plateau_patience=%s min_delta=%s",
-             session["max_rounds"], session["plateau_patience"], session["min_delta"])
+    log.info(
+        "  dataset=%s model=%s method=%s backend=%s",
+        session["dataset"],
+        session["base_model"],
+        session["method"],
+        session.get("trainer_backend", "mlx"),
+    )
+    log.info(
+        "  max_rounds=%s plateau_patience=%s min_delta=%s",
+        session["max_rounds"],
+        session["plateau_patience"],
+        session["min_delta"],
+    )
 
     api.patch_session(session_id, status="running")
 
@@ -135,6 +150,7 @@ def _run_session_inner(session_id: int, api: API) -> None:
     # a do-nothing mutation as the old code did.
     proposal_failure_streak = 0
     import os as _os  # local import — avoids module-load surprises in tests
+
     max_proposal_failures = int(_os.environ.get("HERMES_MAX_PROPOSAL_FAILURES", "3"))
 
     for round_idx in range(session["max_rounds"]):
@@ -191,6 +207,9 @@ def _run_session_inner(session_id: int, api: API) -> None:
             # Phase U — pin every iteration to the session's backend, else runs
             # default to "mlx" and a CUDA-only host never claims them.
             "trainer_backend": session.get("trainer_backend", "mlx"),
+            # Pass session_id so the API inherits the session's
+            # tenant/user ownership onto the child run.
+            "session_id": session_id,
             **hp,
             "grad_checkpoint": False,
             "seed": 0,
@@ -232,7 +251,11 @@ def _run_session_inner(session_id: int, api: API) -> None:
         final = _wait_for_run(api, rid)
 
         if final["status"] != "completed":
-            log.warning("  run #%s ended with status=%s — marking rejected", rid, final["status"])
+            log.warning(
+                "  run #%s ended with status=%s — marking rejected",
+                rid,
+                final["status"],
+            )
             try:
                 httpx.patch(
                     f"{api.base}/api/v1/runs/{rid}",
@@ -261,8 +284,11 @@ def _run_session_inner(session_id: int, api: API) -> None:
             drift_threshold=session["canary_drift_threshold"],
         )
 
-        log.info("  decision: %s%s",
-                 "ACCEPT" if decision.accepted else "REJECT", f" — {decision.reason}")
+        log.info(
+            "  decision: %s%s",
+            "ACCEPT" if decision.accepted else "REJECT",
+            f" — {decision.reason}",
+        )
 
         try:
             httpx.patch(
@@ -303,5 +329,9 @@ def _run_session_inner(session_id: int, api: API) -> None:
             log.info("  auto-queue export for best run #%s", best_run_id)
         except Exception as e:
             log.warning("  failed to auto-queue export: %s", e)
-    log.info("─── Session #%s complete. Best run: #%s (val_loss=%s) ───",
-             session_id, best_run_id, best_metric)
+    log.info(
+        "─── Session #%s complete. Best run: #%s (val_loss=%s) ───",
+        session_id,
+        best_run_id,
+        best_metric,
+    )

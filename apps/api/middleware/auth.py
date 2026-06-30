@@ -24,6 +24,7 @@ per-route policy checks on its own. That keeps unannotated read-only
 endpoints fully open even after you flip the flag on, so you can roll out
 enforcement incrementally.
 """
+
 from __future__ import annotations
 
 import logging
@@ -67,6 +68,21 @@ class User(BaseModel):
     email: str | None = None
     roles: list[str] = Field(default_factory=list)
     groups: list[str] = Field(default_factory=list)
+
+
+def _bind_tenant_from_user(user: User) -> None:
+    """Push the user's tenant into ``tenant_id_ctx``.
+
+    Called by ``AuthMiddleware`` right after setting
+    ``request.state.user`` so that ``current_tenant()`` returns the
+    correct tenant for downstream route handlers and services.
+    """
+    from apps.api.services.identity import _tenant_from_groups
+    from packages._log_context import tenant_id_ctx
+
+    tenant = _tenant_from_groups(user.groups)
+    if tenant:
+        tenant_id_ctx.set(tenant)
 
 
 # ─── JWKS cache ─────────────────────────────────────────────────────────────
@@ -262,12 +278,17 @@ def policy_check(
 
 
 def _synthetic_admin(settings: AuthSettings) -> User:
-    """Build the all-powerful local-dev user. Used when auth is disabled."""
+    """Build the all-powerful local-dev user. Used when auth is disabled.
+
+    Phase D — must carry a tenant group so ``Identity.from_user()`` resolves
+    in auth-disabled mode. Tenant 'local' matches the realm seed and the
+    SPA's auth-disabled bootstrap.
+    """
     return User(
         id=settings.default_user,
         email=None,
         roles=["admin"],
-        groups=[],
+        groups=["/tenants/local"],
     )
 
 
@@ -291,6 +312,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # through. This keeps the local-dev workflow bit-for-bit unchanged.
         if not settings.auth_enabled:
             request.state.user = _synthetic_admin(settings)
+            _bind_tenant_from_user(request.state.user)
             return await call_next(request)
 
         # CORS preflight: OPTIONS requests carry no Authorization header by
@@ -303,6 +325,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Public endpoints (health, docs, /auth/config bootstrap) skip JWT.
         if _is_public_path(request.url.path):
             request.state.user = _synthetic_admin(settings)
+            _bind_tenant_from_user(request.state.user)
             return await call_next(request)
 
         # Service-account bypass — host workers (trainer/ratchet/exporter)
@@ -317,9 +340,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 request.state.user = User(
                     id="service",
                     email="service@local",
-                    roles=["admin", "service"],
-                    groups=[],
+                    roles=["admin", "service", "worker"],
+                    groups=["/tenants/system"],
                 )
+                _bind_tenant_from_user(request.state.user)
                 return await call_next(request)
 
         # Resolve the bearer token from either the Authorization header
@@ -351,6 +375,24 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return _json_response(e.status_code, friendly, code=code)
 
         request.state.user = user
+        _bind_tenant_from_user(user)
+
+        # Phase D — ensure the tenant's Ozone bucket exists on
+        # first authenticated request so artifact writes don't 404.
+        try:
+            from apps.api.services.identity import Identity
+
+            ident = Identity.from_user(user)
+            from apps.api.services.storage.tenancy import (
+                ensure_tenant_bucket,
+            )
+
+            await ensure_tenant_bucket(ident)
+        except Exception:  # noqa: BLE001
+            # Non-fatal: bucket may already exist or storage
+            # is local. Don't block the request.
+            pass
+
         # Bind the verified bearer to a contextvar so downstream code
         # calling back into the SLM-Forge API on the user's behalf
         # (chat-agent tools) can forward it instead of falling back to
@@ -370,8 +412,10 @@ def _is_public_path(path: str) -> bool:
     if path in PUBLIC_PATHS:
         return True
     # Swagger/OpenAPI/Redoc fetch assets under these prefixes.
-    return path.startswith("/docs") or path.startswith("/redoc") or path.startswith(
-        "/openapi"
+    return (
+        path.startswith("/docs")
+        or path.startswith("/redoc")
+        or path.startswith("/openapi")
     )
 
 

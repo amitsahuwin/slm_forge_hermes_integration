@@ -398,13 +398,20 @@ def _tail_training_log(run_id: int, n: int = 80) -> str:
 
 
 @router.post("/diagnose-run/{run_id}", response_model=SkillResponse)
-def diagnose_run(run_id: int, db: SessionDep) -> SkillResponse:
+def diagnose_run(run_id: int, request: Request, db: SessionDep) -> SkillResponse:
     """Diagnose a failed run via the diagnose_mps_oom skill.
 
     Sends the run config + tail of training.log + recorded error to Hermes
     and asks for a structured fix recommendation.
     """
-    run = db.get(Run, run_id)
+    # Phase D — caller must own (or be tenant-admin over) the Run.
+    from apps.api.services.identity import current_identity
+    from apps.api.services.scoping import scope_query
+
+    identity = current_identity(request)
+    run = db.exec(
+        scope_query(select(Run).where(Run.id == run_id), identity, Run)
+    ).first()
     if not run:
         raise HTTPException(404, "Run not found")
     payload = {
@@ -448,13 +455,25 @@ def _session_iterations_summary(sid: int, db: Session) -> list[dict[str, Any]]:
 
 
 @router.post("/analyze-drift/{session_id}", response_model=SkillResponse)
-def analyze_drift(session_id: int, db: SessionDep) -> SkillResponse:
+def analyze_drift(
+    session_id: int, request: Request, db: SessionDep
+) -> SkillResponse:
     """Analyze canary drift for an autoresearch session.
 
     Sends the iteration history + drift threshold to Hermes and asks for a
     diagnosis + suggested mitigation (typically LR/num_layers reduction).
     """
-    sess = db.get(TrainingSession, session_id)
+    from apps.api.services.identity import current_identity
+    from apps.api.services.scoping import scope_query
+
+    identity = current_identity(request)
+    sess = db.exec(
+        scope_query(
+            select(TrainingSession).where(TrainingSession.id == session_id),
+            identity,
+            TrainingSession,
+        )
+    ).first()
     if not sess:
         raise HTTPException(404, "Session not found")
     iterations = _session_iterations_summary(session_id, db)
@@ -607,11 +626,18 @@ def synth_style(dataset: str) -> SkillResponse:
 
 
 @router.post("/explain-anomaly/{run_id}", response_model=SkillResponse)
-def explain_anomaly(run_id: int, db: SessionDep) -> SkillResponse:
+def explain_anomaly(
+    run_id: int, request: Request, db: SessionDep
+) -> SkillResponse:
     """Inspect a run's metric series and explain any anomaly in plain English."""
     from apps.api.models.metric import Metric  # local to avoid import cycle
+    from apps.api.services.identity import current_identity
+    from apps.api.services.scoping import scope_query
 
-    run = db.get(Run, run_id)
+    identity = current_identity(request)
+    run = db.exec(
+        scope_query(select(Run).where(Run.id == run_id), identity, Run)
+    ).first()
     if not run:
         raise HTTPException(404, "Run not found")
 
@@ -653,9 +679,17 @@ class RecommendQuantsIn(BaseModel):
 
 
 @router.post("/recommend-quants/{run_id}", response_model=SkillResponse)
-def recommend_quants(run_id: int, payload: RecommendQuantsIn, db: SessionDep) -> SkillResponse:
+def recommend_quants(
+    run_id: int, payload: RecommendQuantsIn, request: Request, db: SessionDep
+) -> SkillResponse:
     """Recommend GGUF quant levels for a completed run + device."""
-    run = db.get(Run, run_id)
+    from apps.api.services.identity import current_identity
+    from apps.api.services.scoping import scope_query
+
+    identity = current_identity(request)
+    run = db.exec(
+        scope_query(select(Run).where(Run.id == run_id), identity, Run)
+    ).first()
     if not run:
         raise HTTPException(404, "Run not found")
     return _run_skill(
@@ -693,7 +727,7 @@ def model_selection(payload: ModelSelectionIn) -> SkillResponse:
 
 
 @router.post("/post-mortem/{run_id}", response_model=SkillResponse)
-def post_mortem(run_id: int, db: SessionDep) -> SkillResponse:
+def post_mortem(run_id: int, request: Request, db: SessionDep) -> SkillResponse:
     """Produce a markdown post-mortem for a failed (or otherwise) run.
 
     Broader than ``/diagnose-run`` (which is OOM-focused). Returns the full
@@ -702,7 +736,13 @@ def post_mortem(run_id: int, db: SessionDep) -> SkillResponse:
     """
     from pathlib import Path as _Path
 
-    run = db.get(Run, run_id)
+    from apps.api.services.identity import current_identity
+    from apps.api.services.scoping import scope_query
+
+    identity = current_identity(request)
+    run = db.exec(
+        scope_query(select(Run).where(Run.id == run_id), identity, Run)
+    ).first()
     if not run:
         raise HTTPException(404, "Run not found")
 

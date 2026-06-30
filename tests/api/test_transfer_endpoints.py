@@ -25,20 +25,33 @@ def db(tmp_path):
 # ---------------------------------------------------------------------------
 
 def _make_dataset(root, name="demo"):
-    ds = root / name
+    """Phase D.3 — dataset rooted under ``<root>/global/<name>/`` so the
+    synth admin used by these tests can resolve it without per-user paths."""
+    ds = root / "global" / name
     ds.mkdir(parents=True)
     (ds / "train.jsonl").write_text('{"text": "a"}\n')
     (ds / "valid.jsonl").write_text('{"text": "b"}\n')
     return ds
 
 
+def _patch_datasets_root(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    """Phase D.3 — redirect every DATASETS_ROOT consumer to tmp_path."""
+    from apps.api.services import identity_paths
+    monkeypatch.setattr(identity_paths, "DATASETS_ROOT", tmp_path)
+
+
+def _req():
+    from tests.api._isolation_helpers import synth_admin_request
+    return synth_admin_request()
+
+
 def test_archive_roundtrip(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     import apps.api.routers.datasets as ds_router
 
-    monkeypatch.setattr(ds_router, "DATA_ROOT", tmp_path)
+    _patch_datasets_root(monkeypatch, tmp_path)
     _make_dataset(tmp_path)
 
-    resp = ds_router.download_dataset_archive("demo")
+    resp = ds_router.download_dataset_archive("demo", _req())
     assert resp.media_type == "application/gzip"
 
     with tarfile.open(fileobj=io.BytesIO(resp.body), mode="r:gz") as tf:
@@ -52,9 +65,9 @@ def test_archive_roundtrip(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
 def test_archive_unknown_dataset_404(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     import apps.api.routers.datasets as ds_router
 
-    monkeypatch.setattr(ds_router, "DATA_ROOT", tmp_path)
+    _patch_datasets_root(monkeypatch, tmp_path)
     with pytest.raises(HTTPException) as exc:
-        ds_router.download_dataset_archive("nope")
+        ds_router.download_dataset_archive("nope", _req())
     assert exc.value.status_code == 404
 
 
@@ -64,9 +77,9 @@ def test_archive_rejects_bad_names(
 ) -> None:
     import apps.api.routers.datasets as ds_router
 
-    monkeypatch.setattr(ds_router, "DATA_ROOT", tmp_path)
+    _patch_datasets_root(monkeypatch, tmp_path)
     with pytest.raises(HTTPException) as exc:
-        ds_router.download_dataset_archive(bad)
+        ds_router.download_dataset_archive(bad, _req())
     assert exc.value.status_code in (404, 422)
 
 

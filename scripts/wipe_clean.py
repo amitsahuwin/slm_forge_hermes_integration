@@ -84,10 +84,16 @@ def truncate_tables() -> None:
 
 
 def remove_artifact_dirs() -> None:
+    """Wipe per-user / per-tenant filesystem state but preserve the
+    ``global/`` bundled samples (re-seeded after schema recreation)."""
     roots = os.environ.get("SLM_FORGE_WIPE_ARTIFACT_ROOTS")
     targets = roots.split(":") if roots else list(DEFAULT_ARTIFACT_ROOTS)
-    # Always include the per-user dataset root (relative to cwd).
-    targets.append(DEFAULT_USER_DATASETS_ROOT)
+    # Phase D.3 — per-user dirs across every file-based router.
+    targets.extend([
+        DEFAULT_USER_DATASETS_ROOT,            # data/datasets/users/
+        "data/research/users",                  # research reports
+        "data/.ingest_staging/users",           # ingest staging
+    ])
     for t in targets:
         p = Path(t)
         if not p.exists():

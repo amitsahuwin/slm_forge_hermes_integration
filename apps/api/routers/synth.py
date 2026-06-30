@@ -106,9 +106,13 @@ class JobInfo(BaseModel):
 class _Job:
     """Live state for a single synthesis job."""
 
-    def __init__(self, req: SynthRequest) -> None:
+    def __init__(self, req: SynthRequest, tenant_id: str, user_id: str) -> None:
         self.job_id: str = uuid.uuid4().hex[:12]
         self.req: SynthRequest = req
+        # Phase D.3 — caller identity so writes land under the right
+        # per-user dir and job-status endpoints can gate by ownership.
+        self.tenant_id: str = tenant_id
+        self.user_id: str = user_id
         self.status: JobStatus = "queued"
         self.generated: int = 0
         self.batch: int = 0
@@ -287,9 +291,33 @@ was produced with `random.seed(42)` for reproducibility.
 
 async def _run_synth_job(job: _Job) -> None:
     """The actual synthesis worker. Runs as an asyncio.Task."""
+    from apps.api.services.identity import Identity
+    from apps.api.services.identity_paths import (
+        resolve_dataset,
+        safe_name,
+        user_datasets_dir,
+    )
+
     req = job.req
-    src_dir = _dataset_dir(req.source_dataset)
-    out_dir = _dataset_dir(req.new_dataset)
+    # Phase D.3 — paths derive from the *job owner's* identity, not
+    # the worker's. Build a non-admin Identity from the job's tenant/user
+    # so resolve_dataset() walks the right dirs.
+    owner = Identity(
+        tenant_id=job.tenant_id,
+        user_id=job.user_id,
+        role="data_engineer",
+        email=None,
+        scopes=frozenset(),
+        is_admin=False,
+        is_worker=False,
+    )
+    src_dir = resolve_dataset(req.source_dataset, owner)
+    if src_dir is None or not src_dir.is_dir():
+        job.status = "error"
+        job.error = f"Source dataset {req.source_dataset!r} no longer accessible"
+        job.publish("error", {"message": job.error})
+        return
+    out_dir = user_datasets_dir(owner) / safe_name(req.new_dataset)
     job.status = "running"
     job.publish(
         "progress",
@@ -403,16 +431,31 @@ async def start_synth(req: SynthRequest, request: Request) -> SynthStartResponse
     # PR-3 — wrap the validation block so any 4xx string-detail raise is
     # re-issued with a Hermes-generated remedy. The asyncio.create_task below
     # never raises HTTPException so it's intentionally outside the try.
+    # Phase D.3 — resolve source against the caller's visible dirs;
+    # output lands under the caller's per-user dir.
+    from apps.api.services.identity import current_identity
+    from apps.api.services.identity_paths import (
+        resolve_dataset,
+        safe_name,
+        user_datasets_dir,
+    )
+
+    identity = current_identity(request)
     try:
-        src_dir = _dataset_dir(req.source_dataset)
-        if not src_dir.exists() or not src_dir.is_dir():
+        try:
+            src_dir = resolve_dataset(req.source_dataset, identity)
+        except ValueError as e:
+            raise HTTPException(400, f"Invalid source_dataset: {e}") from e
+        if src_dir is None or not src_dir.is_dir():
             raise HTTPException(404, f"Source dataset {req.source_dataset!r} not found")
 
-        out_dir = _dataset_dir(req.new_dataset)
+        try:
+            new_name = safe_name(req.new_dataset)
+        except ValueError as e:
+            raise HTTPException(400, f"Invalid new_dataset name: {e}") from e
+        out_dir = user_datasets_dir(identity) / new_name
         if out_dir.exists():
             raise HTTPException(409, f"Dataset {req.new_dataset!r} already exists")
-        if not req.new_dataset or "/" in req.new_dataset or req.new_dataset.startswith("."):
-            raise HTTPException(400, "Invalid new_dataset name")
 
         ratio_sum = req.train_ratio + req.valid_ratio + req.canary_ratio
         if abs(ratio_sum - 1.0) > 0.01:
@@ -441,7 +484,7 @@ async def start_synth(req: SynthRequest, request: Request) -> SynthStartResponse
             e, endpoint="POST /api/v1/synth/start", request_obj=req.model_dump()
         ) from None
 
-    job = _Job(req)
+    job = _Job(req, tenant_id=identity.tenant_id, user_id=identity.user_id)
     _JOBS[job.job_id] = job
     _prune_jobs()
     job.task = asyncio.create_task(_run_synth_job(job))
@@ -453,28 +496,50 @@ async def start_synth(req: SynthRequest, request: Request) -> SynthStartResponse
     )
 
 
+def _job_visible(j: _Job, identity) -> bool:
+    """Phase D.3 — gate synth job access by tenant + ownership."""
+    if j.tenant_id != identity.tenant_id:
+        return False
+    if identity.is_admin:
+        return True
+    return j.user_id == identity.user_id
+
+
 @router.get("/jobs", response_model=list[JobInfo])
-def list_jobs() -> list[JobInfo]:
-    jobs = sorted(_JOBS.values(), key=lambda j: j.created_at, reverse=True)[:20]
+def list_jobs(request: Request) -> list[JobInfo]:
+    from apps.api.services.identity import current_identity
+
+    identity = current_identity(request)
+    jobs = sorted(
+        (j for j in _JOBS.values() if _job_visible(j, identity)),
+        key=lambda j: j.created_at,
+        reverse=True,
+    )[:20]
     return [j.snapshot() for j in jobs]
 
 
 @router.get("/jobs/{job_id}", response_model=JobInfo)
-def get_job(job_id: str) -> JobInfo:
+def get_job(job_id: str, request: Request) -> JobInfo:
+    from apps.api.services.identity import current_identity
+
+    identity = current_identity(request)
     j = _JOBS.get(job_id)
-    if j is None:
+    if j is None or not _job_visible(j, identity):
         raise HTTPException(404, "Job not found")
     return j.snapshot()
 
 
 @router.get("/jobs/{job_id}/stream")
-async def stream_job(job_id: str) -> EventSourceResponse:
+async def stream_job(job_id: str, request: Request) -> EventSourceResponse:
     """SSE stream of progress / done / error events for a job.
 
     Late attachers receive the full replay buffer first, then live events.
     """
+    from apps.api.services.identity import current_identity
+
+    identity = current_identity(request)
     j = _JOBS.get(job_id)
-    if j is None:
+    if j is None or not _job_visible(j, identity):
         raise HTTPException(404, "Job not found")
 
     async def gen() -> AsyncGenerator[dict[str, str], None]:

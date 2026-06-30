@@ -56,8 +56,11 @@ async def test_create_run_uncataloged_returns_remedy_in_detail(
     monkeypatch.setattr(remedy_module, "_invoke_skill", fake_invoke)
 
     with pytest.raises(HTTPException) as ei:
+        from tests.api._isolation_helpers import synth_admin_request
         await create_run(
-            RunCreate(dataset="d", base_model="totally/made-up"), db_session
+            RunCreate(dataset="d", base_model="totally/made-up"),
+            synth_admin_request(),
+            db_session,
         )
 
     assert ei.value.status_code == 422
@@ -80,8 +83,11 @@ async def test_remedy_none_when_hermes_errors(
     monkeypatch.setattr(remedy_module, "_invoke_skill", explode)
 
     with pytest.raises(HTTPException) as ei:
+        from tests.api._isolation_helpers import synth_admin_request
         await create_run(
-            RunCreate(dataset="d", base_model="totally/made-up"), db_session
+            RunCreate(dataset="d", base_model="totally/made-up"),
+            synth_admin_request(),
+            db_session,
         )
 
     assert ei.value.status_code == 422
@@ -106,8 +112,11 @@ async def test_remedy_times_out_under_cap(
 
     start = time.monotonic()
     with pytest.raises(HTTPException) as ei:
+        from tests.api._isolation_helpers import synth_admin_request
         await create_run(
-            RunCreate(dataset="d", base_model="totally/made-up"), db_session
+            RunCreate(dataset="d", base_model="totally/made-up"),
+            synth_admin_request(),
+            db_session,
         )
     elapsed = time.monotonic() - start
 
@@ -156,8 +165,11 @@ async def test_remedy_disabled_via_env_short_circuits(
     monkeypatch.setattr(remedy_module, "_invoke_skill", counter)
 
     with pytest.raises(HTTPException) as ei:
+        from tests.api._isolation_helpers import synth_admin_request
         await create_run(
-            RunCreate(dataset="d", base_model="totally/made-up"), db_session
+            RunCreate(dataset="d", base_model="totally/made-up"),
+            synth_admin_request(),
+            db_session,
         )
 
     assert called["n"] == 0
@@ -188,8 +200,11 @@ async def test_existing_422_status_assertion_still_passes(
     monkeypatch.setattr(remedy_module, "_invoke_skill", lambda payload: "anything")
 
     with pytest.raises(HTTPException) as ei:
+        from tests.api._isolation_helpers import synth_admin_request
         await create_run(
-            RunCreate(dataset="d", base_model="totally/made-up"), db_session
+            RunCreate(dataset="d", base_model="totally/made-up"),
+            synth_admin_request(),
+            db_session,
         )
     assert ei.value.status_code == 422
 

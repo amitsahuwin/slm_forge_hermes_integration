@@ -58,6 +58,7 @@ endif
         seed-data download-base-model synth-list research-list \
         opa-test check-llamacpp ensure-lock ensure-trainer-installed \
         smoke-model trainer-cuda trainer-mlx platform-info \
+        wipe-clean \
         clean nuke
 
 # ─── Help ──────────────────────────────────────────────────────────────────
@@ -75,6 +76,7 @@ help: ## Show this help
 	@echo "  make auth ENABLED=false   Bring up Keycloak+OPA, enforcement OFF (default)."
 	@echo "  make auth-down            Tear down Keycloak+OPA."
 	@echo "  make smoke-model MODEL=gemma-4-e4b-it   Smoke-test a catalog model on this host."
+	@echo "  SLM_FORGE_WIPE_CONFIRM=YES make wipe-clean   Phase D clean-slate (destroys all runs/sessions/exports/chats/traces)."
 	@echo ""
 	@echo "Detected host: $(PLATFORM) ($(UNAME_S)/$(UNAME_M)) · GPU=$(if $(filter 1,$(HAS_NVIDIA)),NVIDIA,none) · backend=$(TRAINER_BACKEND)"
 
@@ -490,3 +492,11 @@ clean: ## Remove build caches / node_modules / .venv
 nuke: clean ## Also stop every compose stack and wipe Docker volumes
 	$(COMPOSE) $(OBS_FILES) --profile auth --profile mcp --profile autofix down -v
 	@echo "All stacks down + volumes wiped."
+
+wipe-clean: ## Phase D clean-slate cutover. DESTROYS all runs/sessions/exports/chats/traces. Set SLM_FORGE_WIPE_CONFIRM=YES first.
+	@if [ "$$SLM_FORGE_WIPE_CONFIRM" != "YES" ]; then \
+	  echo "✗ Refusing to wipe. Run as: SLM_FORGE_WIPE_CONFIRM=YES make wipe-clean"; exit 2; \
+	fi
+	@echo "→ Phase D clean-slate cutover (see release/0.9.0.md for what gets wiped)..."
+	uv run python scripts/wipe_clean.py
+	@echo "✓ Wipe complete. Database and artifact roots reset; bundled sample datasets re-seeded under data/datasets/global/."

@@ -100,9 +100,9 @@ def db_session(tmp_path):
     engine.dispose()
 
 
-class _FakeRequest:
-    """create_session is decorated with @requires; the auth shim only needs a
-    request object. In tests auth is disabled so any attrs object works."""
+def _FakeRequest():  # backwards compat shim — Phase D needs a real request
+    from tests.api._isolation_helpers import synth_admin_request
+    return synth_admin_request()
 
 
 def test_create_session_valid_cuda(db_session, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -116,7 +116,7 @@ def test_create_session_valid_cuda(db_session, monkeypatch: pytest.MonkeyPatch) 
         base_model="Qwen/Qwen2.5-3B-Instruct",
         trainer_backend="cuda",
     )
-    s = create_session(payload, _FakeRequest(), db_session)
+    s = create_session.__wrapped__(payload, _FakeRequest(), db_session)
     assert s.id is not None
     assert s.trainer_backend == "cuda"
     assert db_session.exec(select(TrainingSession)).first() is not None
@@ -136,5 +136,5 @@ def test_create_session_backend_model_mismatch_is_422(
         trainer_backend="cuda",
     )
     with pytest.raises(HTTPException) as exc:
-        create_session(payload, _FakeRequest(), db_session)
+        create_session.__wrapped__(payload, _FakeRequest(), db_session)
     assert exc.value.status_code == 422

@@ -162,10 +162,61 @@ def _recover_stranded_runs_and_sessions() -> None:
         )
 
 
+def _seed_global_datasets() -> None:
+    """Phase D.3 — guarantee the bundled sample datasets exist under
+    ``data/datasets/global/`` so every authenticated user (any tenant,
+    any role) sees them in their dataset list automatically.
+
+    Idempotent: skipped when ``global/<name>/`` already exists. Failures
+    are logged but never crash startup — the API can still serve users
+    who only need their own uploads.
+    """
+    import logging
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    from apps.api.services.identity_paths import global_datasets_dir
+
+    log = logging.getLogger("api.startup.seed")
+    global_dir = global_datasets_dir()
+
+    # Quick check: if the canonical bundled dataset already exists,
+    # treat the seed as up-to-date. The seed script itself is also
+    # idempotent (migrates legacy flat layout); we just avoid the
+    # subprocess fork in the common case.
+    if (global_dir / "stock-analyst").is_dir():
+        log.debug("global datasets already seeded at %s", global_dir)
+        return
+
+    seed_script = Path(__file__).resolve().parents[2] / "scripts" / "seed_datasets.py"
+    if not seed_script.exists():
+        log.warning("seed_datasets.py not found at %s — skipping auto-seed", seed_script)
+        return
+    try:
+        result = subprocess.run(
+            [sys.executable, str(seed_script)],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode == 0:
+            log.info("auto-seeded global datasets under %s", global_dir)
+        else:
+            log.warning(
+                "seed_datasets.py exited %d (stderr: %s)",
+                result.returncode,
+                result.stderr[:500],
+            )
+    except Exception as e:  # pragma: no cover — defensive; never block startup
+        log.warning("auto-seed failed (%s) — bundled samples may be missing", e)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_worker_logging("api")
     init_db()
+    _seed_global_datasets()
     _recover_stranded_runs_and_sessions()
 
     # PR-A — wire the error-responder. Validates settings fail-fast (raises

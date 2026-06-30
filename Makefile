@@ -277,6 +277,14 @@ auth: ## Bring up Keycloak+OPA. Pass ENABLED=true|false to flip enforcement.
 	@echo "    ops@local      / ops12345   → operations     (read + execute exports)"
 	@echo "    support@local  / support1   → support        (read-only)"
 	@echo ""
+	@echo "  Multi-tenant demo users (tenant isolation — Phase C):"
+	@echo "    alice@acme     / alice1234  → admin          (tenant: acme)"
+	@echo "    bob@acme       / bob12345   → data_engineer  (tenant: acme)"
+	@echo "    viewer@acme    / viewer12   → viewer         (tenant: acme)"
+	@echo "    carol@globex   / carol123   → admin          (tenant: globex)"
+	@echo "    dave@globex    / dave1234   → data_engineer  (tenant: globex)"
+	@echo "    viewer@globex  / viewer34   → viewer         (tenant: globex)"
+	@echo ""
 	@echo "  Sign in at the SLM-Forge UI → click the user badge top-right."
 
 auth-up: ## Alias for `make auth ENABLED=false`

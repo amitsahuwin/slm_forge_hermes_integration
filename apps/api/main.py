@@ -212,11 +212,47 @@ def _seed_global_datasets() -> None:
         log.warning("auto-seed failed (%s) — bundled samples may be missing", e)
 
 
+def _log_storage_backend() -> None:
+    """Phase D follow-up — emit a single line at startup naming the
+    active object-store backend + endpoint so operators can see at a
+    glance whether artifacts are going to local disk or to Ozone.
+
+    We ``print()`` here so the banner shows up in ``docker logs`` (the
+    rotating file logger captures it too, but the file isn't what
+    operators reach for first)."""
+    import os
+    import sys
+
+    from apps.api.services.storage.uploader import storage_backend_name
+
+    backend = storage_backend_name()
+    if backend == "local":
+        local_root = os.environ.get("SLM_FORGE_LOCAL_STORAGE_ROOT", "/app/storage")
+        print(
+            f"[storage] backend=LOCAL  root={local_root}  "
+            "(set SLM_FORGE_STORAGE=s3 to use Ozone)",
+            file=sys.stderr,
+            flush=True,
+        )
+        return
+    endpoint = os.environ.get(
+        "SLM_FORGE_OZONE_S3_ENDPOINT", "http://host.docker.internal:9878"
+    )
+    bucket_prefix = os.environ.get("SLM_FORGE_OZONE_BUCKET_PREFIX", "slm-forge")
+    print(
+        f"[storage] backend=OZONE(S3)  endpoint={endpoint}  "
+        f"bucket_prefix={bucket_prefix}-{{tenant_id}}",
+        file=sys.stderr,
+        flush=True,
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_worker_logging("api")
     init_db()
     _seed_global_datasets()
+    _log_storage_backend()
     _recover_stranded_runs_and_sessions()
 
     # PR-A — wire the error-responder. Validates settings fail-fast (raises

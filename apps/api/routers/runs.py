@@ -227,6 +227,39 @@ def patch_run(
     ):
         background.add_task(generate_for_run, run.id)
 
+    # Phase D follow-up — when a run reaches a terminal state, sweep its
+    # local artifact dir to the configured object store. No-op when
+    # ``SLM_FORGE_STORAGE=local``. Identity comes from the *Run row*, not
+    # the caller — that way workers patching status to COMPLETED still
+    # upload artifacts under the original run-owner's bucket/key prefix.
+    if (
+        payload.status in {RunStatus.COMPLETED, RunStatus.FAILED}
+        and prev_status not in {RunStatus.COMPLETED, RunStatus.FAILED}
+        and run.id is not None
+        and run.tenant_id
+        and run.user_id
+    ):
+        from apps.api.services.identity import Identity
+        from apps.api.services.storage.uploader import sync_local_dir_to_store
+
+        owner = Identity(
+            tenant_id=run.tenant_id,
+            user_id=run.user_id,
+            role=run.role or "data_engineer",
+            email=None,
+            scopes=frozenset(),
+            is_admin=(run.role == "admin"),
+            is_worker=False,
+        )
+        run_dir = ARTIFACTS_ROOT / str(run.id)
+        background.add_task(
+            sync_local_dir_to_store,
+            run_dir,
+            identity=owner,
+            kind="runs",
+            artifact_id=run.id,
+        )
+
     return run
 
 

@@ -370,21 +370,56 @@ ozone-status: ## Show Ozone pods, PVCs, and an S3 ls of buckets
 	@echo "── PVCs ────────────────────────────────────────────────"
 	@kubectl get pvc -n $(OZONE_NS) 2>/dev/null || true
 	@echo ""
-	@echo "── S3 buckets ──────────────────────────────────────────"
-	@SLM_FORGE_OZONE_S3_ENDPOINT=$(OZONE_S3_ENDPOINT) \
-	 uv run python -c "import os,boto3; \
-	   s=boto3.client('s3', endpoint_url=os.environ.get('SLM_FORGE_OZONE_S3_ENDPOINT'), \
-	                  aws_access_key_id=os.environ.get('SLM_FORGE_OZONE_ACCESS_KEY_ID','slmforge'), \
-	                  aws_secret_access_key=os.environ.get('SLM_FORGE_OZONE_SECRET_ACCESS_KEY','slmforge-dev-secret')); \
-	   print('\\n'.join('  ' + b['Name'] for b in s.list_buckets().get('Buckets', []))) or print('  (no buckets yet — run make ozone-bootstrap)')" \
-	  2>/dev/null || echo "  (S3 gateway not reachable yet)"
+	@echo "── S3 buckets (probed via temporary port-forward) ──────"
+	@# Ozone's S3 gateway is ClusterIP-only (chart default), so we port-
+	@# forward briefly to probe it. Ozone doesn't implement
+	@# ``list_buckets`` on ``/`` — scripts/ozone_status.py heads the
+	@# four seeded tenant buckets instead.
+	@if ! kubectl get svc -n $(OZONE_NS) ozone-s3g-rest >/dev/null 2>&1; then \
+	  echo "  (ozone-s3g-rest service not found — Ozone may not be installed yet)"; \
+	else \
+	  kubectl port-forward -n $(OZONE_NS) svc/ozone-s3g-rest 9878:9878 \
+	    >/tmp/slm-forge-ozone-status-pf.log 2>&1 & \
+	  PF_PID=$$!; \
+	  trap "kill $$PF_PID 2>/dev/null || true" EXIT INT TERM; \
+	  for i in 1 2 3 4 5 6 7 8 9 10; do \
+	    nc -z localhost 9878 >/dev/null 2>&1 && break; sleep 0.3; \
+	  done; \
+	  uv run python scripts/ozone_status.py 2>/dev/null || echo "  (probe failed)"; \
+	  kill $$PF_PID 2>/dev/null || true; \
+	fi
 
 ozone-bootstrap: ## Create the slm-forge demo tenant buckets in Ozone
-	@echo "→ Creating per-tenant S3 buckets..."
-	@uv run python scripts/ozone_bootstrap.py
+	@# The S3 gateway service is ClusterIP-only (chart default), so we
+	@# spin a short-lived background port-forward, run the bootstrap
+	@# script, then tear the forward down. ``trap`` ensures cleanup
+	@# even on script failure or Ctrl-C.
+	@command -v kubectl >/dev/null 2>&1 || { echo "kubectl not found"; exit 1; }
+	@if ! kubectl get svc -n $(OZONE_NS) ozone-s3g-rest >/dev/null 2>&1; then \
+	  echo "ozone-s3g-rest service not found in $(OZONE_NS); run 'make ozone-up' first."; \
+	  exit 1; \
+	fi
+	@echo "→ Starting temporary port-forward to ozone-s3g-rest..."
+	@set -e; \
+	 kubectl port-forward -n $(OZONE_NS) svc/ozone-s3g-rest 9878:9878 >/tmp/slm-forge-ozone-pf.log 2>&1 & \
+	 PF_PID=$$!; \
+	 trap "kill $$PF_PID 2>/dev/null || true" EXIT; \
+	 echo "  port-forward pid=$$PF_PID"; \
+	 for i in 1 2 3 4 5 6 7 8 9 10; do \
+	   if curl -sS -o /dev/null --max-time 1 http://localhost:9878/ 2>/dev/null; then break; fi; \
+	   sleep 0.5; \
+	 done; \
+	 echo "→ Creating per-tenant S3 buckets..."; \
+	 SLM_FORGE_OZONE_S3_ENDPOINT=http://localhost:9878 uv run python scripts/ozone_bootstrap.py
+	@echo "  ✓ Done. Buckets persist in Ozone; port-forward closed."
 
-ozone-port-forward: ## Port-forward the Ozone S3 gateway (when extraPortMappings don't reach)
-	@kubectl port-forward -n $(OZONE_NS) svc/$(OZONE_RELEASE)-s3g 9878:9878
+ozone-port-forward: ## Port-forward the Ozone S3 gateway to localhost:9878 (foreground)
+	@if ! kubectl get svc -n $(OZONE_NS) ozone-s3g-rest >/dev/null 2>&1; then \
+	  echo "ozone-s3g-rest service not found in $(OZONE_NS); run 'make ozone-up' first."; \
+	  exit 1; \
+	fi
+	@echo "→ Forwarding ozone-s3g-rest:9878 → localhost:9878 (Ctrl-C to stop)..."
+	@kubectl port-forward -n $(OZONE_NS) svc/ozone-s3g-rest 9878:9878
 
 # ─── MCP server (Claude Desktop / Cursor / Claude Code) ────────────────────
 

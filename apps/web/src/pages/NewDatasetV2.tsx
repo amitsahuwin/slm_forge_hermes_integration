@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { API_URL } from '../lib/api';
+import { API_URL, authFetch } from '../lib/api';
 
 // ─── Types ─────────────────────────────────────────────────────────
 
@@ -87,7 +87,7 @@ export default function NewDatasetV2() {
           const fd = new FormData();
           fd.append('file', f);
           fd.append('force_ollama', String(force));
-          r = await fetch(`${API_URL}/api/v1/ingest/preview`, {
+          r = await authFetch(`${API_URL}/api/v1/ingest/preview`, {
             method: 'POST',
             body: fd,
           });
@@ -95,14 +95,14 @@ export default function NewDatasetV2() {
           if (!url) throw new Error('URL required');
           const endpoint =
             source === 'url' ? 'from-url' : 'from-scrape';
-          r = await fetch(`${API_URL}/api/v1/ingest/${endpoint}/preview`, {
+          r = await authFetch(`${API_URL}/api/v1/ingest/${endpoint}/preview`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ url, force_ollama: force }),
           });
         } else {
           if (!s3Path) throw new Error('S3 path required');
-          r = await fetch(`${API_URL}/api/v1/ingest/from-s3/preview`, {
+          r = await authFetch(`${API_URL}/api/v1/ingest/from-s3/preview`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -174,19 +174,19 @@ export default function NewDatasetV2() {
         fd.append('name', name);
         fd.append('file', file);
         fd.append('force_ollama', String(forceOllama));
-        r = await fetch(`${API_URL}/api/v1/ingest/file`, {
+        r = await authFetch(`${API_URL}/api/v1/ingest/file`, {
           method: 'POST',
           body: fd,
         });
       } else if (source === 'url' || source === 'scrape') {
         const endpoint = source === 'url' ? 'from-url' : 'from-scrape';
-        r = await fetch(`${API_URL}/api/v1/ingest/${endpoint}`, {
+        r = await authFetch(`${API_URL}/api/v1/ingest/${endpoint}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name, url, force_ollama: forceOllama }),
         });
       } else {
-        r = await fetch(`${API_URL}/api/v1/ingest/from-s3`, {
+        r = await authFetch(`${API_URL}/api/v1/ingest/from-s3`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

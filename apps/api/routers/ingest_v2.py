@@ -8,6 +8,7 @@ The four source endpoints all feed the same ``_convert`` pipeline so the
 auto-convert + auto-split behavior is identical regardless of where bytes
 came from.
 """
+
 from __future__ import annotations
 
 import logging
@@ -20,6 +21,8 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 
 from apps.api.middleware.auth import requires
+from apps.api.services.identity import current_identity
+from apps.api.services.identity_paths import user_datasets_dir
 
 from packages.dataset_ingest.converter import (
     auto_split,
@@ -141,7 +144,9 @@ def _convert(
             if llm_records:
                 return llm_records, fmt, "ollama", warnings
             if records:
-                warnings.append("Ollama returned nothing — keeping direct parse output.")
+                warnings.append(
+                    "Ollama returned nothing — keeping direct parse output."
+                )
                 return records, fmt, "direct", warnings
             raise HTTPException(
                 400,
@@ -177,7 +182,9 @@ async def ingest_file(
 ) -> IngestFileResponse:
     """Upload any file, auto-convert, and write a new dataset to disk."""
     safe_name = _validate_name(name)
-    dataset_dir = DATA_ROOT / safe_name
+    identity = current_identity(request)
+    ds_root = user_datasets_dir(identity)
+    dataset_dir = ds_root / safe_name
     if dataset_dir.exists():
         raise HTTPException(
             409,
@@ -208,7 +215,7 @@ async def ingest_file(
 
     write_dataset(
         name=safe_name,
-        dataset_root=DATA_ROOT,
+        dataset_root=ds_root,
         splits=splits,
         source_format=fmt,
         source_filename=file.filename or "upload",
@@ -367,9 +374,10 @@ def _finalize_from_bytes(
     filename: str,
     force_ollama: bool,
     source_tag: str,
+    dataset_root: Path,
 ) -> IngestFileResponse:
     safe_name = _validate_name(name)
-    dataset_dir = DATA_ROOT / safe_name
+    dataset_dir = dataset_root / safe_name
     if dataset_dir.exists():
         raise HTTPException(
             409, f"Dataset '{safe_name}' already exists. Pick a different name."
@@ -381,7 +389,10 @@ def _finalize_from_bytes(
     splits = auto_split(records)
     if not splits["valid"]:
         log.warning(
-            "ingest %s (%s): empty valid split (n=%d)", safe_name, source_tag, len(records),
+            "ingest %s (%s): empty valid split (n=%d)",
+            safe_name,
+            source_tag,
+            len(records),
         )
 
     notes_lines = [
@@ -396,7 +407,7 @@ def _finalize_from_bytes(
 
     write_dataset(
         name=safe_name,
-        dataset_root=DATA_ROOT,
+        dataset_root=dataset_root,
         splits=splits,
         source_format=fmt,
         source_filename=filename,
@@ -432,8 +443,10 @@ def _preview_from_bytes(
 
 
 @router.post("/from-url", response_model=IngestFileResponse)
-def ingest_from_url(payload: UrlIngest) -> IngestFileResponse:
+def ingest_from_url(payload: UrlIngest, request: Request) -> IngestFileResponse:
     """Fetch a URL and write it as a new dataset."""
+    identity = current_identity(request)
+    ds_root = user_datasets_dir(identity)
     content, filename = _fetch_url(payload.url)
     return _finalize_from_bytes(
         name=payload.name,
@@ -442,6 +455,7 @@ def ingest_from_url(payload: UrlIngest) -> IngestFileResponse:
         filename=filename,
         force_ollama=payload.force_ollama,
         source_tag=f"url:{payload.url}",
+        dataset_root=ds_root,
     )
 
 
@@ -460,8 +474,10 @@ def preview_from_url(payload: UrlPreview) -> IngestPreviewResponse:
 
 
 @router.post("/from-scrape", response_model=IngestFileResponse)
-def ingest_from_scrape(payload: UrlIngest) -> IngestFileResponse:
+def ingest_from_scrape(payload: UrlIngest, request: Request) -> IngestFileResponse:
     """Scrape main text from a web page and write it as a new dataset."""
+    identity = current_identity(request)
+    ds_root = user_datasets_dir(identity)
     content, filename = _fetch_scrape(payload.url)
     return _finalize_from_bytes(
         name=payload.name,
@@ -470,6 +486,7 @@ def ingest_from_scrape(payload: UrlIngest) -> IngestFileResponse:
         filename=filename,
         force_ollama=payload.force_ollama,
         source_tag=f"scrape:{payload.url}",
+        dataset_root=ds_root,
     )
 
 
@@ -506,8 +523,10 @@ class S3Preview(BaseModel):
 
 
 @router.post("/from-s3", response_model=IngestFileResponse)
-def ingest_from_s3(payload: S3Ingest) -> IngestFileResponse:
+def ingest_from_s3(payload: S3Ingest, request: Request) -> IngestFileResponse:
     """Download an S3 object and write it as a new dataset."""
+    identity = current_identity(request)
+    ds_root = user_datasets_dir(identity)
     content, filename = _fetch_s3(
         payload.s3_path, payload.access_key, payload.secret_key, payload.region
     )
@@ -518,6 +537,7 @@ def ingest_from_s3(payload: S3Ingest) -> IngestFileResponse:
         filename=filename,
         force_ollama=payload.force_ollama,
         source_tag=f"s3:{payload.s3_path}",
+        dataset_root=ds_root,
     )
 
 

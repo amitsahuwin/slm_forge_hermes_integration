@@ -332,6 +332,32 @@ OZONE_NS      ?= slm-forge-ozone
 OZONE_RELEASE ?= ozone
 OZONE_CHART   ?= apache-ozone/ozone
 OZONE_S3_ENDPOINT ?= http://localhost:9878
+OZONE_CONTROL_PLANE := $(OZONE_CLUSTER)-control-plane
+
+ozone-heal-network: ## Repair kubelet.conf if a Docker/Desktop restart changed the kind node's IP (idempotent; safe to run every time)
+	@# Docker Desktop doesn't guarantee the kind control-plane container keeps
+	@# the same bridge IP across a daemon/VM restart (e.g. after a laptop
+	@# reboot). kubeadm bakes that IP as a literal into kubelet.conf once, at
+	@# cluster-creation time, and nothing re-templates it afterwards — so if
+	@# the container comes back up with a new IP, kubelet dials the old
+	@# (now-dead) address, the node goes NotReady, and `kubectl port-forward`
+	@# fails with "SPDY upgrade failed: 401 Unauthorized" because the
+	@# apiserver can no longer tunnel to a healthy kubelet. admin.conf already
+	@# addresses the control-plane by its Docker DNS hostname (which self-
+	@# updates via /etc/hosts on every boot and is already a trusted SAN on
+	@# the apiserver cert) — repointing kubelet.conf at that same hostname
+	@# fixes it permanently, with no repair needed on future restarts.
+	@if [ -n "$$(docker ps -q -f name=^/$(OZONE_CONTROL_PLANE)$$ -f status=running 2>/dev/null)" ]; then \
+	  if docker exec $(OZONE_CONTROL_PLANE) sh -c "grep -qE 'server: https://[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:6443' /etc/kubernetes/kubelet.conf" 2>/dev/null; then \
+	    echo "→ kubelet.conf on $(OZONE_CONTROL_PLANE) pins a raw container IP that drifted after a Docker restart; repointing at the stable hostname..."; \
+	    docker exec $(OZONE_CONTROL_PLANE) sh -c "sed -i -E 's#server: https://[0-9.]+:6443#server: https://$(OZONE_CONTROL_PLANE):6443#' /etc/kubernetes/kubelet.conf && systemctl restart kubelet"; \
+	    for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do \
+	      kubectl get node $(OZONE_CONTROL_PLANE) --no-headers 2>/dev/null | awk '{print $$2}' | grep -q '^Ready$$' && break; \
+	      sleep 1; \
+	    done; \
+	    echo "  ✓ node repaired and Ready."; \
+	  fi; \
+	fi
 
 ozone-up: ## Create a kind cluster + helm-install Apache Ozone (Phase D)
 	@command -v kind >/dev/null 2>&1 || { echo "kind not found — install: https://kind.sigs.k8s.io"; exit 1; }
@@ -344,6 +370,7 @@ ozone-up: ## Create a kind cluster + helm-install Apache Ozone (Phase D)
 	  kind create cluster --config deploy/ozone/kind-config.yaml --name $(OZONE_CLUSTER); \
 	fi
 	@kubectl config use-context kind-$(OZONE_CLUSTER) >/dev/null
+	@$(MAKE) --no-print-directory ozone-heal-network
 	@helm repo add apache-ozone https://apache.github.io/ozone-helm-charts 2>/dev/null || true
 	@helm repo update apache-ozone >/dev/null
 	@if helm status -n $(OZONE_NS) $(OZONE_RELEASE) >/dev/null 2>&1; then \
@@ -371,6 +398,7 @@ ozone-down: ## Uninstall Ozone + delete the kind cluster
 	fi
 
 ozone-status: ## Show Ozone pods, PVCs, and an S3 ls of buckets
+	@$(MAKE) --no-print-directory ozone-heal-network
 	@echo "── kind clusters ───────────────────────────────────────"
 	@kind get clusters | sed 's/^/  /'
 	@echo ""
@@ -400,6 +428,7 @@ ozone-status: ## Show Ozone pods, PVCs, and an S3 ls of buckets
 	fi
 
 ozone-bootstrap: ## Create the slm-forge demo tenant buckets in Ozone
+	@$(MAKE) --no-print-directory ozone-heal-network
 	@# The S3 gateway service is ClusterIP-only (chart default), so we
 	@# spin a short-lived background port-forward, run the bootstrap
 	@# script, then tear the forward down. ``trap`` ensures cleanup
@@ -424,6 +453,7 @@ ozone-bootstrap: ## Create the slm-forge demo tenant buckets in Ozone
 	@echo "  ✓ Done. Buckets persist in Ozone; port-forward closed."
 
 ozone-port-forward: ## Port-forward the Ozone S3 gateway to localhost:9878 (foreground)
+	@$(MAKE) --no-print-directory ozone-heal-network
 	@if ! kubectl get svc -n $(OZONE_NS) ozone-s3g-rest >/dev/null 2>&1; then \
 	  echo "ozone-s3g-rest service not found in $(OZONE_NS); run 'make ozone-up' first."; \
 	  exit 1; \

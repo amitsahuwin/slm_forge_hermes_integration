@@ -26,6 +26,7 @@ Built for M3 Max with 36 GB unified memory. Smaller Apple Silicon Macs work with
 | Autoresearch ratchet (Hermes-driven hyperparameter sweeps) | ✓ |
 | Live training metrics + ratchet timeline graphs + canary drift chart | ✓ |
 | 4-source dataset ingest (file / URL / web scrape / S3) + Ollama auto-convert | ✓ |
+| Large-file uploads (up to 500 MB) via background ingest jobs, tracked in the Jobs tab | ✓ |
 | Ollama-driven dataset synthesis (expand 20 examples → 500+) | ✓ |
 | GGUF export with Q4_K_M / Q5_K_M / Q8_0 / F16 quants | ✓ |
 | LangGraph chat UI with structured tool-call cards | ✓ |
@@ -212,9 +213,20 @@ Specs: [`docs/specs/2026-06-29-*.md`](docs/specs/).
 - **Unified Jobs tab.** The aspirational "check Jobs tab" error
   messages now link to a real page. `/jobs?id=<kind>:<id>` accepts
   composite ids (`run:42`, `agent:abc123`, `synth:def456`,
-  `session:7`, `export:9`, `autofix:3`, `research:hex…`) and shows
-  one uniform shape with status, error, progress, parent links.
-  Tenant isolation enforced: cross-tenant returns 404, not 403.
+  `session:7`, `export:9`, `autofix:3`, `research:hex…`, `ingest:3`)
+  and shows one uniform shape with status, error, progress, parent
+  links. In-flight jobs (e.g. large-dataset ingest) live-poll every
+  2s. Tenant isolation enforced: cross-tenant returns 404, not 403.
+- **Large dataset uploads (background ingest).** File uploads up to
+  **500 MB** (`SLM_FORGE_MAX_UPLOAD_BYTES`). Files at or below the
+  sync threshold (`SLM_FORGE_INGEST_SYNC_MAX_BYTES`, 10 MB) still
+  process inline with a live preview; larger files stream straight to
+  object storage and are parsed + split in a constant-RAM background
+  job. `POST /api/v1/ingest/file/large` returns `202` with an
+  `ingest:<id>` job id; track it in the Jobs tab (New Dataset → File
+  auto-routes by file size). Pre-formatted JSONL/CSV only on the large
+  path (no Ollama conversion). Orphaned jobs from an API restart are
+  reconciled to `failed` at startup.
 
 **New env vars (quick reference, 0.8.0)**
 
@@ -311,6 +323,8 @@ Release notes: [`release/0.7.0.md`](release/0.7.0.md). Architecture decisions: [
 | | `AUTOFIX_MAX_ATTEMPTS_PER_FINGERPRINT_24H` | `3` | Per-fingerprint circuit breaker |
 | | `AUTOFIX_DENYLIST` | (see `.env.example`) | Files the auto-fix loop must NEVER edit |
 | LiteLLM proxy (0.7.4) | `LITELLM_MASTER_KEY` | `sk-local-litellm-master` | Shared secret the SDK sends as `ANTHROPIC_API_KEY`; must match `litellm/config.yaml`. Start the proxy with `make litellm-up`. |
+| Dataset upload | `SLM_FORGE_MAX_UPLOAD_BYTES` | `524288000` (500 MB) | Hard cap on any dataset file upload; a stream breaching it is aborted with `413` and no object is persisted. |
+| | `SLM_FORGE_INGEST_SYNC_MAX_BYTES` | `10485760` (10 MB) | Files at or below this size ingest inline with a live preview; larger files route to the background `ingest:<id>` job. Must not exceed `SLM_FORGE_MAX_UPLOAD_BYTES` (validated at startup). |
 
 Enable dev-mode auto-fix with `uv sync --extra error-responder` to pull in `claude-agent-sdk`. For local model routing run `make litellm-up` after `ollama pull qwen3:30b-a3b`.
 

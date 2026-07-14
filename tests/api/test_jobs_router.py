@@ -29,6 +29,7 @@ from apps.api.middleware import auth as auth_module
 from apps.api.middleware.auth import User
 from apps.api.models.export import Export, ExportStatus
 from apps.api.models.hermes_trace import HermesTrace
+from apps.api.models.ingest_job import IngestJob, IngestStatus
 from apps.api.models.run import Run, RunMethod, RunStatus
 from apps.api.models.session import TrainingSession
 from apps.api.routers.jobs import get_job
@@ -115,6 +116,84 @@ def _seed_agent_trace(eng) -> str:
         )
         s.commit()
     return agent_run_id
+
+
+def _seed_ingest(
+    eng,
+    *,
+    status: IngestStatus = IngestStatus.SUCCEEDED,
+    tenant_id: str = "acme",
+    name: str = "bigcorpus",
+) -> int:
+    with Session(eng) as s:
+        job = IngestJob(
+            tenant_id=tenant_id,
+            user_id="alice",
+            dataset_name=name,
+            status=status,
+            source_filename="corpus.jsonl",
+            detected_format="jsonl_chat",
+            raw_key=f"{tenant_id}/admin/alice/data/ingest-x/raw.jsonl",
+            raw_bytes=4096,
+            records_total=20,
+            train_count=15,
+            valid_count=4,
+            canary_count=1,
+            dropped_count=0,
+        )
+        s.add(job)
+        s.commit()
+        s.refresh(job)
+        return job.id or 0
+
+
+def test_get_job_ingest_kind_returns_ingest_detail(engine):
+    jid = _seed_ingest(engine, status=IngestStatus.SUCCEEDED)
+    with Session(engine) as db:
+        detail = get_job(job_id=f"ingest:{jid}", request=_req(_alice()), db=db)
+    assert detail.kind == "ingest"
+    assert detail.job_id == f"ingest:{jid}"
+    assert detail.status == "succeeded"
+    assert detail.parent_id == str(jid)
+    assert detail.progress is not None
+    assert detail.progress["records_total"] == 20
+    assert detail.progress["train"] == 15
+    assert detail.progress["valid"] == 4
+    assert detail.progress["canary"] == 1
+    assert detail.progress["dropped"] == 0
+    assert detail.progress["raw_bytes"] == 4096
+    assert detail.progress["format"] == "jsonl_chat"
+    # Succeeded → deep link to the published dataset.
+    assert detail.links["detail"] == "/datasets/bigcorpus"
+
+
+def test_get_job_ingest_queued_links_to_datasets(engine):
+    jid = _seed_ingest(engine, status=IngestStatus.QUEUED)
+    with Session(engine) as db:
+        detail = get_job(job_id=f"ingest:{jid}", request=_req(_alice()), db=db)
+    assert detail.status == "queued"
+    # Not yet published → link to the datasets list, not a specific dataset.
+    assert detail.links["detail"] == "/datasets"
+
+
+def test_get_job_ingest_unknown_id_returns_404(engine):
+    with Session(engine) as db, pytest.raises(HTTPException) as ei:
+        get_job(job_id="ingest:99999", request=_req(_alice()), db=db)
+    assert ei.value.status_code == 404
+
+
+def test_get_job_ingest_non_integer_id_returns_400(engine):
+    with Session(engine) as db, pytest.raises(HTTPException) as ei:
+        get_job(job_id="ingest:abc", request=_req(_alice()), db=db)
+    assert ei.value.status_code == 400
+
+
+def test_get_job_ingest_cross_tenant_is_404(engine):
+    # Row belongs to tenant "other"; alice (tenant acme) must not see it.
+    jid = _seed_ingest(engine, tenant_id="other")
+    with Session(engine) as db, pytest.raises(HTTPException) as ei:
+        get_job(job_id=f"ingest:{jid}", request=_req(_alice()), db=db)
+    assert ei.value.status_code == 404
 
 
 def test_get_job_run_kind_returns_run_detail(engine):

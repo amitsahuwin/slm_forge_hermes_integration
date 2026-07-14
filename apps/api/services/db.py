@@ -171,12 +171,48 @@ def _migrate_chat_messages() -> None:
     _migrate_table("chat_messages", _CHAT_MESSAGE_MIGRATIONS)
 
 
+def _reconcile_orphaned_ingest_jobs() -> None:
+    """Fail ingest jobs left non-terminal by a prior API process.
+
+    Ingest jobs run as in-process asyncio tasks, so a restart loses every
+    ``queued`` (never scheduled again) and ``processing`` (task killed
+    mid-flight) row. Left alone they would sit non-terminal forever, so we
+    drive them to ``failed`` with a clear message at startup. Terminal rows
+    (``succeeded`` / ``failed``) are never touched.
+    """
+    from datetime import UTC, datetime
+
+    from sqlmodel import select
+
+    from apps.api.models.ingest_job import IngestJob, IngestStatus
+
+    orphan_states = (IngestStatus.QUEUED, IngestStatus.PROCESSING)
+    with Session(engine) as s:
+        rows = list(
+            s.exec(select(IngestJob).where(IngestJob.status.in_(orphan_states)))  # type: ignore[attr-defined]
+        )
+        for row in rows:
+            row.status = IngestStatus.FAILED
+            row.error_message = "interrupted by API restart"
+            row.completed_at = datetime.now(UTC)
+            s.add(row)
+        if rows:
+            s.commit()
+            log.info("Reconciled %d orphaned ingest job(s) → failed", len(rows))
+
+
 def init_db() -> None:
+    # Fail fast on bad upload-size config before any table work.
+    from apps.api.services.ingest_settings import get_ingest_settings
+
+    get_ingest_settings()
+
     from apps.api.models import autofix as _autofix  # noqa: F401
     from apps.api.models import chat as _chat  # noqa: F401
     from apps.api.models import export as _export  # noqa: F401
     from apps.api.models import heartbeat as _heartbeat  # noqa: F401
     from apps.api.models import hermes_trace as _hermes_trace  # noqa: F401
+    from apps.api.models import ingest_job as _ingest_job  # noqa: F401
     from apps.api.models import metric as _metric  # noqa: F401
     from apps.api.models import run as _run  # noqa: F401
     from apps.api.models import session as _session  # noqa: F401
@@ -190,6 +226,7 @@ def init_db() -> None:
     _migrate_autofix()
     _migrate_chat_conversations()
     _migrate_chat_messages()
+    _reconcile_orphaned_ingest_jobs()
 
 
 def get_session() -> Generator[Session, None, None]:

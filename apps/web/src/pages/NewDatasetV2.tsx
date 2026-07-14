@@ -24,7 +24,21 @@ type FileResp = {
   conversion: 'direct' | 'ollama';
 };
 
+type LargeIngestResp = {
+  job_id: string;
+  name: string;
+  status: string;
+  detected_format: string;
+  raw_bytes: number;
+};
+
 type SourceType = 'file' | 'url' | 'scrape' | 's3';
+
+// Files at or below this size take the synchronous ingest path (with live
+// preview + optional Ollama conversion). Larger files stream to object
+// storage and are parsed in a background job tracked in the Jobs tab.
+// Mirrors the API's SLM_FORGE_INGEST_SYNC_MAX_BYTES (10 MB).
+const SYNC_MAX_BYTES = 10 * 1024 * 1024;
 
 const SOURCE_META: Record<SourceType, { label: string; sub: string }> = {
   file: { label: 'File', sub: 'Upload from your computer' },
@@ -136,8 +150,12 @@ export default function NewDatasetV2() {
     setFile(f);
     setPreview(null);
     setError(null);
+    setStatus(null);
     if (f) {
       setForceOllama(false);
+      // Large files skip the preview: /ingest/preview caps at the sync size
+      // and would 413. They stream straight to the background ingest job.
+      if (f.size > SYNC_MAX_BYTES) return;
       // Pass the file explicitly — setFile() hasn't committed for the
       // closure runPreview captured this render.
       void runPreview(false, f);
@@ -155,18 +173,37 @@ export default function NewDatasetV2() {
 
   async function onCreate() {
     if (!name) return;
-    if (!preview) {
+    const largeUpload = source === 'file' && !!file && file.size > SYNC_MAX_BYTES;
+    if (!preview && !largeUpload) {
       setError('Click Preview first to validate the source.');
       return;
     }
     setSubmitting(true);
     setError(null);
     setStatus(
-      preview.conversion === 'ollama'
-        ? 'Converting via Ollama (this can take a minute)…'
-        : 'Writing dataset…',
+      largeUpload
+        ? 'Uploading… large files stream in the background; watch the Jobs tab.'
+        : preview?.conversion === 'ollama'
+          ? 'Converting via Ollama (this can take a minute)…'
+          : 'Writing dataset…',
     );
     try {
+      // Large file: stream to the async ingest endpoint and hand off to the
+      // Jobs tab. Pre-formatted JSONL/CSV only (no Ollama conversion path).
+      if (largeUpload && file) {
+        const fd = new FormData();
+        fd.append('name', name);
+        fd.append('file', file);
+        const r = await authFetch(`${API_URL}/api/v1/ingest/file/large`, {
+          method: 'POST',
+          body: fd,
+        });
+        if (!r.ok) throw new Error(await safeError(r));
+        const data = (await r.json()) as LargeIngestResp;
+        setStatus(`Queued '${data.name}' as ${data.job_id}.`);
+        navigate(`/jobs?id=${encodeURIComponent(data.job_id)}`);
+        return;
+      }
       let r: Response;
       if (source === 'file') {
         if (!file) throw new Error('Select a file first');
@@ -214,6 +251,7 @@ export default function NewDatasetV2() {
   }
 
   const nameValid = /^[a-z0-9][a-z0-9-_]*$/.test(name);
+  const isLargeFile = source === 'file' && !!file && file.size > SYNC_MAX_BYTES;
   const sourceReady =
     source === 'file'
       ? !!file
@@ -222,7 +260,11 @@ export default function NewDatasetV2() {
       : !!s3Path;
   const canPreview = sourceReady && !previewing && !submitting;
   const canSubmit =
-    !!name && nameValid && !!preview && !submitting && !previewing;
+    !!name &&
+    nameValid &&
+    !submitting &&
+    !previewing &&
+    (isLargeFile || !!preview);
 
   // ─── Render ────────────────────────────────────────────────
 
@@ -290,16 +332,23 @@ export default function NewDatasetV2() {
               <>
                 <span className="font-mono text-zinc-300">{file.name}</span>
                 <span className="mt-1 text-xs text-zinc-500">
-                  {(file.size / 1024).toFixed(1)} KB · click or drop to replace
+                  {fmtBytes(file.size)} · click or drop to replace
                 </span>
               </>
             ) : (
               <>
                 <span>Drag a file here, or click to choose</span>
-                <span className="mt-1 text-xs text-zinc-500">10 MB max</span>
+                <span className="mt-1 text-xs text-zinc-500">500 MB max</span>
               </>
             )}
           </label>
+          {isLargeFile && (
+            <p className="mt-2 rounded-md bg-sky-950/30 px-3 py-2 text-xs text-sky-300">
+              Large file — it will stream to storage and be parsed in a
+              background job you can follow in the Jobs tab. Pre-formatted
+              JSONL/CSV only (no preview or Ollama conversion).
+            </p>
+          )}
         </Field>
       )}
 
@@ -405,7 +454,7 @@ export default function NewDatasetV2() {
         </div>
       )}
 
-      {sourceReady && (
+      {sourceReady && !isLargeFile && (
         <Field label="Conversion">
           <label className="flex items-center gap-2 text-sm text-zinc-300">
             <input
@@ -534,6 +583,11 @@ function Stat({ label, value }: { label: string; value: number }) {
       <div className="text-xs uppercase tracking-wider text-zinc-500">{label}</div>
     </div>
   );
+}
+
+function fmtBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / 1024).toFixed(1)} KB`;
 }
 
 async function safeError(r: Response): Promise<string> {

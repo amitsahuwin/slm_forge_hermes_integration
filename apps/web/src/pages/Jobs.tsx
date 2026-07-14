@@ -4,8 +4,8 @@ import { API_URL, authFetch } from '../lib/api';
 
 // Phase C.5 — federated Jobs lookup. Accepts composite ids of the form
 // `<kind>:<id>` where kind ∈ {run, session, export, autofix, agent,
-// synth, research}. The backend (apps/api/routers/jobs.py) returns a
-// uniform shape so this page doesn't have to switch on kind.
+// synth, research, ingest}. The backend (apps/api/routers/jobs.py) returns
+// a uniform shape so this page doesn't have to switch on kind.
 
 type JobDetail = {
   job_id: string;
@@ -16,7 +16,8 @@ type JobDetail = {
     | 'autofix'
     | 'agent'
     | 'synth'
-    | 'research';
+    | 'research'
+    | 'ingest';
   status: string;
   parent_id: string | null;
   tenant_id: string | null;
@@ -37,11 +38,13 @@ const KIND_HINTS: Record<JobDetail['kind'], string> = {
   agent: 'Hermes agent run',
   synth: 'Dataset synthesis',
   research: 'Market research',
+  ingest: 'Large-dataset upload',
 };
 
 const STATUS_STYLES: Record<string, string> = {
   queued: 'bg-zinc-800 text-zinc-300 border-zinc-700',
   running: 'bg-amber-950/40 text-amber-200 border-amber-800',
+  processing: 'bg-amber-950/40 text-amber-200 border-amber-800',
   fusing: 'bg-amber-950/40 text-amber-200 border-amber-800',
   converting: 'bg-amber-950/40 text-amber-200 border-amber-800',
   quantizing: 'bg-amber-950/40 text-amber-200 border-amber-800',
@@ -57,6 +60,7 @@ const EXAMPLES: { id: string; label: string }[] = [
   { id: 'export:9', label: 'GGUF export #9' },
   { id: 'agent:abc123def456', label: 'Agent run abc123…' },
   { id: 'synth:hex12345', label: 'Synth job hex12345' },
+  { id: 'ingest:3', label: 'Large-dataset upload #3' },
 ];
 
 export default function Jobs() {
@@ -103,6 +107,29 @@ export default function Jobs() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Live-poll in-flight jobs (e.g. large-dataset ingest) every 2s. Silent
+  // refresh — no loading flicker, and it stops the moment the job reaches a
+  // terminal state or the id changes.
+  const pollId = detail?.job_id ?? null;
+  const isInFlight =
+    detail?.status === 'queued' || detail?.status === 'processing';
+  useEffect(() => {
+    if (!pollId || !isInFlight) return;
+    const timer = setInterval(async () => {
+      try {
+        const r = await authFetch(
+          `${API_URL}/api/v1/jobs/${encodeURIComponent(pollId)}`,
+        );
+        if (r.ok) {
+          setDetail((await r.json()) as JobDetail);
+        }
+      } catch {
+        // transient error — keep the last-known detail and retry next tick
+      }
+    }, 2000);
+    return () => clearInterval(timer);
+  }, [pollId, isInFlight]);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();

@@ -11,19 +11,27 @@ came from.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
+import uuid
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Literal
 
 import httpx
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel
+from sqlmodel import Session
 
 from apps.api.middleware.auth import requires
+from apps.api.models.ingest_job import IngestJob, IngestStatus
+from apps.api.services import db
 from apps.api.services.identity import current_identity
 from apps.api.services.identity_paths import user_datasets_dir
-
+from apps.api.services.ingest_settings import get_ingest_settings
+from apps.api.services.storage.base import ObjectStore
+from apps.api.services.storage.factory import get_object_store, tenant_key
 from packages.dataset_ingest.converter import (
     auto_split,
     convert_via_ollama,
@@ -36,6 +44,10 @@ from packages.ratchet.hermes_bridge import HERMES_MODEL, OLLAMA_URL
 log = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Chunk size for streaming a large upload to the object store. 1 MiB keeps
+# per-request RSS flat regardless of file size while amortising syscalls.
+_UPLOAD_CHUNK = 1024 * 1024
 
 DATA_ROOT = Path("/app/data/datasets")
 MAX_BYTES = 10 * 1024 * 1024  # 10 MB
@@ -58,6 +70,14 @@ class IngestFileResponse(BaseModel):
     canary: int
     format: str
     conversion: Literal["direct", "ollama"]
+
+
+class LargeIngestResponse(BaseModel):
+    job_id: str  # composite "ingest:<id>" surfaced in the Jobs tab
+    name: str
+    status: str
+    detected_format: str
+    raw_bytes: int
 
 
 class IngestPreviewResponse(BaseModel):
@@ -229,6 +249,135 @@ async def ingest_file(
         canary=len(splits["canary"]),
         format=fmt,
         conversion=conversion,
+    )
+
+
+class _UploadTooLargeError(Exception):
+    """Raised mid-stream when an upload breaches the configured byte cap."""
+
+
+# Keep references to in-flight background tasks so the event loop doesn't
+# garbage-collect them before ``_run_ingest_job`` finishes.
+_INGEST_TASKS: set[asyncio.Task[None]] = set()
+
+
+def _schedule_ingest(job_id: int) -> None:
+    """Fire-and-forget the background runner for ``job_id``.
+
+    Kept as a module-level indirection (not inlined) so tests can substitute
+    a synchronous capture and drive the runner deterministically.
+    """
+    from apps.api.services.ingest_jobs import _run_ingest_job
+
+    task = asyncio.create_task(_run_ingest_job(job_id))
+    _INGEST_TASKS.add(task)
+    task.add_done_callback(_INGEST_TASKS.discard)
+
+
+async def _stream_to_store(
+    store: ObjectStore,
+    raw_key: str,
+    first: bytes,
+    file: UploadFile,
+    max_bytes: int,
+) -> int:
+    """Stream ``first`` + the rest of ``file`` to ``raw_key``, enforcing the
+    byte cap mid-stream. Returns the total bytes written. On breach, deletes
+    any partial object and raises :class:`_UploadTooLargeError`."""
+    written = 0
+
+    async def _body() -> AsyncIterator[bytes]:
+        nonlocal written
+        chunk = first
+        while chunk:
+            written += len(chunk)
+            if written > max_bytes:
+                raise _UploadTooLargeError
+            yield chunk
+            chunk = await file.read(_UPLOAD_CHUNK)
+
+    try:
+        await store.put(raw_key, _body(), content_type="application/octet-stream")
+    except _UploadTooLargeError:
+        await store.delete(raw_key)  # remove any partial (idempotent)
+        raise
+    return written
+
+
+@router.post("/file/large", status_code=202, response_model=LargeIngestResponse)
+@requires("create", "dataset")
+async def ingest_file_large(
+    request: Request,
+    name: str = Form(...),
+    file: UploadFile = File(...),
+) -> LargeIngestResponse:
+    """Stream a large pre-formatted JSONL/CSV upload to object storage and
+    queue a background ingest job. Returns 202 with an ``ingest:<id>`` job id.
+
+    Unlike ``/file``, this path never buffers the whole file in memory and is
+    not gated by the 10 MB synchronous limit — only by
+    ``SLM_FORGE_MAX_UPLOAD_BYTES``. It does not run the Ollama fallback; the
+    input must already be a training-ready JSONL or CSV.
+    """
+    safe = _validate_name(name)
+    identity = current_identity(request)
+    settings = get_ingest_settings()
+
+    if (user_datasets_dir(identity) / safe).exists():
+        raise HTTPException(
+            409, f"Dataset '{safe}' already exists. Pick a different name."
+        )
+
+    filename = file.filename or "upload"
+    first = await file.read(65536)
+    fmt = detect_file_format(filename, first)
+    if not (fmt.startswith("jsonl_") or fmt == "csv"):
+        raise HTTPException(
+            422,
+            "Large uploads must be pre-formatted JSONL (one object per line) "
+            f"or CSV; detected '{fmt}'. Convert smaller files via /file.",
+        )
+
+    raw_name = "raw.csv" if fmt == "csv" else "raw.jsonl"
+    raw_key = tenant_key(
+        identity, kind="data", artifact_id=f"ingest-{uuid.uuid4().hex}", filename=raw_name
+    )
+    store = get_object_store(identity)
+
+    try:
+        total = await _stream_to_store(
+            store, raw_key, first, file, settings.max_upload_bytes
+        )
+    except _UploadTooLargeError:
+        raise HTTPException(
+            413,
+            f"File exceeds the {settings.max_upload_bytes}-byte upload limit.",
+        ) from None
+
+    with Session(db.engine) as session:
+        job = IngestJob(
+            tenant_id=identity.tenant_id,
+            user_id=identity.user_id,
+            dataset_name=safe,
+            source_filename=filename,
+            detected_format=fmt,
+            raw_key=raw_key,
+            raw_bytes=total,
+            status=IngestStatus.QUEUED,
+        )
+        session.add(job)
+        session.commit()
+        session.refresh(job)
+        job_id = job.id
+    assert job_id is not None
+
+    _schedule_ingest(job_id)
+    return LargeIngestResponse(
+        job_id=f"ingest:{job_id}",
+        name=safe,
+        status=IngestStatus.QUEUED.value,
+        detected_format=fmt,
+        raw_bytes=total,
     )
 
 

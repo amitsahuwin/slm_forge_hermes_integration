@@ -11,6 +11,7 @@ Composite id format: ``<kind>:<id>`` where kind is one of:
   ``run``      → ``int``  ─ Run row + recent metrics
   ``session``  → ``int``  ─ TrainingSession + child runs
   ``export``   → ``int``  ─ Export row
+  ``ingest``   → ``int``  ─ IngestJob row (large-dataset upload)
   ``autofix``  → ``int``  ─ AutoFixAttempt row
   ``agent``    → ``hex``  ─ hermes_traces by ``agent_run_id`` (Phase B)
   ``synth``    → ``hex``  ─ in-memory synth job (apps/api/routers/synth.py)
@@ -36,6 +37,7 @@ from apps.api.middleware.auth import requires
 from apps.api.models.autofix import AutoFixAttempt, AutoFixStatus
 from apps.api.models.export import Export
 from apps.api.models.hermes_trace import HermesTrace
+from apps.api.models.ingest_job import IngestJob
 from apps.api.models.run import Run
 from apps.api.models.session import TrainingSession
 from apps.api.services.db import get_session
@@ -49,10 +51,10 @@ SessionDep = Annotated[Session, Depends(get_session)]
 
 
 JobKind = Literal[
-    "run", "session", "export", "autofix", "agent", "synth", "research"
+    "run", "session", "export", "autofix", "agent", "synth", "research", "ingest"
 ]
 _VALID_KINDS: set[str] = {
-    "run", "session", "export", "autofix", "agent", "synth", "research"
+    "run", "session", "export", "autofix", "agent", "synth", "research", "ingest"
 }
 
 
@@ -199,6 +201,56 @@ def _resolve_export(xid: str, identity: Identity, db: Session) -> JobDetail:
     )
 
 
+def _resolve_ingest(iid: str, identity: Identity, db: Session) -> JobDetail:
+    """Look up a durable background large-dataset ingest job.
+
+    Tenant-scoped via ``scope_query`` (cross-tenant → 404). Progress
+    surfaces the byte/record tallies the Jobs tab polls while the job
+    runs; the deep link points at the published dataset once succeeded,
+    otherwise at the datasets list.
+    """
+    try:
+        job_pk = int(iid)
+    except ValueError as e:
+        raise HTTPException(400, "ingest id must be an integer") from e
+    rows = list(
+        db.exec(
+            scope_query(select(IngestJob), identity, IngestJob).where(
+                IngestJob.id == job_pk
+            )
+        ).all()
+    )
+    if not rows:
+        raise HTTPException(404, f"ingest:{iid} not found")
+    j = rows[0]
+    status = j.status.value if hasattr(j.status, "value") else str(j.status)
+    detail_link = (
+        f"/datasets/{j.dataset_name}" if status == "succeeded" else "/datasets"
+    )
+    return JobDetail(
+        job_id=f"ingest:{j.id}",
+        kind="ingest",
+        status=status,
+        parent_id=str(j.id),
+        tenant_id=j.tenant_id,
+        user_id=j.user_id,
+        started_at=j.started_at.isoformat() if j.started_at else None,
+        completed_at=j.completed_at.isoformat() if j.completed_at else None,
+        error=j.error_message,
+        summary=f"Ingest '{j.dataset_name}' ({j.detected_format})",
+        progress={
+            "raw_bytes": j.raw_bytes,
+            "records_total": j.records_total,
+            "train": j.train_count,
+            "valid": j.valid_count,
+            "canary": j.canary_count,
+            "dropped": j.dropped_count,
+            "format": j.detected_format,
+        },
+        links={"detail": detail_link},
+    )
+
+
 def _resolve_autofix(aid: str, identity: Identity, db: Session) -> JobDetail:
     try:
         af_pk = int(aid)
@@ -337,6 +389,7 @@ _RESOLVERS = {
     "run": _resolve_run,
     "session": _resolve_session,
     "export": _resolve_export,
+    "ingest": _resolve_ingest,
     "autofix": _resolve_autofix,
     "agent": _resolve_agent,
     "synth": _resolve_synth,

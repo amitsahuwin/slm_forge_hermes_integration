@@ -46,6 +46,10 @@ services:
       - SLM_FORGE_PLATFORM_OS=${SLM_FORGE_PLATFORM_OS:-}
       - SLM_FORGE_PLATFORM_ARCH=${SLM_FORGE_PLATFORM_ARCH:-}
       - SLM_FORGE_PLATFORM_HAS_NVIDIA=${SLM_FORGE_PLATFORM_HAS_NVIDIA:-false}
+      # HuggingFace token — needed by the Models registry (register+validate)
+      # to read gated/private repos via the Hub API. Sourced from .env; empty
+      # string when unset (public repos still work). Never logged.
+      - HF_TOKEN=${HF_TOKEN:-}
       # Error-responder / auto-fix loop — read at startup by the FastAPI
       # lifespan (fails fast on missing prod creds). For development mode the
       # LiteLLM proxy stands in for the Anthropic API so the SDK can reach

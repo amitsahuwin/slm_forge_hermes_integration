@@ -30,7 +30,7 @@ from sqlmodel import Session, select
 
 from apps.api.models.model_download_job import ModelDownloadJob, ModelDownloadStatus
 from apps.api.models.registered_model import RegisteredModel
-from apps.api.services import db
+from apps.api.services import db, platform_detect
 from apps.api.services import model_catalog as mc
 
 log = logging.getLogger(__name__)
@@ -58,16 +58,19 @@ def _now() -> datetime:
 # Pure detection helpers (no I/O — unit-testable in isolation)
 # --------------------------------------------------------------------------- #
 def infer_backend(hf_id: str) -> str:
-    """Infer the trainer backend a repo targets from its id alone.
+    """Infer the trainer backend a repo targets.
 
-    MLX needs pre-quantized ``mlx-community`` / ``*-4bit`` repos; everything else
-    is treated as a full-precision CUDA (PEFT/bitsandbytes) checkpoint.
+    A repo that is explicitly an MLX build (``mlx-community`` / ``*mlx*`` /
+    ``*-4bit`` / ``*-8bit``) resolves to ``mlx`` regardless of host. A generic
+    full-precision repo (e.g. ``meta-llama/Llama-3.2-1B-Instruct``) works on
+    both backends, so we follow the **host's default backend** — macOS → mlx,
+    Linux + NVIDIA → cuda — via the same detection ``/api/v1/platform`` uses.
     """
     lo = hf_id.lower()
     name = lo.split("/")[-1]
     if lo.startswith("mlx-community/") or "mlx" in name or name.endswith(("-4bit", "-8bit")):
         return "mlx"
-    return "cuda"
+    return platform_detect.default_backend()
 
 
 def _human_params(total: int | None) -> str:

@@ -118,3 +118,31 @@ def test_run_payload_defaults_backend_for_legacy_session(
 
     assert api.create_payloads
     assert api.create_payloads[0]["trainer_backend"] == "mlx"
+
+
+def test_run_payload_carries_session_grad_checkpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The session's grad_checkpoint choice is threaded onto every child run."""
+    monkeypatch.setattr(loop, "httpx", _NoOpHttpx)
+    sess = _session("mlx")
+    sess["grad_checkpoint"] = False
+    api = FakeAPI(sess)
+
+    loop.run_session(1, api)
+
+    assert api.create_payloads
+    assert api.create_payloads[0]["grad_checkpoint"] is False
+
+
+def test_run_payload_defaults_grad_checkpoint_on_for_legacy_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A session row from before the column existed → memory-safe True."""
+    monkeypatch.setattr(loop, "httpx", _NoOpHttpx)
+    api = FakeAPI(_session("mlx"))  # no grad_checkpoint key
+
+    loop.run_session(1, api)
+
+    assert api.create_payloads
+    assert api.create_payloads[0]["grad_checkpoint"] is True

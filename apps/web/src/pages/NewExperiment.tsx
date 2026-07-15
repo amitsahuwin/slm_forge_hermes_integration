@@ -45,6 +45,8 @@ export default function NewExperiment() {
   const [iters, setIters] = useState(80);
   const [learningRate, setLearningRate] = useState(1.0e-4);
   const [numLayers, setNumLayers] = useState(16);
+  // Default ON — long-sequence datasets OOM Apple Silicon without it.
+  const [gradCheckpoint, setGradCheckpoint] = useState(true);
   const [maxRounds, setMaxRounds] = useState(6);
   const [plateauPatience, setPlateauPatience] = useState(3);
   const [minDelta, setMinDelta] = useState(0.005);
@@ -163,6 +165,7 @@ export default function NewExperiment() {
         iters,
         learning_rate: learningRate,
         num_layers: numLayers,
+        grad_checkpoint: gradCheckpoint,
         max_rounds: maxRounds,
         plateau_patience: plateauPatience,
         min_delta: minDelta,
@@ -458,6 +461,17 @@ export default function NewExperiment() {
           </Field>
           <Field label="Min improvement (Δ val_loss)">
             <Num value={minDelta} onChange={setMinDelta} step={0.001} />
+          </Field>
+          <Field label="Gradient checkpointing">
+            <label className="flex items-center gap-2 py-2 text-sm text-zinc-300">
+              <input
+                type="checkbox"
+                checked={gradCheckpoint}
+                onChange={(e) => setGradCheckpoint(e.target.checked)}
+                className="h-4 w-4 accent-emerald-600"
+              />
+              Lower memory (recommended), ~25% slower
+            </label>
           </Field>
         </div>
 

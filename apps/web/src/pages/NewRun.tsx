@@ -25,6 +25,8 @@ export default function NewRun() {
   const [batchSize, setBatchSize] = useState(4);
   const [learningRate, setLearningRate] = useState(1.0e-4);
   const [numLayers, setNumLayers] = useState(16);
+  // Default ON — long-sequence datasets OOM Apple Silicon without it.
+  const [gradCheckpoint, setGradCheckpoint] = useState(true);
 
   useEffect(() => {
     // Phase T: Fetch platform info first to set smart defaults
@@ -82,6 +84,7 @@ export default function NewRun() {
         batch_size: batchSize,
         learning_rate: learningRate,
         num_layers: numLayers,
+        grad_checkpoint: gradCheckpoint,
       });
       navigate(`/runs/${run.id}`);
     } catch (e: unknown) {
@@ -195,6 +198,17 @@ export default function NewRun() {
           </Field>
           <Field label="Num layers (LoRA)">
             <Number value={numLayers} onChange={setNumLayers} min={1} max={48} step={1} />
+          </Field>
+          <Field label="Gradient checkpointing">
+            <label className="flex items-center gap-2 py-2 text-sm text-zinc-300">
+              <input
+                type="checkbox"
+                checked={gradCheckpoint}
+                onChange={(e) => setGradCheckpoint(e.target.checked)}
+                className="h-4 w-4 accent-emerald-600"
+              />
+              Lower memory (recommended), ~25% slower
+            </label>
           </Field>
         </div>
 

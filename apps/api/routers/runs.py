@@ -54,7 +54,8 @@ class RunCreate(BaseModel):
     learning_rate: float = 1.0e-4
     num_layers: int = 16
     max_seq_length: int = 2048
-    grad_checkpoint: bool = False
+    # Memory-safe default (see Run model); callers can switch it off for speed.
+    grad_checkpoint: bool = True
     seed: int = 0
     # Phase O — backend selector; immutable after creation (not in RunPatch).
     trainer_backend: str = "mlx"

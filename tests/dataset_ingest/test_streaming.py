@@ -118,12 +118,15 @@ async def test_csv_header_to_dict() -> None:
 
 @pytest.mark.asyncio
 async def test_csv_quoted_fields_with_commas_and_newlines() -> None:
+    # Columns `a`/`b` are not a known prompt/completion pair, so each row is
+    # normalized to an MLX `{text}` record (mirroring the synchronous
+    # converter). Quoted commas/newlines must still be parsed faithfully.
     data = b'a,b\n"x,y","line1\nline2"\nplain,value\n'
     got = await _collect(iter_csv_records(_chunks(data, 3)))
     records = [r for r, dropped in got if not dropped]
     assert records == [
-        {"a": "x,y", "b": "line1\nline2"},
-        {"a": "plain", "b": "value"},
+        {"text": "a: x,y\nb: line1\nline2"},
+        {"text": "a: plain\nb: value"},
     ]
 
 
@@ -131,13 +134,13 @@ async def test_csv_quoted_fields_with_commas_and_newlines() -> None:
 async def test_csv_quoted_newline_field_split_across_chunks() -> None:
     # A quoted field with an embedded newline, chunked 1 byte at a time — the
     # parser must not treat the in-quote newline as a row terminator, and must
-    # not corrupt multi-byte chars either.
+    # not corrupt multi-byte chars either. Unknown columns → `{text}`.
     data = 'a,b\n"café\nè","z"\np,q\n'.encode()
     got = await _collect(iter_csv_records(_chunks(data, 1)))
     records = [r for r, dropped in got if not dropped]
     assert records == [
-        {"a": "café\nè", "b": "z"},
-        {"a": "p", "b": "q"},
+        {"text": "a: café\nè\nb: z"},
+        {"text": "a: p\nb: q"},
     ]
 
 
@@ -146,7 +149,41 @@ async def test_csv_empty_rows_skipped() -> None:
     data = b"a,b\n1,2\n\n3,4\n"
     got = await _collect(iter_csv_records(_chunks(data, 4)))
     records = [r for r, dropped in got if not dropped]
-    assert records == [{"a": "1", "b": "2"}, {"a": "3", "b": "4"}]
+    assert records == [{"text": "a: 1\nb: 2"}, {"text": "a: 3\nb: 4"}]
+
+
+@pytest.mark.asyncio
+async def test_csv_unknown_columns_become_text_record() -> None:
+    # Real-world regression (dataset `sx_ds`): a CSV whose columns match no
+    # known prompt/completion synonym must ingest as MLX `{text}` records, not
+    # raw column dicts (which mlx_lm.lora rejects with "Unsupported data
+    # format").
+    data = (
+        b"issue_description,fix_provided,priority_value\n"
+        b"disk full,restart node,high\n"
+    )
+    got = await _collect(iter_csv_records(_chunks(data, 7)))
+    records = [r for r, dropped in got if not dropped]
+    assert records == [
+        {
+            "text": "issue_description: disk full\n"
+            "fix_provided: restart node\n"
+            "priority_value: high"
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_csv_synonym_pair_becomes_prompt_completion() -> None:
+    # `instruction`/`response` are recognized prompt/completion synonyms, so
+    # rows collapse to MLX `{prompt, completion}` records.
+    data = b"instruction,response\nq1,a1\nq2,a2\n"
+    got = await _collect(iter_csv_records(_chunks(data, 5)))
+    records = [r for r, dropped in got if not dropped]
+    assert records == [
+        {"prompt": "q1", "completion": "a1"},
+        {"prompt": "q2", "completion": "a2"},
+    ]
 
 
 # ─────────────────────────── Split writer ───────────────────────────

@@ -35,6 +35,7 @@ from apps.api.services.identity import Identity
 from apps.api.services.identity_paths import user_datasets_dir, user_staging_dir
 from apps.api.services.storage.base import ObjectStore
 from apps.api.services.storage.factory import get_object_store
+from packages.dataset_ingest.converter import is_mlx_trainable
 from packages.dataset_ingest.streaming import (
     StreamingSplitWriter,
     iter_csv_records,
@@ -45,6 +46,7 @@ log = logging.getLogger(__name__)
 
 _MIN_RECORDS = 5
 _MAX_DROPPED_RATIO = 0.5
+_MLX_FORMAT_DOC = "https://github.com/ml-explore/mlx-lm/blob/main/mlx_lm/LORA.md#Data"
 
 
 class IngestJobError(Exception):
@@ -75,11 +77,16 @@ async def _parse_to_staging(
     raw_key: str,
     detected_format: str | None,
     staging: Path,
-) -> tuple[dict[str, int], int]:
-    """Stream the raw blob → parse → split into ``staging``. Returns
-    ``(counts, dropped)`` where ``counts`` is the split writer's tally."""
+) -> tuple[dict[str, int], int, int]:
+    """Stream the raw blob → parse → split into ``staging``.
+
+    Returns ``(counts, dropped, untrainable)`` where ``counts`` is the split
+    writer's tally of records actually written (all MLX-trainable), ``dropped``
+    counts unparseable lines, and ``untrainable`` counts records that parsed
+    but match no mlx_lm.lora format (and so are not written)."""
     writer = StreamingSplitWriter(staging)
     dropped = 0
+    untrainable = 0
     stream = store.get(raw_key)
     records = (
         iter_csv_records(stream)
@@ -90,8 +97,11 @@ async def _parse_to_staging(
         if was_dropped:
             dropped += 1
         elif record is not None:
-            writer.write(record)
-    return writer.finalize(), dropped
+            if is_mlx_trainable(record):
+                writer.write(record)
+            else:
+                untrainable += 1
+    return writer.finalize(), dropped, untrainable
 
 
 def _write_readme(
@@ -110,7 +120,7 @@ def _write_readme(
         f"- **Valid rows:** {counts['valid']}\n"
         f"- **Canary rows:** {counts['canary']}\n"
         f"- **Records total:** {counts['records_total']}\n"
-        f"- **Dropped (unparseable) lines:** {dropped}\n"
+        f"- **Dropped (unusable) lines:** {dropped}\n"
     )
     (staging / "README.md").write_text(body, encoding="utf-8")
 
@@ -208,28 +218,37 @@ async def _run_ingest_job(job_id: int) -> None:
         shutil.rmtree(staging, ignore_errors=True)
         staging.mkdir(parents=True, exist_ok=True)
 
-        counts, dropped = await _parse_to_staging(
+        counts, dropped, untrainable = await _parse_to_staging(
             store, raw_key, detected_format, staging
         )
         records_total = counts["records_total"]
+        if records_total == 0 and untrainable > 0:
+            raise IngestJobError(
+                f"Parsed {untrainable} record(s), but none are in a supported "
+                "MLX training format (chat `{\"messages\": [...]}`, completions "
+                "`{\"prompt\": ..., \"completion\": ...}`, or text "
+                f"`{{\"text\": ...}}`). See {_MLX_FORMAT_DOC}"
+            )
         if records_total < _MIN_RECORDS:
             raise IngestJobError(
                 f"Only {records_total} usable record(s); need at least "
                 f"{_MIN_RECORDS} to build train/valid/canary splits."
             )
-        total_lines = records_total + dropped
-        dropped_ratio = dropped / total_lines if total_lines else 0.0
-        if dropped_ratio > _MAX_DROPPED_RATIO:
+        unusable = dropped + untrainable
+        total_lines = records_total + unusable
+        unusable_ratio = unusable / total_lines if total_lines else 0.0
+        if unusable_ratio > _MAX_DROPPED_RATIO:
             raise IngestJobError(
-                f"{dropped_ratio:.0%} of lines were unparseable "
-                f"({dropped}/{total_lines}); refusing to publish."
+                f"{unusable_ratio:.0%} of records were unusable "
+                f"({unusable}/{total_lines}; unparseable or not in a supported "
+                "MLX format); refusing to publish."
             )
 
-        _write_readme(staging, dataset_name, detected_format, counts, dropped)
+        _write_readme(staging, dataset_name, detected_format, counts, unusable)
         final_dir.parent.mkdir(parents=True, exist_ok=True)
         os.replace(staging, final_dir)
         await store.delete(raw_key)
-        _mark_succeeded(job_id, counts, dropped)
+        _mark_succeeded(job_id, counts, unusable)
         log.info("ingest job %s succeeded: %s", job_id, counts)
     except Exception as exc:
         shutil.rmtree(staging, ignore_errors=True)

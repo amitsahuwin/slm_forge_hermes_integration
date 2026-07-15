@@ -26,6 +26,8 @@ from collections.abc import AsyncIterable, AsyncIterator
 from pathlib import Path
 from typing import TextIO
 
+from packages.dataset_ingest.converter import csv_row_to_mlx, resolve_csv_mapping
+
 Record = dict[str, object]
 
 # A parsed line is (record, dropped). Exactly one is meaningful:
@@ -81,27 +83,36 @@ async def iter_csv_records(
 ) -> AsyncIterator[ParsedLine]:
     """Yield ``(record | None, dropped)`` for each data row of a CSV stream.
 
-    The first row is the header. Quoted fields containing commas/newlines are
-    honoured. Constant RAM: the buffer is trimmed after every complete logical
-    row, so it only ever holds the current (possibly quote-spanning) row.
-    Empty rows are skipped; rows whose field count differs from the header are
-    counted as dropped.
+    The first row is the header. Each data row is normalized to an
+    MLX-trainable record (``{prompt, completion}`` for a recognized column
+    pair, else ``{text}``) via the shared converter helpers, so the streaming
+    path publishes the same shapes as the synchronous converter. Quoted fields
+    containing commas/newlines are honoured. Constant RAM: the buffer is
+    trimmed after every complete logical row, so it only ever holds the current
+    (possibly quote-spanning) row. Empty / incomplete rows are skipped; rows
+    whose field count differs from the header are counted as dropped.
     """
     decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
     buf = ""
     header: list[str] | None = None
+    mapping: tuple[str | None, str | None] = (None, None)
 
     def _emit(row_text: str) -> ParsedLine | None:
-        nonlocal header
+        nonlocal header, mapping
         fields = _parse_csv_row(row_text)
         if fields is None:  # blank line
             return None
         if header is None:
-            header = fields
+            header = [h.strip() for h in fields]
+            mapping = resolve_csv_mapping(header)
             return None
         if len(fields) != len(header):
             return (None, True)
-        return (dict(zip(header, fields, strict=True)), False)
+        raw = dict(zip(header, fields, strict=True))
+        record = csv_row_to_mlx(raw, *mapping)
+        if record is None:  # empty row or incomplete prompt/completion pair
+            return None
+        return (record, False)
 
     async for chunk in chunks:
         buf += decoder.decode(chunk)

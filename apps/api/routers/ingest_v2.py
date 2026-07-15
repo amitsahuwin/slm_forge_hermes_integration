@@ -212,8 +212,10 @@ async def ingest_file(
         )
 
     content = await _read_capped(file)
-    records, fmt, conversion, warnings = _convert(
-        content, file.filename or "upload", force_ollama=force_ollama
+    # _convert may run a blocking, multi-minute Ollama HTTP call; keep it off
+    # the event loop so the API stays responsive (e.g. worker heartbeats).
+    records, fmt, conversion, warnings = await asyncio.to_thread(
+        _convert, content, file.filename or "upload", force_ollama
     )
 
     splits = auto_split(records)
@@ -388,8 +390,8 @@ async def preview_file(
 ) -> IngestPreviewResponse:
     """Detect the format and show what would be written, without writing."""
     content = await _read_capped(file)
-    records, fmt, conversion, warnings = _convert(
-        content, file.filename or "upload", force_ollama=force_ollama
+    records, fmt, conversion, warnings = await asyncio.to_thread(
+        _convert, content, file.filename or "upload", force_ollama
     )
     splits = auto_split(records)
 

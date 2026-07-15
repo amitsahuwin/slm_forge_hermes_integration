@@ -207,6 +207,74 @@ def _parse_jsonl(text: str, *, expect_chat: bool) -> list[dict]:
     return out
 
 
+# Column-name synonyms recognized as a prompt/completion pair. Shared by the
+# synchronous converter and the constant-RAM streaming ingest path so both
+# normalize CSV rows to identical MLX-trainable shapes.
+_CSV_PROMPT_KEYS = ("prompt", "instruction", "question", "input", "user", "query")
+_CSV_COMPLETION_KEYS = (
+    "completion",
+    "response",
+    "answer",
+    "output",
+    "assistant",
+    "reply",
+)
+
+
+def resolve_csv_mapping(
+    fieldnames: list[str],
+) -> tuple[str | None, str | None]:
+    """Pick the (prompt, completion) columns from a CSV header, if any.
+
+    Returns the first field whose lowercased name matches a known prompt /
+    completion synonym, else ``None`` for that slot.
+    """
+    pkey = next((k for k in fieldnames if k.lower() in _CSV_PROMPT_KEYS), None)
+    ckey = next((k for k in fieldnames if k.lower() in _CSV_COMPLETION_KEYS), None)
+    return pkey, ckey
+
+
+def csv_row_to_mlx(
+    row: dict, pkey: str | None, ckey: str | None
+) -> dict | None:
+    """Map one CSV row (raw ``column -> value`` dict) to an MLX-trainable record.
+
+    * A recognized prompt/completion pair collapses to ``{"prompt", "completion"}``
+      (rows missing either half are skipped → ``None``).
+    * Otherwise every non-empty column is concatenated into a single
+      ``{"text": "col: val\\n..."}`` record.
+    * A wholly empty row yields ``None``.
+    """
+    if pkey and ckey:
+        p = str(row.get(pkey, "")).strip()
+        c = str(row.get(ckey, "")).strip()
+        if p and c:
+            return {"prompt": p, "completion": c}
+        return None
+    parts = [f"{k}: {v}" for k, v in row.items() if str(v).strip()]
+    if parts:
+        return {"text": "\n".join(parts)}
+    return None
+
+
+def is_mlx_trainable(record: object) -> bool:
+    """True if ``record`` matches an mlx_lm.lora training format.
+
+    Supported: chat (``{"messages": [...]}``), completions
+    (``{"prompt": ..., "completion": ...}``), and text (``{"text": ...}``).
+    Anything else is rejected before publishing so the failure surfaces at
+    ingest with a clear message rather than mid-training.
+    """
+    if not isinstance(record, dict):
+        return False
+    msgs = record.get("messages")
+    if isinstance(msgs, list) and msgs:
+        return True
+    if "prompt" in record and "completion" in record:
+        return True
+    return isinstance(record.get("text"), str)
+
+
 def _parse_csv(text: str) -> list[dict]:
     # Detect delimiter (comma vs tab)
     sample = text[:4096]
@@ -219,28 +287,13 @@ def _parse_csv(text: str) -> list[dict]:
     fieldnames = [f.strip() for f in (reader.fieldnames or [])]
     rows = [{(k or "").strip(): (v if v is not None else "") for k, v in r.items()} for r in reader]
 
-    # Map known column pairs → {prompt, completion}
-    prompt_keys = ("prompt", "instruction", "question", "input", "user", "query")
-    completion_keys = ("completion", "response", "answer", "output", "assistant", "reply")
-
-    pkey = next((k for k in fieldnames if k.lower() in prompt_keys), None)
-    ckey = next((k for k in fieldnames if k.lower() in completion_keys), None)
-
-    if pkey and ckey:
-        out: list[dict] = []
-        for r in rows:
-            p, c = str(r.get(pkey, "")).strip(), str(r.get(ckey, "")).strip()
-            if p and c:
-                out.append({"prompt": p, "completion": c})
-        return out
-
-    # Otherwise: concatenate all columns into a single text record per row
-    out_text: list[dict] = []
+    pkey, ckey = resolve_csv_mapping(fieldnames)
+    out: list[dict] = []
     for r in rows:
-        parts = [f"{k}: {v}" for k, v in r.items() if str(v).strip()]
-        if parts:
-            out_text.append({"text": "\n".join(parts)})
-    return out_text
+        record = csv_row_to_mlx(r, pkey, ckey)
+        if record is not None:
+            out.append(record)
+    return out
 
 
 def _parse_paragraphs(text: str) -> list[dict]:

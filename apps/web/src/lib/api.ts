@@ -189,6 +189,29 @@ export type CatalogModelV2 = {
   backends: Partial<Record<TrainerBackendName, CatalogBackendVariant>>;
 };
 
+// ─── Dynamic model registry (Models tab) ───
+
+/** A user-registered model row (GET /api/v1/models/registry). */
+export type RegistryEntry = {
+  key: string;
+  label: string;
+  family: string;
+  size_params: string;
+  backend: TrainerBackendName;
+  model_id: string;
+  status: string;
+  gated: boolean;
+  notes: string;
+};
+
+/** 202 response from POST /api/v1/models/download. */
+export type DownloadResponse = {
+  job_id: string; // "modeldownload:<id>"
+  hf_id: string;
+  target_backend: TrainerBackendName;
+  status: string;
+};
+
 // Phase T — Platform detection for UI defaults
 export type PlatformInfo = {
   os: string;
@@ -434,6 +457,32 @@ export const deletes = {
   run: (id: number) => jdelete(`/api/v1/runs/${id}`),
   session: (id: number) => jdelete(`/api/v1/sessions/${id}`),
   export: (id: number) => jdelete(`/api/v1/exports/${id}`),
+};
+
+// ─── Dynamic model registry (Models tab) ─────────────────────────────
+export const models = {
+  // Merged catalog (built-in seeds + registered rows) — the same feed the
+  // New Run / New Experiment dropdowns consume, so downloaded models appear
+  // everywhere with no extra wiring.
+  listCatalog: () => jget<CatalogModelV2[]>('/api/v1/models/v2'),
+  listRegistry: () => jget<RegistryEntry[]>('/api/v1/models/registry'),
+  // Surfaces the API's `detail.message` on 4xx (e.g. the 422 hf_id hint) so
+  // the form can show it verbatim rather than a generic HTTP error.
+  download: async (hfId: string, backend?: TrainerBackendName): Promise<DownloadResponse> => {
+    const r = await authFetch(`${API_URL}/api/v1/models/download`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hf_id: hfId, ...(backend ? { backend } : {}) }),
+    });
+    if (!r.ok) {
+      let detail = `HTTP ${r.status}`;
+      try { detail = extractDetailMessage(await r.json()) ?? detail; } catch { /* ignore */ }
+      throw new Error(detail);
+    }
+    return (await r.json()) as DownloadResponse;
+  },
+  deleteRegistered: (key: string) =>
+    jdelete(`/api/v1/models/registry/${encodeURIComponent(key)}`),
 };
 
 // ─── PR-C: Auto-fix attempts (admin) ──────────────────────────────────

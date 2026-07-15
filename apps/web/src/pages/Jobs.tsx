@@ -4,8 +4,9 @@ import { API_URL, authFetch } from '../lib/api';
 
 // Phase C.5 — federated Jobs lookup. Accepts composite ids of the form
 // `<kind>:<id>` where kind ∈ {run, session, export, autofix, agent,
-// synth, research, ingest}. The backend (apps/api/routers/jobs.py) returns
-// a uniform shape so this page doesn't have to switch on kind.
+// synth, research, ingest, modeldownload}. The backend
+// (apps/api/routers/jobs.py) returns a uniform shape so this page doesn't
+// have to switch on kind.
 
 type JobDetail = {
   job_id: string;
@@ -17,7 +18,8 @@ type JobDetail = {
     | 'agent'
     | 'synth'
     | 'research'
-    | 'ingest';
+    | 'ingest'
+    | 'modeldownload';
   status: string;
   parent_id: string | null;
   tenant_id: string | null;
@@ -39,6 +41,7 @@ const KIND_HINTS: Record<JobDetail['kind'], string> = {
   synth: 'Dataset synthesis',
   research: 'Market research',
   ingest: 'Large-dataset upload',
+  modeldownload: 'Model registry download',
 };
 
 const STATUS_STYLES: Record<string, string> = {
@@ -61,6 +64,7 @@ const EXAMPLES: { id: string; label: string }[] = [
   { id: 'agent:abc123def456', label: 'Agent run abc123…' },
   { id: 'synth:hex12345', label: 'Synth job hex12345' },
   { id: 'ingest:3', label: 'Large-dataset upload #3' },
+  { id: 'modeldownload:5', label: 'Model download #5' },
 ];
 
 export default function Jobs() {

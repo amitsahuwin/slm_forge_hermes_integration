@@ -27,6 +27,7 @@ Built for M3 Max with 36 GB unified memory. Smaller Apple Silicon Macs work with
 | Live training metrics + ratchet timeline graphs + canary drift chart | ✓ |
 | 4-source dataset ingest (file / URL / web scrape / S3) + Ollama auto-convert | ✓ |
 | Large-file uploads (up to 500 MB) via background ingest jobs, tracked in the Jobs tab | ✓ |
+| Dynamic model registry — register HuggingFace models from the Models tab (no hardcoding) | ✓ |
 | Ollama-driven dataset synthesis (expand 20 examples → 500+) | ✓ |
 | GGUF export with Q4_K_M / Q5_K_M / Q8_0 / F16 quants | ✓ |
 | LangGraph chat UI with structured tool-call cards | ✓ |
@@ -213,7 +214,8 @@ Specs: [`docs/specs/2026-06-29-*.md`](docs/specs/).
 - **Unified Jobs tab.** The aspirational "check Jobs tab" error
   messages now link to a real page. `/jobs?id=<kind>:<id>` accepts
   composite ids (`run:42`, `agent:abc123`, `synth:def456`,
-  `session:7`, `export:9`, `autofix:3`, `research:hex…`, `ingest:3`)
+  `session:7`, `export:9`, `autofix:3`, `research:hex…`, `ingest:3`,
+  `modeldownload:5`)
   and shows one uniform shape with status, error, progress, parent
   links. In-flight jobs (e.g. large-dataset ingest) live-poll every
   2s. Tenant isolation enforced: cross-tenant returns 404, not 403.
@@ -227,6 +229,26 @@ Specs: [`docs/specs/2026-06-29-*.md`](docs/specs/).
   auto-routes by file size). Pre-formatted JSONL/CSV only on the large
   path (no Ollama conversion). Orphaned jobs from an API restart are
   reconciled to `failed` at startup.
+- **Dynamic model registry (Models tab).** The model catalog is no
+  longer hardcoded. Browse the effective catalog (built-in seeds +
+  registered models) and add a model by pasting a HuggingFace repo id.
+  "Download" means **register + validate**: `POST /api/v1/models/download`
+  returns `202` with a `modeldownload:<id>` job that validates the repo
+  via the HF Hub API (using `HF_TOKEN` for gated repos) and persists a
+  **global** catalog entry. Registered models then appear everywhere —
+  New Run and New Experiment dropdowns — via `effective_catalog()`, with
+  no hardcoding. Weights are still fetched by the trainer worker at train
+  time, so the training path is untouched. Registration/removal is
+  admin-only; listing is open. Orphaned jobs are reconciled to `failed`
+  at startup.
+
+  ```bash
+  API=http://localhost:8000; TOKEN=$(make auth-token)
+  curl -s -X POST "$API/api/v1/models/download" \
+    -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+    -d '{"hf_id":"Qwen/Qwen2.5-1.5B-Instruct"}'
+  # → {"job_id":"modeldownload:1", ...}; then GET /api/v1/jobs/modeldownload:1
+  ```
 
 **New env vars (quick reference, 0.8.0)**
 

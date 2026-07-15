@@ -30,8 +30,8 @@ from apps.api.middleware.auth import User
 from apps.api.models.export import Export, ExportStatus
 from apps.api.models.hermes_trace import HermesTrace
 from apps.api.models.ingest_job import IngestJob, IngestStatus
+from apps.api.models.model_download_job import ModelDownloadJob, ModelDownloadStatus
 from apps.api.models.run import Run, RunMethod, RunStatus
-from apps.api.models.session import TrainingSession
 from apps.api.routers.jobs import get_job
 from apps.api.services import auth_settings as auth_settings_module
 from apps.api.services import db as db_module
@@ -290,3 +290,71 @@ def test_get_job_synth_kind_uses_in_memory_registry(engine, monkeypatch):
     assert detail.status == "running"
     assert detail.progress is not None
     assert detail.progress.get("generated") == 25
+
+def _seed_model_download(
+    eng,
+    *,
+    status: ModelDownloadStatus = ModelDownloadStatus.SUCCEEDED,
+    tenant_id: str = "acme",
+    hf_id: str = "Qwen/Qwen2.5-1.5B-Instruct",
+) -> int:
+    with Session(eng) as s:
+        job = ModelDownloadJob(
+            tenant_id=tenant_id,
+            user_id="alice",
+            hf_id=hf_id,
+            target_backend="cuda",
+            status=status,
+            registered_key="qwen2.5-1.5b-instruct" if status == ModelDownloadStatus.SUCCEEDED else None,
+            detected_family="qwen",
+            detected_params="1.5B",
+            detected_arch="Qwen2ForCausalLM",
+            gated=False,
+        )
+        s.add(job)
+        s.commit()
+        s.refresh(job)
+        return job.id or 0
+
+
+def test_get_job_modeldownload_succeeded(engine):
+    jid = _seed_model_download(engine, status=ModelDownloadStatus.SUCCEEDED)
+    with Session(engine) as db:
+        detail = get_job(job_id=f"modeldownload:{jid}", request=_req(_alice()), db=db)
+    assert detail.kind == "modeldownload"
+    assert detail.status == "succeeded"
+    assert detail.parent_id == str(jid)
+    assert detail.progress is not None
+    assert detail.progress["hf_id"] == "Qwen/Qwen2.5-1.5B-Instruct"
+    assert detail.progress["backend"] == "cuda"
+    assert detail.progress["family"] == "qwen"
+    assert detail.progress["registered_key"] == "qwen2.5-1.5b-instruct"
+    # Succeeded → deep link to New Run so the model can be used.
+    assert detail.links["detail"] == "/runs/new"
+
+
+def test_get_job_modeldownload_queued_links_to_models(engine):
+    jid = _seed_model_download(engine, status=ModelDownloadStatus.QUEUED)
+    with Session(engine) as db:
+        detail = get_job(job_id=f"modeldownload:{jid}", request=_req(_alice()), db=db)
+    assert detail.status == "queued"
+    assert detail.links["detail"] == "/models"
+
+
+def test_get_job_modeldownload_unknown_id_returns_404(engine):
+    with Session(engine) as db, pytest.raises(HTTPException) as ei:
+        get_job(job_id="modeldownload:99999", request=_req(_alice()), db=db)
+    assert ei.value.status_code == 404
+
+
+def test_get_job_modeldownload_non_integer_id_returns_400(engine):
+    with Session(engine) as db, pytest.raises(HTTPException) as ei:
+        get_job(job_id="modeldownload:abc", request=_req(_alice()), db=db)
+    assert ei.value.status_code == 400
+
+
+def test_get_job_modeldownload_cross_tenant_is_404(engine):
+    jid = _seed_model_download(engine, tenant_id="other")
+    with Session(engine) as db, pytest.raises(HTTPException) as ei:
+        get_job(job_id=f"modeldownload:{jid}", request=_req(_alice()), db=db)
+    assert ei.value.status_code == 404

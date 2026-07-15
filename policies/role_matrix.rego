@@ -5,7 +5,7 @@
 #
 # Action vocabulary: read | create | update | delete | execute | export
 # Resource vocabulary: dataset | experiment | run | export | log
-#                      | setting | research | chat
+#                      | setting | research | chat | model
 #
 # `update_readme` is a sub-flavor of `update` we only grant to domain
 # experts on datasets — see PLAN.md Phase M.3.
@@ -24,6 +24,9 @@ matrix["admin"] := {
 	"setting":    {"read", "create", "update", "delete"},
 	"research":   {"read", "create", "update", "delete"},
 	"chat":       {"read", "create", "update", "delete"},
+	# Dynamic model registry (Models tab) is global; only admins may
+	# register (create) or remove (delete). Listing is an open read.
+	"model":      {"read", "create", "update", "delete"},
 }
 
 # data_engineer → datasets:CRUD, experiments:CRUD, runs:R+cancel,

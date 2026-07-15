@@ -79,14 +79,17 @@ def _register(eng, **over: object) -> RegisteredModel:
 # POST /download
 # --------------------------------------------------------------------------- #
 @pytest.mark.asyncio
-async def test_download_queues_job(engine) -> None:
+async def test_download_queues_job(engine, monkeypatch: pytest.MonkeyPatch) -> None:
     eng, scheduled = engine
+    # Generic repo → auto-detect follows the host default; pin it for determinism.
+    monkeypatch.setenv("SLM_FORGE_PLATFORM_OS", "linux")
+    monkeypatch.setenv("SLM_FORGE_PLATFORM_HAS_NVIDIA", "true")
     resp = await models_router.download_model(
         request=_req(),
         body=models_router.DownloadRequest(hf_id="Qwen/Qwen2.5-1.5B-Instruct"),
     )
     assert resp.status == "queued"
-    assert resp.target_backend == "cuda"  # auto-detected
+    assert resp.target_backend == "cuda"  # host default (linux+nvidia)
     assert resp.job_id.startswith("modeldownload:")
 
     with Session(eng) as s:

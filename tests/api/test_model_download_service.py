@@ -112,17 +112,38 @@ def _install_api(monkeypatch: pytest.MonkeyPatch, result: object) -> _FakeApi:
 # Pure detection helpers
 # --------------------------------------------------------------------------- #
 @pytest.mark.parametrize(
-    ("hf_id", "expected"),
+    "hf_id",
     [
-        ("mlx-community/Qwen2.5-3B-Instruct-4bit", "mlx"),
-        ("someorg/model-mlx", "mlx"),
-        ("someorg/model-8bit", "mlx"),
-        ("Qwen/Qwen2.5-1.5B-Instruct", "cuda"),
-        ("meta-llama/Llama-3.2-1B-Instruct", "cuda"),
+        "mlx-community/Qwen2.5-3B-Instruct-4bit",
+        "someorg/model-mlx",
+        "someorg/model-8bit",
     ],
 )
-def test_infer_backend(hf_id: str, expected: str) -> None:
-    assert svc.infer_backend(hf_id) == expected
+def test_infer_backend_explicit_mlx_repos_force_mlx(
+    hf_id: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Explicit MLX builds resolve to mlx regardless of host platform.
+    monkeypatch.setenv("SLM_FORGE_PLATFORM_OS", "linux")
+    monkeypatch.setenv("SLM_FORGE_PLATFORM_HAS_NVIDIA", "true")
+    assert svc.infer_backend(hf_id) == "mlx"
+
+
+@pytest.mark.parametrize(
+    "hf_id",
+    ["Qwen/Qwen2.5-1.5B-Instruct", "meta-llama/Llama-3.2-1B-Instruct"],
+)
+def test_infer_backend_generic_repo_follows_host_default(
+    hf_id: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A generic repo works on both backends → follow the host's default.
+    monkeypatch.setenv("SLM_FORGE_PLATFORM_OS", "Darwin")
+    monkeypatch.setenv("SLM_FORGE_PLATFORM_ARCH", "arm64")
+    monkeypatch.delenv("SLM_FORGE_PLATFORM_HAS_NVIDIA", raising=False)
+    assert svc.infer_backend(hf_id) == "mlx"
+
+    monkeypatch.setenv("SLM_FORGE_PLATFORM_OS", "linux")
+    monkeypatch.setenv("SLM_FORGE_PLATFORM_HAS_NVIDIA", "true")
+    assert svc.infer_backend(hf_id) == "cuda"
 
 
 def test_human_params() -> None:

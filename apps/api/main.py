@@ -484,54 +484,13 @@ async def platform() -> PlatformInfo:
     When running in Docker, reads from env vars (SLM_FORGE_PLATFORM_*) set by
     docker-compose based on host detection. Falls back to in-process detection.
     """
-    import os
-    import platform as py_platform
-    import subprocess
+    from apps.api.services.platform_detect import detect
 
-    # Try env vars first (set by docker-compose based on host detection)
-    env_os = os.getenv("SLM_FORGE_PLATFORM_OS")
-    env_has_nvidia = os.getenv("SLM_FORGE_PLATFORM_HAS_NVIDIA", "").lower() == "true"
-
-    if env_os:
-        # Use env vars (Docker container mode)
-        os_name = env_os.lower()
-        arch = os.getenv("SLM_FORGE_PLATFORM_ARCH", py_platform.machine().lower())
-        has_nvidia = env_has_nvidia
-    else:
-        # Fall back to in-process detection (bare-metal mode)
-        os_name = py_platform.system().lower()
-        arch = py_platform.machine().lower()
-        has_nvidia = False
-        if os_name == "linux":
-            try:
-                result = subprocess.run(
-                    ["nvidia-smi", "-L"],
-                    capture_output=True,
-                    timeout=2,
-                    check=False
-                )
-                has_nvidia = result.returncode == 0 and b"GPU" in result.stdout
-            except (FileNotFoundError, subprocess.TimeoutExpired):
-                has_nvidia = False
-
-    # Determine default backend
-    if os_name == "darwin":
-        # macOS → mlx (works on Apple Silicon M1/M2/M3)
-        default_backend = "mlx"
-        platform_label = f"macOS ({arch})"
-    elif os_name == "linux" and has_nvidia:
-        # Linux + NVIDIA → cuda
-        default_backend = "cuda"
-        platform_label = f"Linux ({arch}) + NVIDIA GPU"
-    else:
-        # Fallback to cuda for Linux without GPU (will fail gracefully)
-        default_backend = "cuda"
-        platform_label = f"Linux ({arch})"
-
+    facts = detect()
     return PlatformInfo(
-        os=os_name,
-        arch=arch,
-        has_nvidia_gpu=has_nvidia,
-        default_backend=default_backend,
-        platform_label=platform_label,
+        os=facts.os,
+        arch=facts.arch,
+        has_nvidia_gpu=facts.has_nvidia_gpu,
+        default_backend=facts.default_backend,
+        platform_label=facts.platform_label,
     )

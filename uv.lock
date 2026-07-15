@@ -3340,6 +3340,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "httpx" },
     { name = "huey" },
+    { name = "huggingface-hub" },
     { name = "prometheus-client" },
     { name = "pydantic" },
     { name = "python-dotenv" },
@@ -3385,7 +3386,6 @@ research = [
 ]
 trainer = [
     { name = "datasets" },
-    { name = "huggingface-hub" },
     { name = "mlx", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
     { name = "mlx-lm", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
     { name = "safetensors" },
@@ -3426,7 +3426,7 @@ requires-dist = [
     { name = "gguf", marker = "extra == 'exporter'", specifier = ">=0.6" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "huey", specifier = ">=2.5" },
-    { name = "huggingface-hub", marker = "extra == 'trainer'", specifier = ">=0.26" },
+    { name = "huggingface-hub", specifier = ">=0.26" },
     { name = "langchain-core", marker = "extra == 'chat'", specifier = ">=0.3.20" },
     { name = "langchain-ollama", marker = "extra == 'chat'", specifier = ">=0.2.0" },
     { name = "langgraph", marker = "extra == 'chat'", specifier = ">=0.2.50" },

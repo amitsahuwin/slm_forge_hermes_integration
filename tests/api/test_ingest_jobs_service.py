@@ -151,7 +151,60 @@ async def test_run_csv_input(env: None) -> None:
     assert (ds / "train.jsonl").exists()
 
 
+@pytest.mark.asyncio
+async def test_run_csv_custom_columns_produces_trainable_text(env: None) -> None:
+    # Regression for dataset `sx_ds`: a CSV whose columns are NOT a known
+    # prompt/completion pair must publish MLX `{text}` records (trainable),
+    # not raw column dicts (which mlx_lm.lora rejects at train time).
+    header = "issue_description,fix_provided,priority_value\n"
+    body = "".join(f"issue {i},fix {i},high\n" for i in range(12))
+    data = (header + body).encode()
+    raw_key = await _seed_raw(data, artifact_id="ingest-7", filename="raw.csv")
+    job_id = _new_job(raw_key, name="sxlike", fmt="csv", raw_bytes=len(data))
+
+    await _run_ingest_job(job_id)
+
+    job = _reload(job_id)
+    assert job.status == IngestStatus.SUCCEEDED
+    assert job.records_total == 12
+
+    ds = ip_module.user_datasets_dir(_IDENTITY) / "sxlike"
+    import json
+
+    all_lines = (
+        _lines(ds / "train.jsonl")
+        + _lines(ds / "valid.jsonl")
+        + _lines(ds / "canary.jsonl")
+    )
+    parsed = [json.loads(ln) for ln in all_lines]
+    assert all(set(r.keys()) == {"text"} for r in parsed)
+    assert all(r["text"].startswith("issue_description: issue ") for r in parsed)
+
+
 # ─────────────────────────── failure paths ───────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_run_untrainable_jsonl_schema_fails(env: None) -> None:
+    # JSONL records that parse fine but match no MLX training format (no
+    # messages / prompt+completion / text) must fail the ingest job with a
+    # clear, actionable error instead of publishing an untrainable dataset.
+    data = b"".join(
+        (b'{"issue_description":"i%d","fix":"f%d"}\n' % (i, i)) for i in range(12)
+    )
+    raw_key = await _seed_raw(data, artifact_id="ingest-8", filename="raw.jsonl")
+    job_id = _new_job(raw_key, name="badschema", fmt="jsonl_chat", raw_bytes=len(data))
+
+    await _run_ingest_job(job_id)
+
+    job = _reload(job_id)
+    assert job.status == IngestStatus.FAILED
+    assert job.error_message
+    assert "MLX" in job.error_message or "format" in job.error_message.lower()
+    # No dataset published; raw kept for debugging; staging cleaned.
+    assert not (ip_module.user_datasets_dir(_IDENTITY) / "badschema").exists()
+    assert await _raw_present(raw_key)
+    assert not (ip_module.user_staging_dir(_IDENTITY) / f"ingest-{job_id}").exists()
 
 
 @pytest.mark.asyncio

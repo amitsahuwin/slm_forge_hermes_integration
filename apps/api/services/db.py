@@ -51,6 +51,8 @@ _RUN_MIGRATIONS: list[tuple[str, str]] = [
 # Phase U — sessions table forward-migrations (backend pinned per session)
 _SESSION_MIGRATIONS: list[tuple[str, str]] = [
     ("trainer_backend", "TEXT DEFAULT 'mlx'"),
+    # Memory-safe default; pre-existing sessions get it ON like new ones.
+    ("grad_checkpoint", "INTEGER DEFAULT 1"),
     # Phase C — multi-tenancy (see _RUN_MIGRATIONS for the same shape).
     ("tenant_id", "TEXT"),
     ("user_id", "TEXT"),

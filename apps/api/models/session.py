@@ -45,6 +45,9 @@ class TrainingSession(SQLModel, table=True):
     learning_rate: float = 1e-4
     num_layers: int = 16
     max_seq_length: int = 2048
+    # Threaded onto every child Run by the ratchet loop. Default ON — the
+    # memory-safe choice on unified-memory hosts (see Run model).
+    grad_checkpoint: bool = True
 
     # Session-level controls
     max_rounds: int = 8

@@ -37,7 +37,9 @@ class Run(SQLModel, table=True):
     learning_rate: float = 1.0e-4
     num_layers: int = 16
     max_seq_length: int = 2048
-    grad_checkpoint: bool = False
+    # Default ON: activation memory scales with seq² and a single long-row
+    # dataset OOMs Apple Silicon (Metal) without it — see run #26 post-mortem.
+    grad_checkpoint: bool = True
     seed: int = 0
 
     # Phase O — which training backend executes this run ("mlx" | "cuda" | ...).

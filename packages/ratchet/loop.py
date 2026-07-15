@@ -211,7 +211,9 @@ def _run_session_inner(session_id: int, api: API) -> None:
             # tenant/user ownership onto the child run.
             "session_id": session_id,
             **hp,
-            "grad_checkpoint": False,
+            # Session-level choice threaded onto each child run; legacy rows
+            # without the column fall back to the memory-safe default.
+            "grad_checkpoint": session.get("grad_checkpoint", True),
             "seed": 0,
         }
         created = api.create_run(run_payload)

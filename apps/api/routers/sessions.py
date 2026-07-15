@@ -32,6 +32,7 @@ class SessionCreate(BaseModel):
     learning_rate: float = 1e-4
     num_layers: int = 16
     max_seq_length: int = 2048
+    grad_checkpoint: bool = True
     max_rounds: int = 8
     plateau_patience: int = 3
     min_delta: float = 0.005

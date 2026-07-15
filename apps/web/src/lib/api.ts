@@ -134,6 +134,7 @@ export type TrainingSession = {
   learning_rate: number;
   num_layers: number;
   max_seq_length: number;
+  grad_checkpoint: boolean;
   max_rounds: number;
   plateau_patience: number;
   min_delta: number;

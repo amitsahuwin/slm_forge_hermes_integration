@@ -276,3 +276,37 @@ test_viewer_cannot_create_run if {
 		"context":  {"tenant_id": "acme", "user_id": "v1"},
 	}
 }
+
+# ─── Dynamic model registry (Models tab) ────────────────────────────────────
+
+test_admin_can_create_model if {
+	allow with input as {
+		"user":     {"id": "alice", "roles": ["admin"], "groups": []},
+		"action":   "create",
+		"resource": "model",
+	}
+}
+
+test_admin_can_delete_model if {
+	allow with input as {
+		"user":     {"id": "alice", "roles": ["admin"], "groups": []},
+		"action":   "delete",
+		"resource": "model",
+	}
+}
+
+test_data_engineer_cannot_create_model if {
+	not allow with input as {
+		"user":     {"id": "bob", "roles": ["data_engineer"], "groups": []},
+		"action":   "create",
+		"resource": "model",
+	}
+}
+
+test_viewer_cannot_delete_model if {
+	not allow with input as {
+		"user":     {"id": "v1", "roles": ["viewer"], "groups": []},
+		"action":   "delete",
+		"resource": "model",
+	}
+}

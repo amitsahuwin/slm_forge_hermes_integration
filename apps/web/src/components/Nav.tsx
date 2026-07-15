@@ -20,6 +20,7 @@ export default function Nav() {
     runs: useCanSeeNav('runs'),
     exports: useCanSeeNav('exports'),
     datasets: useCanSeeNav('datasets'),
+    models: useCanSeeNav('models'),
     maintenance: useCanSeeNav('maintenance'),
     chat: useCanSeeNav('chat'),
     research: useCanSeeNav('research'),
@@ -55,6 +56,11 @@ export default function Nav() {
             {show.runs && (
               <NavLink to="/runs" className={({ isActive }) => `${link} ${isActive ? activeLink : ''}`}>
                 Runs
+              </NavLink>
+            )}
+            {show.models && (
+              <NavLink to="/models" className={({ isActive }) => `${link} ${isActive ? activeLink : ''}`}>
+                Models
               </NavLink>
             )}
             {show.experiments && (

@@ -74,6 +74,21 @@ const TABS: TabFeature[] = [
     accent: 'from-sky-500/15 via-sky-500/5 to-transparent',
   },
   {
+    emoji: '🗂️',
+    name: 'Models',
+    path: '/models',
+    purpose: 'The model registry. Download any HuggingFace repo; it appears in Runs + Experiments automatically.',
+    golden: [
+      'Open Models',
+      'Paste a HuggingFace id (e.g. Qwen/Qwen3-1.7B)',
+      'Pick a backend or leave it on Auto-detect',
+      'Download — track it in the Jobs tab',
+    ],
+    hermes:
+      'No LLM. Validates the repo via the HF Hub API + records metadata; weights download on the worker at train time.',
+    accent: 'from-cyan-500/15 via-cyan-500/5 to-transparent',
+  },
+  {
     emoji: '📦',
     name: 'Exports',
     path: '/exports',
@@ -541,7 +556,7 @@ export default function Product() {
           </div>
           <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
             {[
-              ['11', 'tabs'],
+              ['12', 'tabs'],
               ['14', 'Hermes skills'],
               ['~30 s', 'first run'],
               ['100 %', 'local'],
@@ -586,7 +601,7 @@ export default function Product() {
             <SectionHeading
               id="features"
               eyebrow="What's inside"
-              title="The 11 tabs, each with a job to do."
+              title="The 12 tabs, each with a job to do."
               subtitle="Every tab here has a single, clear purpose. Click any card to jump straight in."
             />
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">

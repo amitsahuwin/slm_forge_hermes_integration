@@ -11,9 +11,12 @@ See ``docs/specs/PHASE_P_SPEC.md``.
 """
 from __future__ import annotations
 
+import logging
 import os
 
 from pydantic import BaseModel
+
+log = logging.getLogger(__name__)
 
 ENFORCE_ENV = "SLM_FORGE_ENFORCE_CATALOG"
 _FALSY = {"0", "false", "no", "off"}
@@ -207,13 +210,88 @@ CATALOG_V2: list[CatalogModel] = [
 _BY_KEY: dict[str, CatalogModel] = {m.key: m for m in CATALOG_V2}
 
 
+def _registered_as_catalog_models() -> list[CatalogModel]:
+    """Load user-registered models from the DB as ``CatalogModel`` entries.
+
+    The DB import is lazy so this module (imported by routers at startup) never
+    triggers an import cycle with ``services.db``. If the registry is
+    unavailable (e.g. queried before the table exists) we log and degrade to the
+    built-in seeds rather than breaking catalog listing/validation.
+    """
+    try:
+        from sqlmodel import Session, select
+
+        from apps.api.models.registered_model import RegisteredModel
+        from apps.api.services import db
+
+        with Session(db.engine) as s:
+            rows = list(s.exec(select(RegisteredModel)))
+    except Exception as exc:  # pragma: no cover - registry unavailable
+        log.warning("model registry unavailable; using built-in catalog only: %s", exc)
+        return []
+
+    return [
+        CatalogModel(
+            key=r.key,
+            label=r.label,
+            family=r.family,
+            size_params=r.size_params,
+            recommended_method=r.recommended_method,
+            backends={
+                r.backend: BackendVariant(
+                    model_id=r.model_id,
+                    min_memory_gb=r.min_memory_gb,
+                    quant=r.quant,
+                    status=r.status,  # type: ignore[arg-type]
+                    gated=r.gated,
+                    notes=r.notes,
+                )
+            },
+        )
+        for r in rows
+    ]
+
+
+def effective_catalog() -> list[CatalogModel]:
+    """Built-in seeds merged with the global DB registry.
+
+    Registered entries are merged by ``key``: a new key is appended; a key that
+    collides with a seed contributes/overrides only that single backend variant
+    so a registration extends an existing logical model without dropping its
+    other backends. Seed order is preserved; registered-only models follow.
+    """
+    merged: dict[str, CatalogModel] = {m.key: m.model_copy(deep=True) for m in CATALOG_V2}
+    order: list[str] = [m.key for m in CATALOG_V2]
+    for reg in _registered_as_catalog_models():
+        existing = merged.get(reg.key)
+        if existing is None:
+            merged[reg.key] = reg
+            order.append(reg.key)
+        else:
+            existing.backends.update(reg.backends)
+    return [merged[k] for k in order]
+
+
 def get_model_by_key(key: str) -> CatalogModel | None:
-    return _BY_KEY.get(key)
+    seed = _BY_KEY.get(key)
+    if seed is not None:
+        return seed
+    for m in _registered_as_catalog_models():
+        if m.key == key:
+            return m
+    return None
 
 
 def find_by_model_id(model_id: str) -> tuple[CatalogModel, str] | None:
-    """Match a physical checkpoint id to (logical model, backend name)."""
+    """Match a physical checkpoint id to (logical model, backend name).
+
+    Seeds are checked first (DB-free hot path), then the registry overlay.
+    """
     for m in CATALOG_V2:
+        for backend_name, variant in m.backends.items():
+            if variant.model_id == model_id:
+                return m, backend_name
+    for m in _registered_as_catalog_models():
         for backend_name, variant in m.backends.items():
             if variant.model_id == model_id:
                 return m, backend_name
@@ -221,7 +299,11 @@ def find_by_model_id(model_id: str) -> tuple[CatalogModel, str] | None:
 
 
 def allowed_model_ids() -> set[str]:
-    return {v.model_id for m in CATALOG_V2 for v in m.backends.values()}
+    ids = {v.model_id for m in CATALOG_V2 for v in m.backends.values()}
+    ids |= {
+        v.model_id for m in _registered_as_catalog_models() for v in m.backends.values()
+    }
+    return ids
 
 
 def default_model_id(backend: str = "mlx") -> str:

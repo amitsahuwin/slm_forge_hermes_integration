@@ -113,3 +113,104 @@ def test_enforcement_escape_hatch(
     monkeypatch.setenv("SLM_FORGE_ENFORCE_CATALOG", off)
     assert mc.validate_run_request("totally/made-up", "mlx") is None
     assert mc.validate_run_request("mlx-community/gemma-3n-E2B-it-bf16", "mlx") is None
+
+
+# ---------------------------------------------------------------------------
+# Dynamic registry overlay — user-registered models merged with the seeds
+# ---------------------------------------------------------------------------
+
+from collections.abc import Iterator  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+from sqlmodel import Session, SQLModel, create_engine  # noqa: E402
+
+from apps.api.models.registered_model import RegisteredModel  # noqa: E402
+from apps.api.services import db as db_module  # noqa: E402
+
+
+@pytest.fixture()
+def db_engine(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    eng = create_engine(f"sqlite:///{tmp_path / 'catalog.db'}")
+    SQLModel.metadata.create_all(eng)
+    monkeypatch.setattr(db_module, "engine", eng)
+    monkeypatch.delenv("SLM_FORGE_ENFORCE_CATALOG", raising=False)
+    yield
+    eng.dispose()
+
+
+def _register(**over: object) -> RegisteredModel:
+    row = RegisteredModel(
+        key="qwen2.5-1.5b-instruct",
+        label="Qwen 2.5 1.5B Instruct",
+        family="qwen",
+        size_params="1.5B",
+        backend="cuda",
+        model_id="Qwen/Qwen2.5-1.5B-Instruct",
+        min_memory_gb=6,
+        quant="nf4",
+        status="untested",
+        gated=False,
+        notes="registered via test",
+        created_by_user_id="alice",
+        created_by_tenant_id="acme",
+    )
+    for k, v in over.items():
+        setattr(row, k, v)
+    with Session(db_module.engine) as s:
+        s.add(row)
+        s.commit()
+    return row
+
+
+def test_seeds_present_without_registry(db_engine: None) -> None:
+    keys = {m.key for m in mc.effective_catalog()}
+    assert {m.key for m in mc.CATALOG_V2} <= keys
+
+
+def test_registered_model_appears_in_catalog(db_engine: None) -> None:
+    _register()
+    hit = mc.find_by_model_id("Qwen/Qwen2.5-1.5B-Instruct")
+    assert hit is not None
+    model, backend = hit
+    assert model.key == "qwen2.5-1.5b-instruct"
+    assert backend == "cuda"
+    assert "Qwen/Qwen2.5-1.5B-Instruct" in mc.allowed_model_ids()
+    assert mc.get_model_by_key("qwen2.5-1.5b-instruct") is not None
+
+
+def test_validate_accepts_registered_model(db_engine: None) -> None:
+    _register()
+    assert mc.validate_run_request("Qwen/Qwen2.5-1.5B-Instruct", "cuda") is None
+
+
+def test_validate_rejects_backend_mismatch_registered(db_engine: None) -> None:
+    _register()  # cuda variant only
+    err = mc.validate_run_request("Qwen/Qwen2.5-1.5B-Instruct", "mlx")
+    assert err is not None
+
+
+def test_validate_rejects_broken_registered(db_engine: None) -> None:
+    _register(status="broken", notes="does not converge")
+    err = mc.validate_run_request("Qwen/Qwen2.5-1.5B-Instruct", "cuda")
+    assert err is not None and "broken" in err.lower()
+
+
+def test_registered_backend_merges_into_existing_seed_key(db_engine: None) -> None:
+    seed = mc.CATALOG_V2[0]
+    other_backend = "cuda" if "mlx" in seed.backends else "mlx"
+    _register(key=seed.key, backend=other_backend, model_id="registered/extra-variant")
+    merged = {m.key: m for m in mc.effective_catalog()}[seed.key]
+    assert set(seed.backends) <= set(merged.backends)
+    assert other_backend in merged.backends
+
+
+def test_falls_back_to_seeds_when_registry_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Boom:
+        def __getattr__(self, _name: str) -> object:
+            raise RuntimeError("registry unavailable")
+
+    monkeypatch.setattr(db_module, "engine", _Boom())
+    keys = {m.key for m in mc.effective_catalog()}
+    assert {m.key for m in mc.CATALOG_V2} <= keys

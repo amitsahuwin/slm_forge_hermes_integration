@@ -34,10 +34,11 @@ from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from apps.api.middleware.auth import requires
-from apps.api.models.autofix import AutoFixAttempt, AutoFixStatus
+from apps.api.models.autofix import AutoFixAttempt
 from apps.api.models.export import Export
 from apps.api.models.hermes_trace import HermesTrace
 from apps.api.models.ingest_job import IngestJob
+from apps.api.models.model_download_job import ModelDownloadJob
 from apps.api.models.run import Run
 from apps.api.models.session import TrainingSession
 from apps.api.services.db import get_session
@@ -51,10 +52,12 @@ SessionDep = Annotated[Session, Depends(get_session)]
 
 
 JobKind = Literal[
-    "run", "session", "export", "autofix", "agent", "synth", "research", "ingest"
+    "run", "session", "export", "autofix", "agent", "synth", "research",
+    "ingest", "modeldownload",
 ]
 _VALID_KINDS: set[str] = {
-    "run", "session", "export", "autofix", "agent", "synth", "research", "ingest"
+    "run", "session", "export", "autofix", "agent", "synth", "research",
+    "ingest", "modeldownload",
 }
 
 
@@ -197,7 +200,7 @@ def _resolve_export(xid: str, identity: Identity, db: Session) -> JobDetail:
         error=getattr(e, "error_message", None),
         summary=f"Export of run {e.run_id}",
         progress=None,
-        links={"detail": f"/exports", "run": f"/runs/{e.run_id}"},
+        links={"detail": "/exports", "run": f"/runs/{e.run_id}"},
     )
 
 
@@ -248,6 +251,53 @@ def _resolve_ingest(iid: str, identity: Identity, db: Session) -> JobDetail:
             "format": j.detected_format,
         },
         links={"detail": detail_link},
+    )
+
+
+def _resolve_model_download(mid: str, identity: Identity, db: Session) -> JobDetail:
+    """Look up a HuggingFace model-registration job.
+
+    Tenant-scoped via ``scope_query`` (cross-tenant → 404). Progress surfaces
+    the detected metadata; the deep link points at the Models tab (or the
+    New Run page once the model is registered and usable).
+    """
+    try:
+        job_pk = int(mid)
+    except ValueError as e:
+        raise HTTPException(400, "modeldownload id must be an integer") from e
+    rows = list(
+        db.exec(
+            scope_query(select(ModelDownloadJob), identity, ModelDownloadJob).where(
+                ModelDownloadJob.id == job_pk
+            )
+        ).all()
+    )
+    if not rows:
+        raise HTTPException(404, f"modeldownload:{mid} not found")
+    j = rows[0]
+    status = j.status.value if hasattr(j.status, "value") else str(j.status)
+    detail_link = "/runs/new" if status == "succeeded" else "/models"
+    return JobDetail(
+        job_id=f"modeldownload:{j.id}",
+        kind="modeldownload",
+        status=status,
+        parent_id=str(j.id),
+        tenant_id=j.tenant_id,
+        user_id=j.user_id,
+        started_at=j.started_at.isoformat() if j.started_at else None,
+        completed_at=j.completed_at.isoformat() if j.completed_at else None,
+        error=j.error_message,
+        summary=f"Register '{j.hf_id}' ({j.target_backend})",
+        progress={
+            "hf_id": j.hf_id,
+            "backend": j.target_backend,
+            "family": j.detected_family,
+            "params": j.detected_params,
+            "arch": j.detected_arch,
+            "gated": j.gated,
+            "registered_key": j.registered_key,
+        },
+        links={"detail": detail_link, "models": "/models"},
     )
 
 
@@ -390,6 +440,7 @@ _RESOLVERS = {
     "session": _resolve_session,
     "export": _resolve_export,
     "ingest": _resolve_ingest,
+    "modeldownload": _resolve_model_download,
     "autofix": _resolve_autofix,
     "agent": _resolve_agent,
     "synth": _resolve_synth,

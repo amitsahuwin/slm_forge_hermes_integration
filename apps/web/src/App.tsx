@@ -15,6 +15,7 @@ import Experiments from './pages/Experiments';
 import Exports from './pages/Exports';
 import Jobs from './pages/Jobs';
 import Maintenance from './pages/Maintenance';
+import Models from './pages/Models';
 import NewDatasetV2 from './pages/NewDatasetV2';
 import NewExperiment from './pages/NewExperiment';
 import NewRun from './pages/NewRun';
@@ -53,6 +54,7 @@ export default function App() {
               <Route path="/datasets" element={<Datasets />} />
               <Route path="/datasets/new" element={<NewDatasetV2 />} />
               <Route path="/datasets/:name" element={<DatasetDetail />} />
+              <Route path="/models" element={<Models />} />
               <Route path="/maintenance" element={<Maintenance />} />
               <Route path="/chat" element={<Chat />} />
               <Route path="/chat/:cid" element={<Chat />} />

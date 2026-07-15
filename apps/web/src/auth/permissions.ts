@@ -18,7 +18,8 @@ export type Resource =
   | 'log'
   | 'setting'
   | 'research'
-  | 'chat';
+  | 'chat'
+  | 'model';
 
 type Matrix = Record<string, Partial<Record<Resource, ReadonlySet<Action>>>>;
 
@@ -32,6 +33,9 @@ const ROLE_MATRIX: Matrix = {
     setting:    new Set(['read', 'create', 'update', 'delete']),
     research:   new Set(['read', 'create', 'update', 'delete']),
     chat:       new Set(['read', 'create', 'update', 'delete']),
+    // Dynamic model registry (Models tab) is global; only admins may
+    // register (create) or remove (delete). Listing is an open read.
+    model:      new Set(['read', 'create', 'update', 'delete']),
   },
   data_engineer: {
     dataset:    new Set(['read', 'create', 'update', 'delete']),
@@ -115,6 +119,7 @@ export type NavKey =
   | 'runs'
   | 'exports'
   | 'datasets'
+  | 'models'
   | 'maintenance'
   | 'chat'
   | 'research'
@@ -129,6 +134,9 @@ const NAV_TO_PERM: Record<NavKey, { action: Action; resource: Resource } | 'alwa
   runs: { action: 'read', resource: 'run' },
   exports: { action: 'read', resource: 'export' },
   datasets: { action: 'read', resource: 'dataset' },
+  // Models registry listing is an open read for every authenticated user;
+  // the download/delete controls are gated separately on (create|delete, model).
+  models: 'always',
   maintenance: { action: 'read', resource: 'setting' },
   chat: { action: 'read', resource: 'chat' },
   research: { action: 'read', resource: 'research' },

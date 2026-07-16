@@ -212,6 +212,63 @@ def _parse_jsonl(text: str, *, expect_chat: bool) -> list[dict]:
     return out
 
 
+_CSV_CANDIDATE_DELIMITERS = (",", ";", "\t", "|")
+
+
+def _trim_trailing_empty(row: list[str]) -> list[str]:
+    end = len(row)
+    while end and not row[end - 1].strip():
+        end -= 1
+    return row[:end]
+
+
+def _parse_with_delimiter(text: str, delimiter: str) -> tuple[list[str], list[list[str]]]:
+    """Return (header, body_rows) with trailing empty columns trimmed."""
+    dialect = csv.excel
+    raw = [
+        _trim_trailing_empty(row)
+        for row in csv.reader(io.StringIO(text), dialect=dialect, delimiter=delimiter)
+        if row and any(f.strip() for f in row)
+    ]
+    if not raw:
+        return [], []
+    header = [h.strip() for h in raw[0]]
+    return header, raw[1:]
+
+
+def _pick_delimiter(text: str) -> tuple[list[str], list[list[str]], str]:
+    """Try Sniffer's guess, then fall back to whichever candidate delimiter
+    yields the fewest header-vs-row mismatches. Returns (header, body_rows,
+    chosen_delimiter). Ties break in favour of the earlier candidate — which
+    keeps comma the default for clean comma-CSVs."""
+    sample = text[:4096]
+    order: list[str] = []
+    try:
+        sniffed = csv.Sniffer().sniff(sample, delimiters="".join(_CSV_CANDIDATE_DELIMITERS)).delimiter
+        if sniffed in _CSV_CANDIDATE_DELIMITERS:
+            order.append(sniffed)
+    except csv.Error:
+        pass
+    for d in _CSV_CANDIDATE_DELIMITERS:
+        if d not in order:
+            order.append(d)
+
+    best: tuple[int, int, list[str], list[list[str]], str] | None = None  # (mismatches, -body, ...)
+    for d in order:
+        header, body = _parse_with_delimiter(text, d)
+        if not header or len(header) < 2:
+            continue
+        mismatches = sum(1 for row in body if len(row) != len(header))
+        # Prefer fewer mismatches; on tie prefer earlier candidate (more body rows survive).
+        score = (mismatches, -len(body))
+        if best is None or score < best[:2]:
+            best = (mismatches, -len(body), header, body, d)
+    if best is None:
+        return [], [], order[0] if order else ","
+    _mismatches, _neg_body, header, body, chosen = best
+    return header, body, chosen
+
+
 def csv_to_chat(
     text: str,
     *,
@@ -222,28 +279,25 @@ def csv_to_chat(
     Spec: docs/specs/PHASE_INGEST_CSV_CHAT_SPEC.md. Column mapping is
     mapped-or-fail (heuristic → Hermes → ``MappingError``); rows are cleaned
     with per-reason drop counts, and ``DropThresholdError`` is raised when
-    more than half the data rows are unusable.
+    more than half the data rows are unusable. Excel/pandas trailing-empty
+    columns are normalized before comparing widths, and if the sniffed
+    delimiter yields ≥50% mismatch we retry with ``;``, tab, and ``|``.
     """
-    sample = text[:4096]
-    try:
-        dialect = csv.Sniffer().sniff(sample, delimiters=",\t;|")
-    except csv.Error:
-        dialect = csv.excel  # type: ignore[assignment]
-
-    raw_rows = [
-        row
-        for row in csv.reader(io.StringIO(text), dialect=dialect)
-        if row and any(f.strip() for f in row)
-    ]
-    if not raw_rows:
+    header, body_rows, _delimiter = _pick_delimiter(text)
+    if not header:
         raise csv_chat.MappingError("CSV contains no rows.")
-    header = [h.strip() for h in raw_rows[0]]
 
-    # None marks a field-count-vs-header mismatch (dropped, counted below).
-    rows: list[dict | None] = [
-        dict(zip(header, row, strict=True)) if len(row) == len(header) else None
-        for row in raw_rows[1:]
-    ]
+    hcount = len(header)
+    # ``None`` marks a field-count-vs-header mismatch (dropped, counted below).
+    example_bad_width: int | None = None
+    rows: list[dict | None] = []
+    for row in body_rows:
+        if len(row) == hcount:
+            rows.append(dict(zip(header, row, strict=True)))
+        else:
+            if example_bad_width is None:
+                example_bad_width = len(row)
+            rows.append(None)
 
     samples = [r for r in rows if r is not None][:5]
     resolver = (
@@ -261,7 +315,17 @@ def csv_to_chat(
         if record is not None:
             records.append(record)
 
-    cleaner.stats.check_threshold()
+    try:
+        cleaner.stats.check_threshold()
+    except csv_chat.DropThresholdError as exc:
+        if cleaner.stats.dropped.get("field_mismatch") and example_bad_width is not None:
+            hint = (
+                f" Header has {hcount} column(s); example bad row has "
+                f"{example_bad_width} column(s). Check for a trailing comma "
+                "in the header or an unquoted comma inside a cell."
+            )
+            raise csv_chat.DropThresholdError(str(exc) + hint) from exc
+        raise
     return records, mapping, cleaner.stats
 
 

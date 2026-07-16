@@ -271,3 +271,55 @@ def test_csv_to_chat_ambiguous_uses_resolver() -> None:
     assert calls == [["col_a", "col_b"]]
     assert mapping.method == "hermes"
     assert len(records) == 8
+
+
+# ─────────────────────────── parser robustness ───────────────────────────
+
+
+def test_csv_to_chat_trailing_empty_header_column_normalizes() -> None:
+    # Excel/pandas often export a stray trailing comma on the header row.
+    # Without normalization, every data row would be a field-count mismatch.
+    from packages.dataset_ingest.converter import csv_to_chat
+
+    text = (
+        "issue_description,fix_provided,\n"
+        + "".join(f"trouble ticket {i} details,resolution {i} applied\n" for i in range(10))
+    )
+    records, mapping, stats = csv_to_chat(text)
+    assert stats.dropped.get("field_mismatch", 0) == 0
+    assert len(records) == 10
+    assert mapping.prompt_col == "issue_description"
+
+
+def test_csv_to_chat_wrong_delimiter_falls_back_to_semicolon() -> None:
+    # File is semicolon-delimited but has commas inside prose cells so
+    # Sniffer sometimes picks ',' — leaving 1-field rows that mismatch the
+    # 2-field header. csv_to_chat retries alternate delimiters when the
+    # initial pick fails ≥50% of rows.
+    from packages.dataset_ingest.converter import csv_to_chat
+
+    header = "issue_description;fix_provided\n"
+    body = "".join(
+        f"disk full, host{i}, above threshold;cleaned logs, extended LV\n" for i in range(10)
+    )
+    records, mapping, stats = csv_to_chat(header + body)
+    assert stats.dropped.get("field_mismatch", 0) == 0
+    assert len(records) == 10
+    assert mapping.prompt_col == "issue_description"
+
+
+def test_csv_to_chat_field_mismatch_error_shows_column_counts() -> None:
+    # When rows still don't match after normalization + delimiter retry,
+    # the DropThresholdError message must include the header column count
+    # and an example row's column count so the user can fix the source.
+    from packages.dataset_ingest.converter import csv_to_chat
+
+    text = (
+        "issue_description,fix_provided,priority\n"
+        + "".join(f"prose issue {i},prose fix {i}\n" for i in range(10))  # 2 cols, header has 3
+    )
+    with pytest.raises(DropThresholdError) as excinfo:
+        csv_to_chat(text)
+    msg = str(excinfo.value)
+    assert "3 column" in msg  # header count surfaced
+    assert "2 column" in msg  # example row count surfaced

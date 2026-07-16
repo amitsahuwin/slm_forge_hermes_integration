@@ -67,7 +67,7 @@ async def _drive_with_blocking_convert(coro_factory) -> None:
         # If the loop is free, the releaser runs and sets this promptly.
         if not release.wait(timeout=2.0):
             raise AssertionError("event loop was blocked: releaser never ran")
-        return _RECORDS, "jsonl_chat", "ollama", []
+        return _RECORDS, "jsonl_chat", "ollama", [], None
 
     async def _releaser() -> None:
         while not convert_started.is_set():

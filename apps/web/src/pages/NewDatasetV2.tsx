@@ -4,6 +4,12 @@ import { API_URL, authFetch } from '../lib/api';
 
 // ─── Types ─────────────────────────────────────────────────────────
 
+type ColumnMapping = {
+  prompt_column: string;
+  completion_column: string;
+  method: 'heuristic' | 'hermes';
+};
+
 type PreviewResp = {
   format: string;
   conversion: 'direct' | 'ollama';
@@ -13,6 +19,9 @@ type PreviewResp = {
   predicted_valid: number;
   predicted_canary: number;
   warnings: string[];
+  column_mapping?: ColumnMapping | null;
+  dropped_rows?: number;
+  drop_reasons?: Record<string, number>;
 };
 
 type FileResp = {
@@ -500,6 +509,31 @@ export default function NewDatasetV2() {
             <Stat label="valid" value={preview.predicted_valid} />
             <Stat label="canary" value={preview.predicted_canary} />
           </div>
+
+          {preview.column_mapping && (
+            <div className="rounded-md bg-emerald-950/30 px-3 py-2 text-xs text-emerald-300">
+              CSV mapped to chat:{' '}
+              <code className="rounded bg-zinc-800 px-1 py-0.5 font-mono text-[10px]">
+                {preview.column_mapping.prompt_column}
+              </code>{' '}
+              → user,{' '}
+              <code className="rounded bg-zinc-800 px-1 py-0.5 font-mono text-[10px]">
+                {preview.column_mapping.completion_column}
+              </code>{' '}
+              → assistant ({preview.column_mapping.method})
+            </div>
+          )}
+
+          {(preview.dropped_rows ?? 0) > 0 && (
+            <div className="rounded-md bg-amber-950/30 px-3 py-2 text-xs text-amber-300">
+              {preview.dropped_rows} row{preview.dropped_rows === 1 ? '' : 's'}{' '}
+              dropped during cleaning:{' '}
+              {Object.entries(preview.drop_reasons ?? {})
+                .map(([reason, n]) => `${reason} ×${n}`)
+                .join(', ')}
+              . Ingest fails if more than 50% of rows are unusable.
+            </div>
+          )}
 
           {preview.warnings.length > 0 && (
             <ul className="space-y-1 rounded-md bg-amber-950/30 px-3 py-2 text-xs text-amber-300">

@@ -229,6 +229,18 @@ Specs: [`docs/specs/2026-06-29-*.md`](docs/specs/).
   auto-routes by file size). Pre-formatted JSONL/CSV only on the large
   path (no Ollama conversion). Orphaned jobs from an API restart are
   reconciled to `failed` at startup.
+- **CSV ingest is cleaned + converted to chat format (all paths).** Every
+  CSV upload (sync `/file`, `/preview`, URL/scrape/S3, and the large
+  background job) is mapped to chat `{"messages": [...]}` records before
+  the dataset is saved. Column mapping is tiered: header heuristics
+  first, then the `csv_column_mapping` Hermes skill for ambiguous
+  schemas; if neither resolves, ingest fails with an actionable error
+  (no silent `{"text"}` column dump). Garbage rows are dropped with
+  per-reason counts (empty/too-short, Python-list reprs, control chars,
+  exact duplicates) and the ingest **fails if >50% of rows are
+  unusable**. The preview shows the resolved mapping and drop stats;
+  the dataset README records both. Spec:
+  `docs/specs/PHASE_INGEST_CSV_CHAT_SPEC.md`.
 - **Dynamic model registry (Models tab).** The model catalog is no
   longer hardcoded. Browse the effective catalog (built-in seeds +
   registered models) and add a model by pasting a HuggingFace repo id.

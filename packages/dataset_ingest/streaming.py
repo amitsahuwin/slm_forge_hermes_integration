@@ -139,6 +139,12 @@ async def iter_csv_chat_records(
         fields = _parse_csv_row(row_text)
         if fields is None or not any(f.strip() for f in fields):  # blank
             return ()
+        # Excel/pandas often emit a stray trailing comma on the header and/or
+        # data rows; trim trailing empty cells before comparing widths.
+        end = len(fields)
+        while end and not fields[end - 1].strip():
+            end -= 1
+        fields = fields[:end]
         if header is None:
             header = [h.strip() for h in fields]
             return ()

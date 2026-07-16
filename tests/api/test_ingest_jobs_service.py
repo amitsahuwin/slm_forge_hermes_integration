@@ -137,7 +137,7 @@ async def test_run_publishes_dataset_and_deletes_raw(env: None) -> None:
 
 @pytest.mark.asyncio
 async def test_run_csv_input(env: None) -> None:
-    rows = "\n".join(f"p{i},c{i}" for i in range(10))
+    rows = "\n".join(f"how do I fix issue {i}?,apply patch number {i}" for i in range(10))
     data = ("prompt,completion\n" + rows + "\n").encode()
     raw_key = await _seed_raw(data, artifact_id="ingest-2", filename="raw.csv")
     job_id = _new_job(raw_key, name="csvcorpus", fmt="csv", raw_bytes=len(data))
@@ -152,10 +152,11 @@ async def test_run_csv_input(env: None) -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_csv_custom_columns_produces_trainable_text(env: None) -> None:
-    # Regression for dataset `sx_ds`: a CSV whose columns are NOT a known
-    # prompt/completion pair must publish MLX `{text}` records (trainable),
-    # not raw column dicts (which mlx_lm.lora rejects at train time).
+async def test_run_csv_custom_columns_produces_chat_records(env: None) -> None:
+    # Regression for dataset `sx_ds`: a CSV whose columns are NOT literally
+    # prompt/completion must be heuristically mapped and published as chat
+    # `{"messages": [...]}` records — never the old `{text}` column dump
+    # (spec: docs/specs/PHASE_INGEST_CSV_CHAT_SPEC.md).
     header = "issue_description,fix_provided,priority_value\n"
     body = "".join(f"issue {i},fix {i},high\n" for i in range(12))
     data = (header + body).encode()
@@ -177,8 +178,12 @@ async def test_run_csv_custom_columns_produces_trainable_text(env: None) -> None
         + _lines(ds / "canary.jsonl")
     )
     parsed = [json.loads(ln) for ln in all_lines]
-    assert all(set(r.keys()) == {"text"} for r in parsed)
-    assert all(r["text"].startswith("issue_description: issue ") for r in parsed)
+    assert all(set(r.keys()) == {"messages"} for r in parsed)
+    for r in parsed:
+        roles = [m["role"] for m in r["messages"]]
+        assert roles == ["user", "assistant"]
+        assert r["messages"][0]["content"].startswith("issue ")
+        assert r["messages"][1]["content"].startswith("fix ")
 
 
 # ─────────────────────────── failure paths ───────────────────────────

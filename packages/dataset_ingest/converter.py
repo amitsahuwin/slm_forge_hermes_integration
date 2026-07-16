@@ -18,6 +18,8 @@ from typing import Any
 
 import httpx
 
+from packages.dataset_ingest import csv_chat
+
 log = logging.getLogger("dataset_ingest.converter")
 
 # ─────────────────────────────────────────────────────────────
@@ -42,7 +44,7 @@ def detect_file_format(filename: str, content_head: bytes) -> str:
     name = (filename or "").lower().strip()
     try:
         head = content_head.decode("utf-8", errors="replace").lstrip()
-    except Exception:  # noqa: BLE001
+    except Exception:
         head = ""
 
     # Try JSONL first — one valid JSON object per line
@@ -61,7 +63,7 @@ def detect_file_format(filename: str, content_head: bytes) -> str:
                 return "json_array"
             if isinstance(obj, dict) and "messages" in obj:
                 return "jsonl_chat"
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
         # Still might be JSON we couldn't fully parse from the head
         if head.startswith("["):
@@ -94,7 +96,7 @@ def _looks_like_jsonl(head: str) -> bool:
             obj = json.loads(ln)
             if isinstance(obj, dict):
                 ok += 1
-        except Exception:  # noqa: BLE001
+        except Exception:
             return False
     return ok >= 1
 
@@ -107,7 +109,7 @@ def _classify_jsonl(head: str) -> str | None:
             continue
         try:
             obj = json.loads(ln)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
         if not isinstance(obj, dict):
             return None
@@ -184,7 +186,10 @@ def parse_known(format_: str, content: bytes) -> list[dict]:
             raise ValueError("json_array: top-level value must be a list")
         return [r for r in arr if isinstance(r, dict)]
     if format_ == "csv":
-        return _parse_csv(text)
+        raise ValueError(
+            "parse_known: csv is converted via csv_to_chat (mapped-or-fail), "
+            "not parse_known"
+        )
     if format_ in ("markdown", "plain_text"):
         return _parse_paragraphs(text)
 
@@ -207,54 +212,57 @@ def _parse_jsonl(text: str, *, expect_chat: bool) -> list[dict]:
     return out
 
 
-# Column-name synonyms recognized as a prompt/completion pair. Shared by the
-# synchronous converter and the constant-RAM streaming ingest path so both
-# normalize CSV rows to identical MLX-trainable shapes.
-_CSV_PROMPT_KEYS = ("prompt", "instruction", "question", "input", "user", "query")
-_CSV_COMPLETION_KEYS = (
-    "completion",
-    "response",
-    "answer",
-    "output",
-    "assistant",
-    "reply",
-)
+def csv_to_chat(
+    text: str,
+    *,
+    hermes_resolver: csv_chat.HermesResolver | None = None,
+) -> tuple[list[dict], csv_chat.ColumnMapping, csv_chat.CleanStats]:
+    """Parse CSV text into cleaned chat records (sync ingest paths).
 
-
-def resolve_csv_mapping(
-    fieldnames: list[str],
-) -> tuple[str | None, str | None]:
-    """Pick the (prompt, completion) columns from a CSV header, if any.
-
-    Returns the first field whose lowercased name matches a known prompt /
-    completion synonym, else ``None`` for that slot.
+    Spec: docs/specs/PHASE_INGEST_CSV_CHAT_SPEC.md. Column mapping is
+    mapped-or-fail (heuristic → Hermes → ``MappingError``); rows are cleaned
+    with per-reason drop counts, and ``DropThresholdError`` is raised when
+    more than half the data rows are unusable.
     """
-    pkey = next((k for k in fieldnames if k.lower() in _CSV_PROMPT_KEYS), None)
-    ckey = next((k for k in fieldnames if k.lower() in _CSV_COMPLETION_KEYS), None)
-    return pkey, ckey
+    sample = text[:4096]
+    try:
+        dialect = csv.Sniffer().sniff(sample, delimiters=",\t;|")
+    except csv.Error:
+        dialect = csv.excel  # type: ignore[assignment]
 
+    raw_rows = [
+        row
+        for row in csv.reader(io.StringIO(text), dialect=dialect)
+        if row and any(f.strip() for f in row)
+    ]
+    if not raw_rows:
+        raise csv_chat.MappingError("CSV contains no rows.")
+    header = [h.strip() for h in raw_rows[0]]
 
-def csv_row_to_mlx(
-    row: dict, pkey: str | None, ckey: str | None
-) -> dict | None:
-    """Map one CSV row (raw ``column -> value`` dict) to an MLX-trainable record.
+    # None marks a field-count-vs-header mismatch (dropped, counted below).
+    rows: list[dict | None] = [
+        dict(zip(header, row, strict=True)) if len(row) == len(header) else None
+        for row in raw_rows[1:]
+    ]
 
-    * A recognized prompt/completion pair collapses to ``{"prompt", "completion"}``
-      (rows missing either half are skipped → ``None``).
-    * Otherwise every non-empty column is concatenated into a single
-      ``{"text": "col: val\\n..."}`` record.
-    * A wholly empty row yields ``None``.
-    """
-    if pkey and ckey:
-        p = str(row.get(pkey, "")).strip()
-        c = str(row.get(ckey, "")).strip()
-        if p and c:
-            return {"prompt": p, "completion": c}
-        return None
-    parts = [f"{k}: {v}" for k, v in row.items() if str(v).strip()]
-    if parts:
-        return {"text": "\n".join(parts)}
-    return None
+    samples = [r for r in rows if r is not None][:5]
+    resolver = (
+        hermes_resolver if hermes_resolver is not None else csv_chat.default_hermes_resolver
+    )
+    mapping = csv_chat.resolve_mapping(header, samples, hermes_resolver=resolver)
+
+    cleaner = csv_chat.RowCleaner(mapping)
+    records: list[dict] = []
+    for row_dict in rows:
+        if row_dict is None:
+            cleaner.stats.count_drop("field_mismatch")
+            continue
+        record = cleaner.clean(row_dict)
+        if record is not None:
+            records.append(record)
+
+    cleaner.stats.check_threshold()
+    return records, mapping, cleaner.stats
 
 
 def is_mlx_trainable(record: object) -> bool:
@@ -273,27 +281,6 @@ def is_mlx_trainable(record: object) -> bool:
     if "prompt" in record and "completion" in record:
         return True
     return isinstance(record.get("text"), str)
-
-
-def _parse_csv(text: str) -> list[dict]:
-    # Detect delimiter (comma vs tab)
-    sample = text[:4096]
-    try:
-        dialect = csv.Sniffer().sniff(sample, delimiters=",\t;|")
-    except csv.Error:
-        dialect = csv.excel  # type: ignore[assignment]
-
-    reader = csv.DictReader(io.StringIO(text), dialect=dialect)
-    fieldnames = [f.strip() for f in (reader.fieldnames or [])]
-    rows = [{(k or "").strip(): (v if v is not None else "") for k, v in r.items()} for r in reader]
-
-    pkey, ckey = resolve_csv_mapping(fieldnames)
-    out: list[dict] = []
-    for r in rows:
-        record = csv_row_to_mlx(r, pkey, ckey)
-        if record is not None:
-            out.append(record)
-    return out
 
 
 def _parse_paragraphs(text: str) -> list[dict]:
@@ -370,7 +357,7 @@ def convert_via_ollama(
     model: str,
     ollama_url: str,
     max_records: int | None = None,
-    batch_size: int = 10,  # noqa: ARG001 (reserved for future streaming)
+    batch_size: int = 10,
 ) -> list[dict]:
     """Ask Ollama to extract chat-style records from raw text.
 

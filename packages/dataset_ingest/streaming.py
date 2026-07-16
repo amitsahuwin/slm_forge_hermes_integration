@@ -18,6 +18,7 @@ which is what the large path needs.
 """
 from __future__ import annotations
 
+import asyncio
 import codecs
 import csv
 import hashlib
@@ -26,7 +27,8 @@ from collections.abc import AsyncIterable, AsyncIterator
 from pathlib import Path
 from typing import TextIO
 
-from packages.dataset_ingest.converter import csv_row_to_mlx, resolve_csv_mapping
+from packages.dataset_ingest import csv_chat
+from packages.dataset_ingest.csv_chat import RowCleaner
 
 Record = dict[str, object]
 
@@ -78,41 +80,87 @@ def _parse_jsonl_line(line: str) -> ParsedLine | None:
     return (obj, False)
 
 
-async def iter_csv_records(
+async def iter_csv_chat_records(
     chunks: AsyncIterable[bytes],
+    *,
+    hermes_resolver: csv_chat.HermesResolver | None = None,
+    sample_size: int = 5,
+    buffer_max: int = 50,
+    meta: dict | None = None,
 ) -> AsyncIterator[ParsedLine]:
-    """Yield ``(record | None, dropped)`` for each data row of a CSV stream.
+    """Yield ``(chat_record | None, dropped)`` for each data row of a CSV stream.
 
-    The first row is the header. Each data row is normalized to an
-    MLX-trainable record (``{prompt, completion}`` for a recognized column
-    pair, else ``{text}``) via the shared converter helpers, so the streaming
-    path publishes the same shapes as the synchronous converter. Quoted fields
-    containing commas/newlines are honoured. Constant RAM: the buffer is
-    trimmed after every complete logical row, so it only ever holds the current
-    (possibly quote-spanning) row. Empty / incomplete rows are skipped; rows
-    whose field count differs from the header are counted as dropped.
+    Spec: docs/specs/PHASE_INGEST_CSV_CHAT_SPEC.md. The first row is the
+    header. Up to ``buffer_max`` raw rows are buffered so the column mapping
+    can be resolved once (heuristic → Hermes, which needs header + sample
+    rows up front); the buffer is then flushed in order and every following
+    row streams straight through the shared :class:`RowCleaner`. RAM stays
+    bounded: a fixed-size row buffer plus 16-byte dedupe digests (~16 MB per
+    million rows). Quoted fields containing commas/newlines are honoured.
+    Blank rows are skipped; field-count mismatches and cleaner rejections are
+    counted as dropped. ``MappingError`` is raised when no mapping exists.
+
+    If ``meta`` is given, ``meta["mapping"]`` / ``meta["stats"]`` are set at
+    resolution time so callers can report the mapping and per-reason drops.
     """
     decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
     buf = ""
     header: list[str] | None = None
-    mapping: tuple[str | None, str | None] = (None, None)
+    cleaner: RowCleaner | None = None
+    # None marks a field-count-vs-header mismatch buffered before resolution.
+    pending: list[dict | None] = []
 
-    def _emit(row_text: str) -> ParsedLine | None:
-        nonlocal header, mapping
+    def _resolve() -> RowCleaner:
+        samples = [r for r in pending if r is not None][:sample_size]
+        resolver = (
+            hermes_resolver
+            if hermes_resolver is not None
+            else csv_chat.default_hermes_resolver
+        )
+        mapping = csv_chat.resolve_mapping(header or [], samples, hermes_resolver=resolver)
+        resolved = RowCleaner(mapping)
+        if meta is not None:
+            meta["mapping"] = mapping
+            meta["stats"] = resolved.stats
+        return resolved
+
+    def _clean(active: RowCleaner, row: dict | None) -> ParsedLine:
+        if row is None:
+            active.stats.count_drop("field_mismatch")
+            return (None, True)
+        record = active.clean(row)
+        if record is None:
+            return (None, True)
+        return (record, False)
+
+    def _to_row(row_text: str) -> dict | None | tuple[()]:
+        """Parse one logical row → dict, None (mismatch), or () for skip."""
+        nonlocal header
         fields = _parse_csv_row(row_text)
-        if fields is None:  # blank line
-            return None
+        if fields is None or not any(f.strip() for f in fields):  # blank
+            return ()
         if header is None:
             header = [h.strip() for h in fields]
-            mapping = resolve_csv_mapping(header)
-            return None
+            return ()
         if len(fields) != len(header):
-            return (None, True)
-        raw = dict(zip(header, fields, strict=True))
-        record = csv_row_to_mlx(raw, *mapping)
-        if record is None:  # empty row or incomplete prompt/completion pair
             return None
-        return (record, False)
+        return dict(zip(header, fields, strict=True))
+
+    async def _process(row_text: str) -> list[ParsedLine]:
+        nonlocal cleaner
+        row = _to_row(row_text)
+        if row == ():
+            return []
+        assert not isinstance(row, tuple)
+        if cleaner is not None:
+            return [_clean(cleaner, row)]
+        pending.append(row)
+        if len(pending) < buffer_max:
+            return []
+        cleaner = await asyncio.to_thread(_resolve)  # Hermes call off the loop
+        flushed = [_clean(cleaner, buffered) for buffered in pending]
+        pending.clear()
+        return flushed
 
     async for chunk in chunks:
         buf += decoder.decode(chunk)
@@ -122,14 +170,18 @@ async def iter_csv_records(
                 break
             row_text = buf[:end]
             buf = buf[end + 1 :]
-            parsed = _emit(row_text)
-            if parsed is not None:
+            for parsed in await _process(row_text):
                 yield parsed
     buf += decoder.decode(b"", final=True)
     if buf:  # trailing row with no final newline
-        parsed = _emit(buf)
-        if parsed is not None:
+        for parsed in await _process(buf):
             yield parsed
+
+    if cleaner is None:  # EOF before the buffer filled: resolve now
+        cleaner = await asyncio.to_thread(_resolve)
+        for buffered in pending:
+            yield _clean(cleaner, buffered)
+        pending.clear()
 
 
 def _find_row_end(buf: str) -> int:

@@ -38,7 +38,7 @@ from apps.api.services.storage.factory import get_object_store
 from packages.dataset_ingest.converter import is_mlx_trainable
 from packages.dataset_ingest.streaming import (
     StreamingSplitWriter,
-    iter_csv_records,
+    iter_csv_chat_records,
     iter_jsonl_records,
 )
 
@@ -77,19 +77,24 @@ async def _parse_to_staging(
     raw_key: str,
     detected_format: str | None,
     staging: Path,
-) -> tuple[dict[str, int], int, int]:
+) -> tuple[dict[str, int], int, int, dict]:
     """Stream the raw blob → parse → split into ``staging``.
 
-    Returns ``(counts, dropped, untrainable)`` where ``counts`` is the split
-    writer's tally of records actually written (all MLX-trainable), ``dropped``
-    counts unparseable lines, and ``untrainable`` counts records that parsed
-    but match no mlx_lm.lora format (and so are not written)."""
+    Returns ``(counts, dropped, untrainable, csv_meta)`` where ``counts`` is
+    the split writer's tally of records actually written (all MLX-trainable),
+    ``dropped`` counts unparseable/cleaned-away lines, ``untrainable`` counts
+    records that parsed but match no mlx_lm.lora format (and so are not
+    written), and ``csv_meta`` carries the CSV column mapping + per-reason
+    clean stats (empty for non-CSV). CSV rows are mapped-or-fail and cleaned
+    to chat records (spec: docs/specs/PHASE_INGEST_CSV_CHAT_SPEC.md);
+    ``MappingError`` propagates and fails the job."""
     writer = StreamingSplitWriter(staging)
     dropped = 0
     untrainable = 0
+    csv_meta: dict = {}
     stream = store.get(raw_key)
     records = (
-        iter_csv_records(stream)
+        iter_csv_chat_records(stream, meta=csv_meta)
         if detected_format == "csv"
         else iter_jsonl_records(stream)
     )
@@ -101,7 +106,7 @@ async def _parse_to_staging(
                 writer.write(record)
             else:
                 untrainable += 1
-    return writer.finalize(), dropped, untrainable
+    return writer.finalize(), dropped, untrainable, csv_meta
 
 
 def _write_readme(
@@ -110,6 +115,7 @@ def _write_readme(
     detected_format: str | None,
     counts: dict[str, int],
     dropped: int,
+    csv_meta: dict | None = None,
 ) -> None:
     ts = _now().isoformat()
     body = (
@@ -122,6 +128,15 @@ def _write_readme(
         f"- **Records total:** {counts['records_total']}\n"
         f"- **Dropped (unusable) lines:** {dropped}\n"
     )
+    mapping = (csv_meta or {}).get("mapping")
+    if mapping is not None:
+        body += (
+            f"- **Column mapping:** `{mapping.prompt_col}` → user, "
+            f"`{mapping.completion_col}` → assistant ({mapping.method})\n"
+        )
+    stats = (csv_meta or {}).get("stats")
+    if stats is not None and stats.dropped:
+        body += "\n## Conversion notes\n\n" + "\n".join(stats.readme_lines()) + "\n"
     (staging / "README.md").write_text(body, encoding="utf-8")
 
 
@@ -218,7 +233,7 @@ async def _run_ingest_job(job_id: int) -> None:
         shutil.rmtree(staging, ignore_errors=True)
         staging.mkdir(parents=True, exist_ok=True)
 
-        counts, dropped, untrainable = await _parse_to_staging(
+        counts, dropped, untrainable, csv_meta = await _parse_to_staging(
             store, raw_key, detected_format, staging
         )
         records_total = counts["records_total"]
@@ -244,7 +259,7 @@ async def _run_ingest_job(job_id: int) -> None:
                 "MLX format); refusing to publish."
             )
 
-        _write_readme(staging, dataset_name, detected_format, counts, unusable)
+        _write_readme(staging, dataset_name, detected_format, counts, unusable, csv_meta)
         final_dir.parent.mkdir(parents=True, exist_ok=True)
         os.replace(staging, final_dir)
         await store.delete(raw_key)

@@ -21,7 +21,7 @@ from typing import Literal
 
 import httpx
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlmodel import Session
 
 from apps.api.middleware.auth import requires
@@ -35,10 +35,12 @@ from apps.api.services.storage.factory import get_object_store, tenant_key
 from packages.dataset_ingest.converter import (
     auto_split,
     convert_via_ollama,
+    csv_to_chat,
     detect_file_format,
     parse_known,
     write_dataset,
 )
+from packages.dataset_ingest.csv_chat import DropThresholdError, MappingError
 from packages.ratchet.hermes_bridge import HERMES_MODEL, OLLAMA_URL
 
 log = logging.getLogger(__name__)
@@ -89,6 +91,9 @@ class IngestPreviewResponse(BaseModel):
     predicted_valid: int
     predicted_canary: int
     warnings: list[str]
+    column_mapping: dict | None = None
+    dropped_rows: int = 0
+    drop_reasons: dict[str, int] = Field(default_factory=dict)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -121,10 +126,12 @@ async def _read_capped(file: UploadFile) -> bytes:
 
 def _convert(
     content: bytes, filename: str, force_ollama: bool = False
-) -> tuple[list[dict], str, Literal["direct", "ollama"], list[str]]:
+) -> tuple[list[dict], str, Literal["direct", "ollama"], list[str], dict | None]:
     """Run the detect → parse → (maybe) Ollama pipeline.
 
-    Returns (records, detected_format, conversion_path, warnings).
+    Returns (records, detected_format, conversion_path, warnings, csv_meta).
+    ``csv_meta`` is only set for the CSV path: ``{"column_mapping",
+    "dropped_rows", "drop_reasons", "readme_lines"}``.
     """
     warnings: list[str] = []
     head = content[:65536]
@@ -139,19 +146,42 @@ def _convert(
                 "Ollama returned zero parseable records. Try a different file "
                 "or check that the Hermes model is pulled and running.",
             )
-        return records, fmt, "ollama", warnings
+        return records, fmt, "ollama", warnings, None
 
     if fmt.startswith("jsonl_"):
         records = parse_known(fmt, content)
         if not records:
             raise HTTPException(400, "Parsed zero records from jsonl input.")
-        return records, fmt, "direct", warnings
+        return records, fmt, "direct", warnings, None
 
-    if fmt in ("csv", "json_array", "markdown", "plain_text"):
+    if fmt == "csv":
+        # Mapped-or-fail: no Ollama fallback and no {"text"} column dump —
+        # spec docs/specs/PHASE_INGEST_CSV_CHAT_SPEC.md.
+        text = content.decode("utf-8", errors="replace")
+        try:
+            records, mapping, stats = csv_to_chat(text)
+        except (MappingError, DropThresholdError) as e:
+            raise HTTPException(400, str(e)) from e
+        if not records:
+            raise HTTPException(400, "Parsed zero usable records from CSV input.")
+        warnings.extend(stats.warnings())
+        csv_meta = {
+            "column_mapping": mapping.as_dict(),
+            "dropped_rows": stats.total_dropped(),
+            "drop_reasons": dict(stats.dropped),
+            "readme_lines": [
+                f"Column mapping: `{mapping.prompt_col}` → user, "
+                f"`{mapping.completion_col}` → assistant ({mapping.method})",
+                *stats.readme_lines(),
+            ],
+        }
+        return records, fmt, "direct", warnings, csv_meta
+
+    if fmt in ("json_array", "markdown", "plain_text"):
         records: list[dict] = []
         try:
             records = parse_known(fmt, content)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             warnings.append(f"Direct parse failed: {e}. Falling back to Ollama.")
 
         if len(records) < _DIRECT_MIN_RECORDS:
@@ -162,18 +192,18 @@ def _convert(
             text = content.decode("utf-8", errors="replace")
             llm_records = convert_via_ollama(text, HERMES_MODEL, OLLAMA_URL)
             if llm_records:
-                return llm_records, fmt, "ollama", warnings
+                return llm_records, fmt, "ollama", warnings, None
             if records:
                 warnings.append(
                     "Ollama returned nothing — keeping direct parse output."
                 )
-                return records, fmt, "direct", warnings
+                return records, fmt, "direct", warnings, None
             raise HTTPException(
                 400,
                 f"Could not extract usable records from {filename}. "
                 "Try a richer source file.",
             )
-        return records, fmt, "direct", warnings
+        return records, fmt, "direct", warnings, None
 
     # unknown → straight to Ollama
     text = content.decode("utf-8", errors="replace")
@@ -183,7 +213,7 @@ def _convert(
             400,
             "Could not detect a known format and Ollama returned zero records.",
         )
-    return records, fmt, "ollama", warnings
+    return records, fmt, "ollama", warnings, None
 
 
 # ─────────────────────────────────────────────────────────────
@@ -214,7 +244,7 @@ async def ingest_file(
     content = await _read_capped(file)
     # _convert may run a blocking, multi-minute Ollama HTTP call; keep it off
     # the event loop so the API stays responsive (e.g. worker heartbeats).
-    records, fmt, conversion, warnings = await asyncio.to_thread(
+    records, fmt, conversion, warnings, csv_meta = await asyncio.to_thread(
         _convert, content, file.filename or "upload", force_ollama
     )
 
@@ -229,6 +259,8 @@ async def ingest_file(
     notes_lines = [
         f"Conversion path: {conversion}",
     ]
+    if csv_meta:
+        notes_lines.extend(csv_meta["readme_lines"])
     if description:
         notes_lines.append(f"User description: {description}")
     if warnings:
@@ -390,7 +422,7 @@ async def preview_file(
 ) -> IngestPreviewResponse:
     """Detect the format and show what would be written, without writing."""
     content = await _read_capped(file)
-    records, fmt, conversion, warnings = await asyncio.to_thread(
+    records, fmt, conversion, warnings, csv_meta = await asyncio.to_thread(
         _convert, content, file.filename or "upload", force_ollama
     )
     splits = auto_split(records)
@@ -404,6 +436,9 @@ async def preview_file(
         predicted_valid=len(splits["valid"]),
         predicted_canary=len(splits["canary"]),
         warnings=warnings,
+        column_mapping=(csv_meta or {}).get("column_mapping"),
+        dropped_rows=(csv_meta or {}).get("dropped_rows", 0),
+        drop_reasons=(csv_meta or {}).get("drop_reasons", {}),
     )
 
 
@@ -447,7 +482,7 @@ def _fetch_scrape(url: str) -> tuple[bytes, str]:
 
     try:
         row = scrape_url(url)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         raise HTTPException(400, f"Scrape failed: {e}") from e
     title = row.get("title") or ""
     body = row.get("content") or ""
@@ -493,7 +528,7 @@ def _fetch_s3(
         client = s3_mod.boto3.client("s3", **session_kwargs)
         obj = client.get_object(Bucket=bucket, Key=key)
         content = obj["Body"].read()
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         raise HTTPException(400, f"S3 fetch failed: {e}") from e
     _ensure_under_cap(content)
     filename = key.rsplit("/", 1)[-1] or "object"
@@ -534,7 +569,7 @@ def _finalize_from_bytes(
             409, f"Dataset '{safe_name}' already exists. Pick a different name."
         )
 
-    records, fmt, conversion, warnings = _convert(
+    records, fmt, conversion, warnings, csv_meta = _convert(
         content, filename, force_ollama=force_ollama
     )
     splits = auto_split(records)
@@ -550,6 +585,8 @@ def _finalize_from_bytes(
         f"Source: {source_tag}",
         f"Conversion path: {conversion}",
     ]
+    if csv_meta:
+        notes_lines.extend(csv_meta["readme_lines"])
     if description:
         notes_lines.append(f"User description: {description}")
     if warnings:
@@ -577,7 +614,7 @@ def _finalize_from_bytes(
 def _preview_from_bytes(
     *, content: bytes, filename: str, force_ollama: bool
 ) -> IngestPreviewResponse:
-    records, fmt, conversion, warnings = _convert(
+    records, fmt, conversion, warnings, csv_meta = _convert(
         content, filename, force_ollama=force_ollama
     )
     splits = auto_split(records)
@@ -590,6 +627,9 @@ def _preview_from_bytes(
         predicted_valid=len(splits["valid"]),
         predicted_canary=len(splits["canary"]),
         warnings=warnings,
+        column_mapping=(csv_meta or {}).get("column_mapping"),
+        dropped_rows=(csv_meta or {}).get("dropped_rows", 0),
+        drop_reasons=(csv_meta or {}).get("drop_reasons", {}),
     )
 
 

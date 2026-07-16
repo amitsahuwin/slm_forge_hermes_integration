@@ -1,0 +1,9 @@
+col_a,col_b
+"server01||123-HeartBeat|| connectivity lost between agent and collector","restarted the monitoring agent and verified heartbeat is updating fine"
+"disk full on /var on host02, utilization above 95 percent","cleaned rotated logs and extended the logical volume by 20GB"
+"physical memory utilization above 80 percent on app03","restarted the leaking service and confirmed memory back to baseline"
+"zabbix bridge lost connection for group PURDUE_pnmst001","re-established the bridge connection, alerts populating fine"
+"backup job failure alert for db04 at 19:56 IST","re-ran the backup after freeing scratch space, job completed"
+"cpu pegged at 100 percent on web05 after deploy","rolled back the bad deploy and confirmed load normal"
+"message queue lag growing on mq06 consumers","scaled consumers from 2 to 4, lag drained in 10 minutes"
+"tls certificate expiring in 7 days on lb07","rotated the certificate and reloaded the load balancer"

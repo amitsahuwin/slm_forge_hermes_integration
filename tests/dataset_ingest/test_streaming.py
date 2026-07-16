@@ -11,9 +11,10 @@ from pathlib import Path
 
 import pytest
 
+from packages.dataset_ingest.csv_chat import MappingError
 from packages.dataset_ingest.streaming import (
     StreamingSplitWriter,
-    iter_csv_records,
+    iter_csv_chat_records,
     iter_jsonl_records,
 )
 
@@ -102,88 +103,126 @@ async def test_jsonl_non_object_line_is_dropped() -> None:
     assert drops == 2
 
 
-# ─────────────────────────── CSV parsing ───────────────────────────
+# ─────────────────────────── CSV → chat streaming ───────────────────────────
+
+
+def _chat(p: str, c: str) -> dict:
+    return {
+        "messages": [
+            {"role": "user", "content": p},
+            {"role": "assistant", "content": c},
+        ]
+    }
 
 
 @pytest.mark.asyncio
-async def test_csv_header_to_dict() -> None:
-    data = b"prompt,completion\nhello,world\nfoo,bar\n"
-    got = await _collect(iter_csv_records(_chunks(data, 5)))
+async def test_csv_chat_synonym_pair_maps_heuristically() -> None:
+    data = b"instruction,response\nquestion one,answer one\nquestion two,answer two\n"
+    got = await _collect(iter_csv_chat_records(_chunks(data, 5)))
     records = [r for r, dropped in got if not dropped]
     assert records == [
-        {"prompt": "hello", "completion": "world"},
-        {"prompt": "foo", "completion": "bar"},
+        _chat("question one", "answer one"),
+        _chat("question two", "answer two"),
     ]
 
 
 @pytest.mark.asyncio
-async def test_csv_quoted_fields_with_commas_and_newlines() -> None:
-    # Columns `a`/`b` are not a known prompt/completion pair, so each row is
-    # normalized to an MLX `{text}` record (mirroring the synchronous
-    # converter). Quoted commas/newlines must still be parsed faithfully.
-    data = b'a,b\n"x,y","line1\nline2"\nplain,value\n'
-    got = await _collect(iter_csv_records(_chunks(data, 3)))
-    records = [r for r, dropped in got if not dropped]
-    assert records == [
-        {"text": "a: x,y\nb: line1\nline2"},
-        {"text": "a: plain\nb: value"},
-    ]
-
-
-@pytest.mark.asyncio
-async def test_csv_quoted_newline_field_split_across_chunks() -> None:
-    # A quoted field with an embedded newline, chunked 1 byte at a time — the
-    # parser must not treat the in-quote newline as a row terminator, and must
-    # not corrupt multi-byte chars either. Unknown columns → `{text}`.
-    data = 'a,b\n"café\nè","z"\np,q\n'.encode()
-    got = await _collect(iter_csv_records(_chunks(data, 1)))
-    records = [r for r, dropped in got if not dropped]
-    assert records == [
-        {"text": "a: café\nè\nb: z"},
-        {"text": "a: p\nb: q"},
-    ]
-
-
-@pytest.mark.asyncio
-async def test_csv_empty_rows_skipped() -> None:
-    data = b"a,b\n1,2\n\n3,4\n"
-    got = await _collect(iter_csv_records(_chunks(data, 4)))
-    records = [r for r, dropped in got if not dropped]
-    assert records == [{"text": "a: 1\nb: 2"}, {"text": "a: 3\nb: 4"}]
-
-
-@pytest.mark.asyncio
-async def test_csv_unknown_columns_become_text_record() -> None:
-    # Real-world regression (dataset `sx_ds`): a CSV whose columns match no
-    # known prompt/completion synonym must ingest as MLX `{text}` records, not
-    # raw column dicts (which mlx_lm.lora rejects with "Unsupported data
-    # format").
+async def test_csv_chat_issue_fix_columns_map_heuristically() -> None:
+    # Real-world regression (dataset `sx-100rows`): these columns previously
+    # fell through to a `{text}` column dump and trained gibberish.
     data = (
         b"issue_description,fix_provided,priority_value\n"
-        b"disk full,restart node,high\n"
+        b"disk full on node,restarted the node,high\n"
     )
-    got = await _collect(iter_csv_records(_chunks(data, 7)))
+    got = await _collect(iter_csv_chat_records(_chunks(data, 7)))
     records = [r for r, dropped in got if not dropped]
-    assert records == [
-        {
-            "text": "issue_description: disk full\n"
-            "fix_provided: restart node\n"
-            "priority_value: high"
-        }
+    assert records == [_chat("disk full on node", "restarted the node")]
+
+
+@pytest.mark.asyncio
+async def test_csv_chat_quoted_fields_preserved_across_chunks() -> None:
+    # Quoted commas/newlines chunked 1 byte at a time must survive intact in
+    # the message contents (in-quote newline is not a row terminator).
+    data = 'prompt,completion\n"café, one\nline two","answer text"\n'.encode()
+    got = await _collect(iter_csv_chat_records(_chunks(data, 1)))
+    records = [r for r, dropped in got if not dropped]
+    assert records == [_chat("café, one\nline two", "answer text")]
+
+
+@pytest.mark.asyncio
+async def test_csv_chat_empty_rows_skipped_not_dropped() -> None:
+    data = b"prompt,completion\nrow one,fix one\n\nrow two,fix two\n"
+    got = await _collect(iter_csv_chat_records(_chunks(data, 4)))
+    assert [r for r, dropped in got if not dropped] == [
+        _chat("row one", "fix one"),
+        _chat("row two", "fix two"),
+    ]
+    assert sum(1 for _, dropped in got if dropped) == 0
+
+
+@pytest.mark.asyncio
+async def test_csv_chat_ambiguous_headers_use_resolver_once() -> None:
+    rows = "".join(f'"question number {i}","answer number {i}"\n' for i in range(60))
+    data = ("col_a,col_b\n" + rows).encode()
+    calls: list[list[str]] = []
+
+    def resolver(header: list[str], samples: list[dict]) -> dict:
+        calls.append(header)
+        assert 0 < len(samples) <= 5
+        return {"prompt_column": "col_a", "completion_column": "col_b"}
+
+    got = await _collect(iter_csv_chat_records(_chunks(data, 64), hermes_resolver=resolver))
+    records = [r for r, dropped in got if not dropped]
+    assert calls == [["col_a", "col_b"]]
+    assert len(records) == 60  # buffered rows flushed in order, then streamed
+    assert records[0] == _chat("question number 0", "answer number 0")
+    assert records[-1] == _chat("question number 59", "answer number 59")
+
+
+@pytest.mark.asyncio
+async def test_csv_chat_small_file_resolves_at_eof() -> None:
+    # Fewer data rows than the mapping buffer: resolution happens at EOF.
+    data = b'col_a,col_b\n"tiny question here","tiny answer here"\n'
+
+    def resolver(header: list[str], samples: list[dict]) -> dict:
+        return {"prompt_column": "col_a", "completion_column": "col_b"}
+
+    got = await _collect(iter_csv_chat_records(_chunks(data, 8), hermes_resolver=resolver))
+    assert [r for r, dropped in got if not dropped] == [
+        _chat("tiny question here", "tiny answer here")
     ]
 
 
 @pytest.mark.asyncio
-async def test_csv_synonym_pair_becomes_prompt_completion() -> None:
-    # `instruction`/`response` are recognized prompt/completion synonyms, so
-    # rows collapse to MLX `{prompt, completion}` records.
-    data = b"instruction,response\nq1,a1\nq2,a2\n"
-    got = await _collect(iter_csv_records(_chunks(data, 5)))
+async def test_csv_chat_resolver_failure_raises_mapping_error() -> None:
+    data = b'col_a,col_b\n"some question here","some answer here"\n'
+
+    def resolver(header: list[str], samples: list[dict]) -> dict:
+        raise ConnectionError("Ollama is down")
+
+    with pytest.raises(MappingError):
+        await _collect(iter_csv_chat_records(_chunks(data, 8), hermes_resolver=resolver))
+
+
+@pytest.mark.asyncio
+async def test_csv_chat_bad_rows_counted_as_dropped() -> None:
+    data = (
+        b"prompt,completion\n"
+        b"good question one,good answer one\n"
+        b"missing answer row,\n"
+        b'list repr row,"[\'TRUE\', \'P4\']"\n'
+        b"good question one,good answer one\n"
+        b"too,many,fields,here\n"
+        b"good question two,good answer two\n"
+    )
+    got = await _collect(iter_csv_chat_records(_chunks(data, 16)))
     records = [r for r, dropped in got if not dropped]
+    drops = sum(1 for _, dropped in got if dropped)
     assert records == [
-        {"prompt": "q1", "completion": "a1"},
-        {"prompt": "q2", "completion": "a2"},
+        _chat("good question one", "good answer one"),
+        _chat("good question two", "good answer two"),
     ]
+    assert drops == 4  # empty, list_repr, duplicate, field mismatch
 
 
 # ─────────────────────────── Split writer ───────────────────────────

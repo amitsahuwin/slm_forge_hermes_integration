@@ -1,0 +1,9 @@
+issue_description,fix_provided
+"server01||123-HeartBeat|| connectivity lost between agent and collector","restarted the monitoring agent and verified heartbeat is updating fine"
+"disk full on /var on host02, utilization above 95 percent","cleaned rotated logs and extended the logical volume by 20GB"
+"list dump incident 0","['TRUE', 'P0']"
+"list dump incident 1","['TRUE', 'P1']"
+"list dump incident 2","['TRUE', 'P2']"
+"missing fix incident 0",
+"missing fix incident 1",
+"missing fix incident 2",
